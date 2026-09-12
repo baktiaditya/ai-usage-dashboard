@@ -1,0 +1,11 @@
+{
+  "_fixture": {
+    "note": "The bridge ran but this account exposed no rate_limits: not_entitled, not an error."
+  },
+  "spoolSchemaVersion": 1,
+  "eventId": "1111111122222222333333334444444a",
+  "observedAt": "2026-09-12T04:00:00.000Z",
+  "cliVersion": "2.1.269",
+  "hasRateLimits": false,
+  "rateLimits": null
+}

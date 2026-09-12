@@ -1,0 +1,6 @@
+{
+  "_fixture": {
+    "note": "0.3 - 0.1 in IEEE-754 double gives 0.19999999999999998; decimal arithmetic must give 0.2."
+  },
+  "data": { "total_credits": 0.3, "total_usage": 0.1 }
+}

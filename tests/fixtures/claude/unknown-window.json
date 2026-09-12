@@ -1,0 +1,14 @@
+{
+  "_fixture": {
+    "note": "An unrecognised window key must be dropped, not rendered with a guessed duration."
+  },
+  "spoolSchemaVersion": 1,
+  "eventId": "5555555566666666777777778888888b",
+  "observedAt": "2026-09-12T04:00:00.000Z",
+  "cliVersion": "2.1.269",
+  "hasRateLimits": true,
+  "rateLimits": {
+    "five_hour": { "usedPercentage": 15, "resetsAt": 1773554400 },
+    "thirty_day": { "usedPercentage": 90, "resetsAt": 1776578400 }
+  }
+}

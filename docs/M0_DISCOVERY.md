@@ -1,0 +1,191 @@
+# M0 — Discovery and feasibility gates
+
+Re-probed **2026-09-12 (Asia/Jakarta)**, superseding the plan's 2026-09-12 baseline
+where noted. Nothing here records a secret, an email, an account ID, a raw auth
+payload, or a current quota/balance value.
+
+## Machine baseline
+
+| Area                        | Plan baseline      | Re-probed 2026-09-12 | Drift                                         |
+| --------------------------- | ------------------ | -------------------- | --------------------------------------------- |
+| Node.js                     | 24.19.0            | 24.19.0              | —                                             |
+| npm                         | 11.17.0            | 11.17.0              | —                                             |
+| SQLite                      | 3.45.1             | 3.45.1               | —                                             |
+| Codex CLI                   | 0.154.0            | 0.154.0              | —                                             |
+| Claude Code                 | 2.1.267            | **2.1.269**          | patch bump, no contract change                |
+| Claude `subscriptionType`   | `null`             | **`pro`**            | **account is now eligible for `rate_limits`** |
+| Claude `statusLine`         | not configured     | still not configured | —                                             |
+| `DEEPSEEK_API_KEY`          | absent             | absent               | —                                             |
+| `OPENROUTER_MANAGEMENT_KEY` | absent             | absent               | —                                             |
+| `OPENROUTER_API_KEY`        | absent             | absent               | —                                             |
+| User systemd + linger       | running, linger on | running, linger on   | —                                             |
+
+One extra capability was verified because the whole decimal strategy rests on
+it: **Node 24 supports JSON source-text access** in `JSON.parse` revivers
+(`context.source`). That is what lets the OpenRouter adapter read `100.5` as the
+literal characters on the wire instead of an IEEE-754 double. See
+`src/lib/money.ts`.
+
+## Gate results
+
+### Codex — PASSED (live)
+
+`codex app-server` was driven over stdio with the real JSON-RPC handshake
+(`initialize` → `initialized` → `account/rateLimits/read`). The response carried
+`rateLimitsByLimitId.codex` with both windows:
+
+```
+rateLimits / rateLimitsByLimitId.codex
+  limitId              "codex"
+  planType             "plus"
+  primary   { usedPercent <number>, windowDurationMins 300,   resetsAt <number> }
+  secondary { usedPercent <number>, windowDurationMins 10080, resetsAt <number> }
+  rateLimitReachedType null
+ordinaryUsageAllowed   true
+```
+
+Values are elided deliberately — only the shape is evidence.
+
+The protocol schema was generated from the installed CLI
+(`codex app-server generate-json-schema`) and `GetAccountRateLimitsResponse.json`
+confirmed the field set, the nullability, and that `resetsAt` is **Unix seconds**
+(`int64`), not milliseconds.
+
+Fields present in the response that this application deliberately never stores:
+`accountId`, `rateLimitResetCredits[].id/title/description`, `credits.balance`,
+`rateLimitUpsell`.
+
+Re-run after any Codex CLI upgrade: `npm run test:live`.
+
+### Claude Code — PASSED (live)
+
+All three preconditions were met and a real event was captured.
+
+- The account reports `subscriptionType: "pro"`, so it is in the class of
+  accounts that receive `rate_limits` (the plan observed `null`).
+- The field contract was confirmed against
+  <https://code.claude.com/docs/en/statusline>:
+  `rate_limits.five_hour.used_percentage` / `.resets_at`,
+  `rate_limits.seven_day.*`, and a third documented window, `spend_limit.*`.
+  `resets_at` is Unix epoch seconds.
+- The bridge was installed into `~/.claude/settings.json` (no prior
+  `statusLine` existed; the file was backed up first) and a live Claude Code
+  session produced an event immediately.
+
+The spool event, and the rows it became:
+
+```
+spool event (shape only)
+  spoolSchemaVersion 1
+  eventId            <32 hex chars>
+  observedAt         <iso>
+  cliVersion         "2.1.269"
+  hasRateLimits      true
+  rateLimits         { five_hour: {...}, seven_day: {...} }
+
+persisted quota_windows
+  claude  five_hour  usedPercent <number>  windowDurationMinutes 300    resetAt <iso>
+  claude  seven_day  usedPercent <number>  windowDurationMinutes 10080  resetAt <iso>
+  source_version "claude-code/2.1.269"   source_event_id <32 chars>
+```
+
+Two properties were verified against the live event rather than a fixture:
+
+1. **Field selection holds.** A scan of the live database found no email,
+   bearer token, API-key shape, UUID, `session_id`, `transcript`, home path, or
+   `total_cost_usd` — all of which are present in the status-line input the
+   bridge receives.
+2. **Event dedup holds.** Replaying an identical frozen spool produced
+   `deduplicated: 1`, one snapshot row, and two audited attempts — which is what
+   makes a manual refresh racing the scheduled collector safe.
+
+To undo the status-line installation:
+`npm run claude:install-statusline -- --uninstall --apply`.
+
+The plan noted `spend_limit` nowhere; it is documented by Anthropic and is a
+gauge exactly like the other two, so the bridge allowlists it and the ingestor
+labels it. This account did not report one, so it simply never appeared — which
+is the intended behaviour, not a gap.
+
+### DeepSeek — NOT PASSED (no credential on this machine)
+
+`DEEPSEEK_API_KEY` is absent, so no live call was made. The contract was taken
+from <https://api-docs.deepseek.com/api/get-user-balance>:
+
+```
+{ is_available: boolean,
+  balance_infos: [ { currency: "CNY"|"USD",
+                     total_balance: string,
+                     granted_balance: string,
+                     topped_up_balance: string } ] }
+```
+
+All monetary fields are **JSON strings** upstream, so they are already
+decimal-safe; the adapter re-canonicalises them anyway for storage consistency.
+The endpoint exposes **no usage figure at all**, which is why nothing in this
+application ever labels a DeepSeek number "usage".
+
+Fixtures are synthetic and marked as such in their `_fixture.note`.
+
+**Exact action to close this gate**: put a real `DEEPSEEK_API_KEY` in the
+collector environment file (`docs/SETUP.md` §4), then `npm run test:live`.
+
+### OpenRouter — NOT PASSED (no credential on this machine)
+
+`OPENROUTER_MANAGEMENT_KEY` is absent. Contract from
+<https://openrouter.ai/docs/api/api-reference/credits/get-remaining-credits>:
+
+```
+200 { data: { total_credits: 100.5, total_usage: 25.75 } }
+401 { error: { code: 401, message: "Missing Authentication header" } }
+403 { error: { code: 403, message: "Only management keys can perform this operation" } }
+```
+
+Two facts drove implementation decisions:
+
+1. `total_credits` and `total_usage` are JSON **numbers**, so `response.json()`
+   would round them before we ever saw the digits. The adapter reads the
+   response as text and parses it losslessly.
+2. The endpoint requires a **Management key**
+   (<https://openrouter.ai/settings/management-keys>); an ordinary inference key
+   yields 403. That is a different problem from a missing key (401) and gets its
+   own error code so the hint can be specific.
+
+**Exact action to close this gate**: put a real `OPENROUTER_MANAGEMENT_KEY` in
+the collector environment file, then `npm run test:live`.
+
+## Decisions fixed at M0
+
+These were left open by the plan and are now settled, with defaults in
+`src/lib/config.ts`.
+
+| Decision                     | Value                                               | Why                                                                                     |
+| ---------------------------- | --------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| Poll interval                | 5 min                                               | plan default; conservative against provider rate limits                                 |
+| Pull freshness budget        | 3 missed intervals (15 min)                         | tolerates one transient failure plus a retry before a card stops claiming to be current |
+| Claude event budget          | 12 hours                                            | Claude only emits while a session is live, so a long gap is normal, not a fault         |
+| Reset-passed handling        | forces `stale`                                      | once a window resets, the stored percentage describes a window that no longer exists    |
+| Quota thresholds             | `watch` ≤ 20 % remaining, `switch_suggested` ≤ 10 % | plan default                                                                            |
+| Balance thresholds           | per provider **and** currency: USD 5/1, CNY 35/7    | 20 CNY and 20 USD are not comparable runway                                             |
+| Retention                    | 90 days                                             | plan default                                                                            |
+| Advisory on non-healthy data | always `unknown`                                    | a recommendation from a stale number is a guess wearing the costume of a fact           |
+
+## Deviations from the plan, and why
+
+1. **`drizzle-kit` is not used.** Migrations are hand-written SQL in `drizzle/`.
+   The generator round-trips STRICT tables, CHECK constraints and the partial
+   unique index poorly, and dropping it also removed the last remaining
+   `npm audit` finding (a transitive dev-only esbuild advisory). Drizzle ORM
+   itself is used exactly as the plan specifies, for typed queries.
+2. **Migrations are embedded into a generated TypeScript module.** Turbopack
+   cannot trace a runtime `readdirSync`. `drizzle/*.sql` remains the source of
+   truth and `tests/unit/migrations-sync.test.ts` fails if the two ever drift.
+3. **Next.js 16.3.5, not 15.x.** Every 15.x line still carries unpatched
+   advisories in its transitive `postcss`/`sharp`. `npm audit` is now clean.
+4. **shadcn/ui components are hand-authored** in `src/components/ui/` rather
+   than pulled through the shadcn CLI. shadcn is a copy-in pattern, not a
+   dependency, so this is the same result with an auditable diff.
+5. **`spend_limit` is supported** as a third Claude quota window (see above).
+6. **Percentages are stored as SQLite `REAL`.** The plan's prohibition on `REAL`
+   is about money, and is honoured absolutely for money. A quota gauge is a
+   measurement with no exact-sum invariant, and `REAL` is the correct type.

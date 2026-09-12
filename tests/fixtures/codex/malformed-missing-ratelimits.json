@@ -1,0 +1,4 @@
+{
+  "_fixture": { "note": "Required `rateLimits` key absent entirely." },
+  "ordinaryUsageAllowed": true
+}

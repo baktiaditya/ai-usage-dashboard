@@ -1,0 +1,6 @@
+{
+  "_fixture": {
+    "note": "Usage exceeds credits: remaining is legitimately negative and must not be clamped."
+  },
+  "data": { "total_credits": 10.0, "total_usage": 12.5 }
+}

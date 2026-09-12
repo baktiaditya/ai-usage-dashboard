@@ -1,0 +1,12 @@
+{
+  "_fixture": {
+    "note": "Backend reports the account is cut off. usageAllowed=false must drive switch_suggested regardless of percentages."
+  },
+  "ordinaryUsageAllowed": false,
+  "rateLimits": {
+    "limitId": "codex",
+    "primary": { "usedPercent": 100, "windowDurationMins": 300, "resetsAt": 1773554400 },
+    "secondary": { "usedPercent": 64, "windowDurationMins": 10080, "resetsAt": 1773986400 },
+    "rateLimitReachedType": "rate_limit_reached"
+  }
+}

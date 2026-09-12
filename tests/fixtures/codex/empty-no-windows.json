@@ -1,0 +1,7 @@
+{
+  "_fixture": {
+    "note": "Structurally valid but the account has no metered window: unavailable, not error."
+  },
+  "ordinaryUsageAllowed": true,
+  "rateLimits": { "limitId": "codex", "primary": null, "secondary": null }
+}

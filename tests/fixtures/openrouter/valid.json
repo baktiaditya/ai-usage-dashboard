@@ -1,0 +1,8 @@
+{
+  "_fixture": {
+    "source": "GET https://openrouter.ai/api/v1/credits",
+    "note": "Synthetic: no Management key was available. Values match the documented example.",
+    "important": "total_credits and total_usage are JSON NUMBERS, so the adapter must read their source text to stay decimal-safe."
+  },
+  "data": { "total_credits": 100.5, "total_usage": 25.75 }
+}

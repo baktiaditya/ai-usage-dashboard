@@ -1,0 +1,15 @@
+{
+  "_fixture": {
+    "note": "Produced by scripts/claude-statusline-bridge.mjs from a synthetic status-line payload.",
+    "sanitized": "the bridge never copies session_id, transcript_path, cwd, workspace or cost"
+  },
+  "spoolSchemaVersion": 1,
+  "eventId": "84cfbc12ad55ba41d052809be0ae4564",
+  "observedAt": "2026-09-12T04:00:00.000Z",
+  "cliVersion": "2.1.269",
+  "hasRateLimits": true,
+  "rateLimits": {
+    "five_hour": { "usedPercentage": 23.5, "resetsAt": 1773554400 },
+    "seven_day": { "usedPercentage": 41.2, "resetsAt": 1773986400 }
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "_fixture": {
+    "note": "Only the primary window is reported and no reset time is available."
+  },
+  "ordinaryUsageAllowed": null,
+  "rateLimits": {
+    "limitId": "codex",
+    "primary": { "usedPercent": 80, "windowDurationMins": null, "resetsAt": null },
+    "secondary": null
+  },
+  "rateLimitsByLimitId": {
+    "codex": {
+      "limitId": "codex",
+      "primary": { "usedPercent": 80, "windowDurationMins": null, "resetsAt": null },
+      "secondary": null
+    }
+  }
+}

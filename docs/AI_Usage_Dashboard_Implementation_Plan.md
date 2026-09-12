@@ -4,16 +4,40 @@ Dashboard lokal untuk memantau quota Codex dan Claude Code serta saldo DeepSeek 
 
 ## 0. Baseline validasi mesin
 
+> **Status implementasi (2026-09-12).** Rencana ini sudah diimplementasikan.
+> Baseline di bawah adalah observasi awal; hasil probe ulang, status gate tiap
+> provider, keputusan yang difinalkan, dan deviasi yang diambil tercatat di
+> [`M0_DISCOVERY.md`](./M0_DISCOVERY.md). Panduan pemakaian ada di
+> [`SETUP.md`](./SETUP.md).
+>
+> Drift yang perlu diketahui saat membaca tabel ini:
+>
+> - Claude Code `2.1.267` → `2.1.269`, dan `subscriptionType` `null` → **`pro`**,
+>   sehingga akun eligible untuk `rate_limits`.
+> - Gate Codex dan Claude **lulus live** (Claude dengan event status-line nyata,
+>   window `five_hour` + `seven_day`); DeepSeek/OpenRouter tetap tanpa credential
+>   sehingga hanya teruji lewat fixture.
+> - Node 24 mendukung JSON source-text access, yang menjadi dasar strategi
+>   decimal-safe untuk angka JSON OpenRouter.
+>
+> Deviasi utama dari rencana (alasan lengkap di `M0_DISCOVERY.md` §"Deviations"):
+> `drizzle-kit` tidak dipakai (migration SQL ditulis tangan; Drizzle ORM tetap
+> dipakai untuk query), migration di-embed ke modul TypeScript hasil generate
+> agar dapat di-bundle, Next.js 16.3.5 dipakai agar `npm audit` bersih, komponen
+> shadcn/ui ditulis langsung di `src/components/ui/`, window `spend_limit` Claude
+> ikut didukung, dan `used_percent` disimpan sebagai `REAL` (larangan `REAL`
+> berlaku mutlak untuk nilai uang saja).
+
 Baseline ini diverifikasi pada **2026-09-12 (Asia/Jakarta)** dan harus dianggap dapat drift. M0 wajib mengulang probe, menyimpan fixture yang sudah disanitasi, dan mencatat versi sumber yang digunakan.
 
-| Area | State terverifikasi | Implikasi |
-|---|---|---|
-| Repository | Baru berisi dokumen ini; belum ada commit, `package.json`, lockfile, schema, atau source code | Bootstrap aplikasi masih bagian dari pekerjaan |
-| Runtime | Node.js `24.19.0`, npm `11.17.0`, Corepack `0.35.0`, SQLite `3.45.1` | Gunakan npm + `package-lock.json`; jangan bergantung pada Yarn yang belum dipin dan saat probe mencoba mengakses registry |
-| Codex | `codex-cli 0.154.0`, login ChatGPT aktif; `account/rateLimits/read` berhasil dipanggil lewat app-server dan mengembalikan window 300 menit serta 10.080 menit | Feasible melalui JSON-RPC resmi; parsing `/status` atau file auth tidak diperlukan |
-| Claude Code | `2.1.267`, login first-party aktif; `subscriptionType` dari `claude auth status` bernilai `null`; belum ada konfigurasi `statusLine` | Interface status line tersedia, tetapi eligibility/payload quota masih perlu dibuktikan dari event aktual setelah respons API pertama |
-| API credentials | `DEEPSEEK_API_KEY`, `OPENROUTER_MANAGEMENT_KEY`, dan `OPENROUTER_API_KEY` tidak ada pada environment shell yang diprobe | Live probe DeepSeek/OpenRouter belum bisa dilakukan; missing credential harus menjadi `unavailable`, bukan kegagalan global |
-| Scheduler | User systemd berjalan dan user linger aktif | User-level service + timer layak menjadi scheduler utama |
+| Area            | State terverifikasi                                                                                                                                           | Implikasi                                                                                                                             |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| Repository      | Baru berisi dokumen ini; belum ada commit, `package.json`, lockfile, schema, atau source code                                                                 | Bootstrap aplikasi masih bagian dari pekerjaan                                                                                        |
+| Runtime         | Node.js `24.19.0`, npm `11.17.0`, Corepack `0.35.0`, SQLite `3.45.1`                                                                                          | Gunakan npm + `package-lock.json`; jangan bergantung pada Yarn yang belum dipin dan saat probe mencoba mengakses registry             |
+| Codex           | `codex-cli 0.154.0`, login ChatGPT aktif; `account/rateLimits/read` berhasil dipanggil lewat app-server dan mengembalikan window 300 menit serta 10.080 menit | Feasible melalui JSON-RPC resmi; parsing `/status` atau file auth tidak diperlukan                                                    |
+| Claude Code     | `2.1.267`, login first-party aktif; `subscriptionType` dari `claude auth status` bernilai `null`; belum ada konfigurasi `statusLine`                          | Interface status line tersedia, tetapi eligibility/payload quota masih perlu dibuktikan dari event aktual setelah respons API pertama |
+| API credentials | `DEEPSEEK_API_KEY`, `OPENROUTER_MANAGEMENT_KEY`, dan `OPENROUTER_API_KEY` tidak ada pada environment shell yang diprobe                                       | Live probe DeepSeek/OpenRouter belum bisa dilakukan; missing credential harus menjadi `unavailable`, bukan kegagalan global           |
+| Scheduler       | User systemd berjalan dan user linger aktif                                                                                                                   | User-level service + timer layak menjadi scheduler utama                                                                              |
 
 Tidak ada secret, email, account ID, raw auth payload, atau nilai quota sesaat yang perlu dicatat di repository.
 
@@ -269,18 +293,18 @@ MVP boleh dilanjutkan dengan adapter unavailable, tetapi acceptance untuk provid
 
 ## 9. Risiko utama dan mitigasi
 
-| Risiko | Mitigasi |
-|---|---|
-| Format/protocol CLI berubah | Adapter terisolasi, fixture per versi, generated schema saat discovery, subset validation, version guard, dan `unavailable` |
-| Claude tidak aktif atau akun tidak eligible | Event timestamp + stale policy; jangan menjanjikan polling realtime; tampilkan unavailable dengan setup hint |
-| Management Key OpenRouter bocor | Environment file `0600`, process-only access, redaction, tidak pernah dikirim ke UI, dokumentasikan privilege administratif |
-| Rate limit API | Interval polling konservatif, jitter, timeout, bounded backoff, dan cache snapshot terakhir |
-| Quota subscription dianggap sebagai biaya | Pisahkan quota gauge dari money/counter; jangan konversi ke USD |
-| DeepSeek balance dianggap usage | Label balance change secara eksplisit dan jangan hitung spend tanpa transaction/usage API |
-| Reset time tidak tersedia atau sudah lewat | Field nullable; status stale setelah reset lewat tanpa observasi baru; tampilkan `unknown` bila null |
-| Nilai uang meleset karena floating point | Decimal string/scaled integer dan decimal-safe calculations |
-| Scheduler dan web process menulis bersamaan | SQLite WAL, `busy_timeout`, transaksi pendek, dedup key, dan overlap test |
-| Credential/PII leakage | Field allowlist sebelum log/storage, redaction test, no raw payload, localhost binding, dan CSRF guard |
+| Risiko                                      | Mitigasi                                                                                                                    |
+| ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| Format/protocol CLI berubah                 | Adapter terisolasi, fixture per versi, generated schema saat discovery, subset validation, version guard, dan `unavailable` |
+| Claude tidak aktif atau akun tidak eligible | Event timestamp + stale policy; jangan menjanjikan polling realtime; tampilkan unavailable dengan setup hint                |
+| Management Key OpenRouter bocor             | Environment file `0600`, process-only access, redaction, tidak pernah dikirim ke UI, dokumentasikan privilege administratif |
+| Rate limit API                              | Interval polling konservatif, jitter, timeout, bounded backoff, dan cache snapshot terakhir                                 |
+| Quota subscription dianggap sebagai biaya   | Pisahkan quota gauge dari money/counter; jangan konversi ke USD                                                             |
+| DeepSeek balance dianggap usage             | Label balance change secara eksplisit dan jangan hitung spend tanpa transaction/usage API                                   |
+| Reset time tidak tersedia atau sudah lewat  | Field nullable; status stale setelah reset lewat tanpa observasi baru; tampilkan `unknown` bila null                        |
+| Nilai uang meleset karena floating point    | Decimal string/scaled integer dan decimal-safe calculations                                                                 |
+| Scheduler dan web process menulis bersamaan | SQLite WAL, `busy_timeout`, transaksi pendek, dedup key, dan overlap test                                                   |
+| Credential/PII leakage                      | Field allowlist sebelum log/storage, redaction test, no raw payload, localhost binding, dan CSRF guard                      |
 
 ## 10. Out of scope untuk MVP
 

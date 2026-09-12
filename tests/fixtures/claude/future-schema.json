@@ -1,0 +1,11 @@
+{
+  "_fixture": {
+    "note": "A newer bridge format. Must degrade to version_unsupported, never guess."
+  },
+  "spoolSchemaVersion": 99,
+  "eventId": "99999999888888887777777766666666",
+  "observedAt": "2026-09-12T04:00:00.000Z",
+  "cliVersion": "9.9.9",
+  "hasRateLimits": true,
+  "rateLimits": { "five_hour": { "usedPercentage": 5, "resetsAt": 1773554400 } }
+}

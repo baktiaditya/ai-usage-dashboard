@@ -1,0 +1,47 @@
+# user-level systemd service — installed to ~/.config/systemd/user/
+#
+# Placeholders are substituted with absolute paths by scripts/install-systemd.sh.
+# This unit is NEVER installed or enabled automatically.
+[Unit]
+Description=AI Usage Dashboard collector (one-shot)
+Documentation=file://__WORKDIR__/docs/SETUP.md
+# Do not fight the network at boot; a failed poll is a normal, recorded outcome.
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=__WORKDIR__
+ExecStart=__NODE__ __TSX__ __WORKDIR__/scripts/collect.ts
+
+# Credentials live outside the repository. `-` means "start anyway if absent",
+# which is what keeps the dashboard useful before any key is provisioned.
+EnvironmentFile=-__ENVFILE__
+
+# Never let a hung provider hold a slot; the collector's own per-adapter
+# timeouts are shorter, so reaching this is already an anomaly.
+TimeoutStartSec=120
+
+# Files this unit creates (database, spool, WAL) stay owner-only.
+UMask=0077
+
+# The collector reads two local sources and makes two outbound HTTPS calls.
+# Everything below removes capability it demonstrably does not need.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=__DATADIR__
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=false
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+
+[Install]
+WantedBy=default.target

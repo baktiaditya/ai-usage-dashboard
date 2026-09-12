@@ -1,0 +1,12 @@
+{
+  "spoolSchemaVersion": 1,
+  "eventId": "aaaaaaaabbbbbbbbccccccccdddddddd",
+  "observedAt": "2026-09-12T04:00:00.000Z",
+  "cliVersion": "2.1.269",
+  "hasRateLimits": true,
+  "rateLimits": {
+    "five_hour": { "usedPercentage": 10, "resetsAt": 1773554400 },
+    "seven_day": { "usedPercentage": 20, "resetsAt": 1773986400 },
+    "spend_limit": { "usedPercentage": 62.8, "resetsAt": 1775916000 }
+  }
+}
