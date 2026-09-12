@@ -2,6 +2,13 @@
 
 ## 2026-09-12
 
+- **Tooling**: Husky git hooks, copied from Kyomi-pos and adapted from Yarn to
+  npm (`npx`/`npm run`; `commitlint.config.cjs` because this repo is
+  `"type": "module"`). `pre-commit` runs lint-staged (Prettier), then
+  `typecheck` plus related Vitest files in parallel when TS/TSX is staged;
+  `commit-msg` enforces Conventional Commits with a 72-character subject cap.
+  [Setup](operations/SETUP.md) documents the hooks.
+
 - **Restructure**: the four flat documents move into topic folders — plan
   ([plan/](plan/index.md)), discovery ([discovery/](discovery/index.md)), operations
   ([operations/](operations/index.md)) — each with its own `index.md`. No content

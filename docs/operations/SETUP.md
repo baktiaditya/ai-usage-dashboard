@@ -27,6 +27,13 @@ npm run dev          # http://127.0.0.1:3838
 
 `npm run db:migrate` prints where the database lives and which migrations ran.
 
+`npm install` also wires the git hooks (`prepare` → Husky). Every commit
+then runs `pre-commit` — Prettier over staged files, plus `typecheck` and the
+tests related to staged files when any `*.ts`/`*.tsx` is staged — and
+`commit-msg`, which enforces [Conventional Commits](https://www.conventionalcommits.org/)
+with a subject of at most 72 characters. Docs-only commits skip the
+type/test step but still get formatted and linted for message shape.
+
 ### Where data lives
 
 Nothing runtime-related is stored inside the repository.
