@@ -261,18 +261,34 @@ export function getLatestSnapshots(db: Db): Map<Provider, StoredSnapshot> {
   return out;
 }
 
-/** Most recent attempt per provider — the basis for the `error` card state. */
+/**
+ * Most recent attempt per provider — the basis for the `error` card state.
+ *
+ * Resolved with a grouped MAX rather than by scanning a fixed slice of recent
+ * rows. Manual refresh is provider-scoped, so a run of refreshes against one
+ * provider would otherwise push another provider's latest attempt outside the
+ * scanned window and silently drop its error state and diagnostics.
+ */
 export function getLatestAttempts(db: Db): Map<Provider, StoredAttempt> {
+  // `id` is AUTOINCREMENT, so the highest id per provider is its latest attempt.
+  const latestIds = db
+    .select({ id: sql<number>`MAX(${collectorAttempts.id})` })
+    .from(collectorAttempts)
+    .groupBy(collectorAttempts.provider)
+    .all()
+    .map((r) => r.id)
+    .filter((id): id is number => typeof id === 'number');
+
+  if (latestIds.length === 0) return new Map();
+
   const rows = db
     .select()
     .from(collectorAttempts)
-    .orderBy(desc(collectorAttempts.id))
-    .limit(200)
+    .where(inArray(collectorAttempts.id, latestIds))
     .all();
 
   const out = new Map<Provider, StoredAttempt>();
   for (const r of rows) {
-    if (out.has(r.provider)) continue;
     out.set(r.provider, {
       provider: r.provider,
       outcome: r.outcome,

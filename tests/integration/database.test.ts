@@ -328,6 +328,57 @@ describe('reads', () => {
     expect(getLastSuccessAt(t.db).get('codex')).toBe('2026-09-12T12:00:01.000Z');
   });
 
+  it("keeps each provider's latest attempt even when another provider is refreshed far more", () => {
+    // Manual refresh is provider-scoped, so one provider can accumulate many
+    // more attempts than the rest. The lookup must still find every provider's
+    // latest attempt rather than losing the quiet ones off the end of a scan.
+    const runId = startRun(t.db, 'scheduled');
+    recordAttempt(t.db, {
+      runId,
+      provider: 'codex',
+      startedAt: '2026-09-12T12:00:00.000Z',
+      finishedAt: '2026-09-12T12:00:01.000Z',
+      retryCount: 0,
+      result: {
+        outcome: 'error',
+        failure: {
+          provider: 'codex',
+          attemptedAt: '2026-09-12T12:00:00.000Z',
+          code: 'timeout',
+          safeMessage: 'codex timed out',
+          retryable: true,
+        },
+      },
+    });
+
+    // Well past any fixed-window slice a scan-based implementation would use.
+    for (let i = 0; i < 250; i += 1) {
+      recordAttempt(t.db, {
+        runId: startRun(t.db, 'manual'),
+        provider: 'deepseek',
+        startedAt: '2026-09-12T12:01:00.000Z',
+        finishedAt: '2026-09-12T12:01:01.000Z',
+        retryCount: 0,
+        result: {
+          outcome: 'unavailable',
+          failure: {
+            provider: 'deepseek',
+            attemptedAt: '2026-09-12T12:01:00.000Z',
+            code: 'not_configured',
+            safeMessage: 'no key',
+            retryable: false,
+          },
+        },
+      });
+    }
+
+    const latest = getLatestAttempts(t.db);
+    // The quiet provider's error state and diagnostics survive.
+    expect(latest.get('codex')?.outcome).toBe('error');
+    expect(latest.get('codex')?.errorCode).toBe('timeout');
+    expect(latest.get('deepseek')?.outcome).toBe('unavailable');
+  });
+
   it('finds the newest baseline strictly before a cutoff', () => {
     write(credit({ observedAt: '2026-09-01T00:00:00.000Z' }));
     write(credit({ observedAt: '2026-09-05T00:00:00.000Z' }));
