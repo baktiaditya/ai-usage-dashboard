@@ -2,6 +2,20 @@
 
 ## 2026-09-12
 
+- **Update**: `AGENTS.md` step 1 gains a semantic-search obligation. The
+  `code-review-graph` knowledge graph is now embedded for vector search (local
+  `all-MiniLM-L6-v2`; every `Function`, `Class`, and `Test` node covered — `File`
+  nodes carry no embedding by design). Upstream states that routine builds never
+  refresh embeddings, and `code-review-graph update` — which the `PostToolUse`
+  hook runs on every edit — does not either. Unlike graph staleness, this failure
+  is unsignalled: `search_mode` still reports `semantic` when the nodes an agent
+  is looking for were never embedded, so a semantic miss reads as "absent from the
+  codebase". The obligation therefore lives in `AGENTS.md`, not in
+  [Setup](operations/SETUP.md): it constrains how an agent may interpret a result,
+  while installing the `embeddings` extra is per-machine state that step 1's
+  existing tools-unavailable clause already covers. `README.md` is unchanged —
+  the fact is agent-facing and has no bearing on product commands.
+
 - **Tooling**: Husky git hooks, copied from Kyomi-pos and adapted from Yarn to
   npm (`npx`/`npm run`; `commitlint.config.cjs` because this repo is
   `"type": "module"`). `pre-commit` runs lint-staged (Prettier), then

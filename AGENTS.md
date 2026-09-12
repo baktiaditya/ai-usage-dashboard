@@ -13,7 +13,11 @@ implementation lives in `src/`.
    tools for blast radius, `detect_changes_tool` for review, and `tests_for` before concluding
    coverage is missing. Confirm graph freshness when the exact head matters. If the tools are
    unavailable, `get_minimal_context_tool` returns `not_ready`, or the graph does not cover the
-   target, state that limitation and continue with filesystem search.
+   target, state that limitation and continue with filesystem search. Semantic search degrades
+   silently: `code-review-graph update` never refreshes embeddings, so nodes added since the last
+   `embed` are absent from vector results while `search_mode` still reports `semantic`. Re-run
+   `code-review-graph embed --provider local` before relying on it, or treat a semantic miss as
+   inconclusive.
 2. Inspect `git status --short` and the relevant diff before editing. Preserve unrelated worktree
    changes.
 3. Load only the task branches that apply:
