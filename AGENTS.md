@@ -1,7 +1,7 @@
 # AGENTS.md
 
 npm single-package repo for the AI Usage Dashboard. Product overview and commands live in
-`README.md`; setup, credentials, and the systemd timer live in `docs/SETUP.md`; the current
+`README.md`; setup, credentials, and the systemd timer live in `docs/operations/SETUP.md`; the current
 implementation lives in `src/`.
 
 <!-- code-review-graph MCP tools -->
@@ -19,8 +19,15 @@ implementation lives in `src/`.
 3. Load only the task branches that apply:
    - **Setup, commands, or tooling:** read `README.md`, `package.json`, and the owning config.
      Package scripts are the command source of truth and run from the repository root.
-   - **Product or scope:** read `docs/AI_Usage_Dashboard_Implementation_Plan.md` and
-     `docs/M0_DISCOVERY.md` for what is live-verified vs fixture-tested.
+   - **Product or scope:** read `docs/index.md`, search `docs/log.md` for the subject and
+     read the current relevant entries, then read `docs/plan/AI_Usage_Dashboard_Implementation_Plan.md`
+     and `docs/discovery/M0_DISCOVERY.md` for what is live-verified vs fixture-tested.
+   - **Setup or operations:** read `docs/operations/SETUP.md`.
+   - **Backlog:** read `docs/backlog/index.md`. Implement only briefs in
+     `docs/backlog/ready-for-agent/`.
+   - **Bundle or repo-entrypoint documentation:** use the `okf-sync` skill. If it is not registered,
+     read `.agents/skills/okf-sync/SKILL.md` and follow its workflow directly. Update the smallest
+     owning surface, record structural decisions in `docs/log.md`, and run the validator.
 4. For code review, pin the exact base and head, then corroborate every finding against the direct
    diff and relevant runtime behavior. Graph output is navigation, not defect evidence by itself.
 

@@ -1,3 +1,9 @@
+---
+type: Discovery Report
+title: M0 — Discovery and feasibility gates
+description: Re-probed machine baseline, per-provider gate evidence, fixed decisions, and deviations from the plan.
+---
+
 # M0 — Discovery and feasibility gates
 
 Re-probed **2026-09-12 (Asia/Jakarta)**, superseding the plan's 2026-09-12 baseline
@@ -128,7 +134,7 @@ application ever labels a DeepSeek number "usage".
 Fixtures are synthetic and marked as such in their `_fixture.note`.
 
 **Exact action to close this gate**: put a real `DEEPSEEK_API_KEY` in the
-collector environment file (`docs/SETUP.md` §4), then `npm run test:live`.
+collector environment file (`docs/operations/SETUP.md` §4), then `npm run test:live`.
 
 ### OpenRouter — NOT PASSED (no credential on this machine)
 

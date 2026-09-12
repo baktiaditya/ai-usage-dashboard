@@ -3,7 +3,7 @@
  *
  * Contract verified 2026-09-12 against codex-cli 0.154.0 via
  * `codex app-server generate-json-schema` plus a live
- * `account/rateLimits/read` handshake. See docs/M0_DISCOVERY.md.
+ * `account/rateLimits/read` handshake. See docs/discovery/M0_DISCOVERY.md.
  *
  * What this deliberately does *not* do: read ~/.codex/auth.json, extract an
  * OAuth token, call the backend directly, or parse `codex /status` output.

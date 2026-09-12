@@ -1,3 +1,9 @@
+---
+type: Setup Guide
+title: Setup
+description: Install, per-provider setup, systemd timer, config reference, and troubleshooting.
+---
+
 # Setup
 
 A localhost-only dashboard for Codex and Claude Code subscription quota, and for

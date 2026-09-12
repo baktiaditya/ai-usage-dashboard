@@ -26,7 +26,7 @@ It works with nothing configured. Providers you have not set up render as
 `unavailable` with a setup hint instead of blocking the page or failing the run.
 
 Full instructions, including the Claude status-line bridge, credentials, and the
-systemd timer: **[docs/SETUP.md](docs/SETUP.md)**.
+systemd timer: **[docs/operations/SETUP.md](docs/operations/SETUP.md)**.
 
 ## The three ideas this is built around
 
@@ -113,6 +113,7 @@ so scheduled and manual runs cannot drift apart in behaviour.
 live-verified, because no credential for either exists on this machine. Both
 surface as `unavailable` with a precise setup hint until a key is provisioned;
 the exact remaining action for each is recorded in
-**[docs/M0_DISCOVERY.md](docs/M0_DISCOVERY.md)**.
+**[docs/discovery/M0_DISCOVERY.md](docs/discovery/M0_DISCOVERY.md)**.
 
-Design rationale and scope: [docs/AI_Usage_Dashboard_Implementation_Plan.md](docs/AI_Usage_Dashboard_Implementation_Plan.md).
+Design rationale and scope: [docs/plan/AI_Usage_Dashboard_Implementation_Plan.md](docs/plan/AI_Usage_Dashboard_Implementation_Plan.md).
+Knowledge bundle root: [docs/index.md](docs/index.md).
