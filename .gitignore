@@ -44,3 +44,6 @@ blob-report/
 .idea/
 .vscode/
 .playwright/
+
+# Added by code-review-graph
+.code-review-graph/
