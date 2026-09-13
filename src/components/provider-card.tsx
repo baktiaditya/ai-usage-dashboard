@@ -13,6 +13,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
+import { ProviderLogo } from '@/components/provider-logo';
 import type { ProviderCard as ProviderCardData } from '@/lib/queries/overview';
 import type { AdvisoryState, CardStatus } from '@/lib/domain';
 import { formatMoney } from '@/lib/money';
@@ -92,7 +93,10 @@ export function ProviderCardView({ card, timezone, onRefreshed }: ProviderCardPr
     <Card data-testid={`card-${card.provider}`} data-status={card.status}>
       <CardHeader>
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <CardTitle>{card.label}</CardTitle>
+          <CardTitle className="flex items-center gap-2 pb-1">
+            <ProviderLogo provider={card.provider} className="size-5 shrink-0" />
+            {card.label}
+          </CardTitle>
           <Badge tone={status.tone} data-testid={`status-${card.provider}`}>
             <status.Icon aria-hidden className="size-3.5" />
             {status.label}

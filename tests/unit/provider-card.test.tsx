@@ -157,6 +157,42 @@ describe('quota card', () => {
   });
 });
 
+describe('heading', () => {
+  const LABELS = {
+    codex: 'Codex',
+    claude: 'Claude Code',
+    deepseek: 'DeepSeek',
+    openrouter: 'OpenRouter',
+  } as const;
+
+  it.each(Object.entries(LABELS) as [keyof typeof LABELS, string][])(
+    'shows the %s mark beside the label without changing the heading name',
+    (provider, label) => {
+      renderCard(card({ provider, label }));
+
+      const heading = screen.getByRole('heading', { name: label });
+      const logo = within(heading).getByTestId(`logo-${provider}`);
+      expect(logo).toHaveAttribute('aria-hidden', 'true');
+      expect(logo.querySelector('path')?.getAttribute('d')).toMatch(/^M/);
+    },
+  );
+
+  it('fills each mark with its brand color, and OpenRouter from a theme token', () => {
+    const fills: Record<string, string> = {
+      codex: 'url(#provider-logo-codex-gradient)',
+      claude: 'var(--logo-claude)',
+      deepseek: 'var(--logo-deepseek)',
+      openrouter: 'var(--logo-openrouter)',
+    };
+    for (const [provider, label] of Object.entries(LABELS) as [keyof typeof LABELS, string][]) {
+      const { unmount } = renderCard(card({ provider, label }));
+      const path = screen.getByTestId(`logo-${provider}`).querySelector('path');
+      expect(path?.getAttribute('style'), provider).toContain(fills[provider]);
+      unmount();
+    }
+  });
+});
+
 describe('card states', () => {
   it.each([
     ['healthy', 'Healthy'],

@@ -158,6 +158,46 @@ test('switching history keeps the panel in place while the next selection loads'
   expect(shortest).toBeGreaterThanOrEqual(Math.min(before, after));
 });
 
+test('every card heading carries its provider mark, hidden from assistive technology', async ({
+  page,
+}) => {
+  for (const provider of ['codex', 'claude', 'deepseek', 'openrouter']) {
+    const logo = page.getByTestId(`card-${provider}`).locator('h2').getByTestId(`logo-${provider}`);
+    await expect(logo).toBeVisible();
+    await expect(logo).toHaveAttribute('aria-hidden', 'true');
+  }
+  // The mark adds nothing to the heading's accessible name.
+  await expect(
+    page.getByTestId('card-claude').getByRole('heading', { name: 'Claude Code', exact: true }),
+  ).toBeVisible();
+});
+
+test('the OpenRouter mark turns lime only on a dark surface', async ({ page }) => {
+  // Its lime has no contrast on a light card, where it takes the heading color.
+  const path = page.getByTestId('logo-openrouter').locator('path');
+  const fillAndHeadingColor = () =>
+    path.evaluate((el) => {
+      const heading = el.closest('h2');
+      return [getComputedStyle(el).fill, heading ? getComputedStyle(heading).color : ''];
+    });
+
+  await page.emulateMedia({ colorScheme: 'light' });
+  const [lightFill, headingColor] = await fillAndHeadingColor();
+  expect(lightFill).toBe(headingColor);
+
+  await page.emulateMedia({ colorScheme: 'dark' });
+  const [darkFill] = await fillAndHeadingColor();
+  expect(darkFill).toBe('rgb(200, 255, 0)');
+});
+
+test('serves an SVG favicon', async ({ page, request }) => {
+  const href = await page.locator('link[rel="icon"]').first().getAttribute('href');
+  expect(href).toBeTruthy();
+  const res = await request.get(href ?? '');
+  expect(res.status()).toBe(200);
+  expect(res.headers()['content-type']).toContain('image/svg+xml');
+});
+
 test('the refresh endpoint rejects a cross-origin POST', async ({ request }) => {
   const res = await request.post('/api/providers/codex/refresh', {
     headers: { origin: 'https://evil.example.com' },

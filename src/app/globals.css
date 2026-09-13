@@ -27,6 +27,10 @@
   --danger-bg: #fee2e2;
   --accent: #4338ca;
   --accent-bg: #e0e7ff;
+  /* Provider marks (provider-logo.tsx). OpenRouter's lime has no contrast on a light surface. */
+  --logo-claude: #d97757;
+  --logo-deepseek: #4d6bfe;
+  --logo-openrouter: currentColor;
 
   /*
    * Categorical chart series, assigned in fixed order and never cycled.
@@ -61,6 +65,7 @@
     --danger-bg: #3f1212;
     --accent: #a5b4fc;
     --accent-bg: #1e1b4b;
+    --logo-openrouter: #c8ff00;
 
     /* The same four hues re-stepped for the dark surface (#141417) and
      * validated as a set — not an automatic flip of the light values. All four
