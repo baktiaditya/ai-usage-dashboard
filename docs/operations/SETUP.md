@@ -45,7 +45,10 @@ Nothing runtime-related is stored inside the repository.
 | Data directory        | `~/.local/share/ai-usage-dashboard/`                             | `0700`                 |
 | Collector credentials | `~/.config/ai-usage-dashboard/collector.env`                     | `0600` (you create it) |
 
-Override the base directory with `AUD_DATA_DIR`. It honours `XDG_DATA_HOME`.
+Override the base directory with `AUD_DATA_DIR`, using an absolute path or `~/…`.
+A relative path is rejected at startup, because each process would resolve it
+against its own working directory and open a different database. The default
+honours `XDG_DATA_HOME` when that is absolute, and ignores it otherwise.
 
 ---
 
@@ -256,7 +259,7 @@ Every value has a safe default; all are optional.
 
 | Variable                       | Default                                      | Notes                                           |
 | ------------------------------ | -------------------------------------------- | ----------------------------------------------- |
-| `AUD_DATA_DIR`                 | `~/.local/share/ai-usage-dashboard`          | database + spool                                |
+| `AUD_DATA_DIR`                 | `~/.local/share/ai-usage-dashboard`          | database + spool; absolute or `~/…`             |
 | `AUD_TIMEZONE`                 | `Asia/Jakarta`                               | only affects calendar-day boundaries in history |
 | `AUD_HOST`                     | `127.0.0.1`                                  | loopback only; anything else is rejected        |
 | `AUD_PORT`                     | `3838`                                       | `npm run dev` / `npm run start` bind to it      |
@@ -264,7 +267,7 @@ Every value has a safe default; all are optional.
 | `AUD_RETENTION_DAYS`           | `90`                                         |                                                 |
 | `AUD_COLLECT_INTERVAL_MINUTES` | `5`                                          | also drives the freshness budget                |
 | `AUD_LOG_LEVEL`                | `info`                                       | `debug` \| `info` \| `warn` \| `error`          |
-| `AUD_ENV_FILE`                 | `~/.config/ai-usage-dashboard/collector.env` | credential file; see §4                         |
+| `AUD_ENV_FILE`                 | `~/.config/ai-usage-dashboard/collector.env` | credential file, absolute or `~/…`; see §4      |
 | `DEEPSEEK_API_KEY`             | —                                            | absent ⇒ `unavailable`                          |
 | `OPENROUTER_MANAGEMENT_KEY`    | —                                            | absent ⇒ `unavailable`                          |
 

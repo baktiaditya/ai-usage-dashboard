@@ -11,11 +11,7 @@ import { join } from 'node:path';
 import { z } from 'zod';
 import { loadCollectorEnvFile } from './env-file';
 import { compareMoney, toMoneyOrNull } from './money';
-
-const DEFAULT_DATA_DIR = join(
-  process.env['XDG_DATA_HOME'] ?? join(homedir(), '.local', 'share'),
-  'ai-usage-dashboard',
-);
+import { PathError, userPath, xdgBaseDir } from './paths';
 
 /** Threshold pair for quota gauges, expressed as *remaining* percent. */
 const quotaThresholdSchema = z
@@ -207,7 +203,20 @@ export function loadConfig(env: EnvLike = process.env): AppConfig {
     );
   }
 
-  const dataDir = e.AUD_DATA_DIR ?? DEFAULT_DATA_DIR;
+  // A blank AUD_DATA_DIR (an empty line in collector.env) is absent, never the
+  // current directory.
+  let dataDir: string;
+  try {
+    dataDir = e.AUD_DATA_DIR?.trim()
+      ? userPath('AUD_DATA_DIR', e.AUD_DATA_DIR)
+      : join(
+          xdgBaseDir(env['XDG_DATA_HOME'], join(homedir(), '.local', 'share')),
+          'ai-usage-dashboard',
+        );
+  } catch (err) {
+    if (err instanceof PathError) throw new ConfigError(err.message);
+    throw err;
+  }
 
   // An empty string is treated as absent so a blank line in an env file does
   // not turn into an auth_rejected error later.

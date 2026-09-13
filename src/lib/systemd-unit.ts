@@ -9,7 +9,8 @@
  * value is escaped for systemd. Characters that no directive in the unit can
  * carry the same way — whitespace, quotes, backslashes, control characters —
  * are refused with a clear error rather than rendered into a unit that points
- * somewhere else.
+ * somewhere else. So is a relative path, which systemd ignores with only a
+ * warning — leaving the sandbox without its writable data directory.
  */
 
 export const UNIT_PLACEHOLDERS = [
@@ -39,11 +40,31 @@ function isUnsafe(raw: string): boolean {
   return false;
 }
 
+/** Placeholders naming a file or directory; `PATH` is checked entry by entry. */
+const PATH_PLACEHOLDERS: ReadonlySet<string> = new Set([
+  'WORKDIR',
+  'NODE',
+  'TSX',
+  'CODEXHOME',
+  'DATADIR',
+  'ENVFILE',
+]);
+
+function isRelativePath(name: string, raw: string): boolean {
+  if (name === 'PATH') return raw.split(':').some((entry) => !entry.startsWith('/'));
+  return PATH_PLACEHOLDERS.has(name) && !raw.startsWith('/');
+}
+
 /** A value as it must appear in a unit file, with `%` escaped as `%%`. */
 export function systemdValue(name: string, raw: string): string {
   if (raw === '' || isUnsafe(raw)) {
     throw new UnitValueError(
       `${name} is empty or contains whitespace, a quote, a backslash or a control character, which a systemd unit cannot carry safely: ${JSON.stringify(raw)}`,
+    );
+  }
+  if (isRelativePath(name, raw)) {
+    throw new UnitValueError(
+      `${name} must be an absolute path; systemd ignores a relative one: ${JSON.stringify(raw)}`,
     );
   }
   return raw.replaceAll('%', '%%');

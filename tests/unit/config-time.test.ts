@@ -1,3 +1,5 @@
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { ConfigError, loadConfig } from '@/lib/config';
 import {
@@ -32,6 +34,28 @@ describe('configuration', () => {
     for (const host of ['127.0.0.1', 'localhost', '::1']) {
       expect(loadConfig({ AUD_HOST: host }).host).toBe(host);
     }
+  });
+
+  it('requires an absolute data directory, expanding a leading ~/', () => {
+    // A relative path would open a different database in each working directory.
+    for (const raw of ['relative-data', './data', '../data', '~other/data']) {
+      expect(() => loadConfig({ AUD_DATA_DIR: raw })).toThrow(ConfigError);
+    }
+    expect(loadConfig({ AUD_DATA_DIR: '~/aud-data' }).databasePath).toBe(
+      join(homedir(), 'aud-data', 'usage.db'),
+    );
+    expect(loadConfig({ AUD_DATA_DIR: '/srv/aud/' }).dataDir).toBe('/srv/aud');
+    // A blank line in collector.env means "unset", never the current directory.
+    expect(loadConfig({ AUD_DATA_DIR: '' }).dataDir).toBe(
+      join(homedir(), '.local', 'share', 'ai-usage-dashboard'),
+    );
+  });
+
+  it('honours an absolute XDG_DATA_HOME and ignores a relative one', () => {
+    expect(loadConfig({ XDG_DATA_HOME: '/xdg' }).dataDir).toBe('/xdg/ai-usage-dashboard');
+    expect(loadConfig({ XDG_DATA_HOME: 'relative' }).dataDir).toBe(
+      join(homedir(), '.local', 'share', 'ai-usage-dashboard'),
+    );
   });
 
   it('rejects an invalid timezone instead of silently falling back', () => {

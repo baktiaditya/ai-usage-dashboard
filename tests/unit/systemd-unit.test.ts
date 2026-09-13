@@ -49,6 +49,18 @@ describe('systemd unit rendering', () => {
     expect(() => systemdValue('DATADIR', raw)).toThrow(UnitValueError);
   });
 
+  it.each([
+    ['DATADIR', 'relative-data'],
+    ['DATADIR', '~/data'],
+    ['ENVFILE', 'keys.env'],
+    ['CODEXHOME', '.codex'],
+    ['WORKDIR', 'aud'],
+    ['PATH', '/usr/bin:node_modules/.bin'],
+    ['PATH', '/usr/bin::/bin'],
+  ])('refuses a relative %s (%j), which systemd would ignore', (name, raw) => {
+    expect(() => systemdValue(name, raw)).toThrow(UnitValueError);
+  });
+
   it('refuses a placeholder it does not know', () => {
     expect(() => renderUnit('X=__NOPE__', values)).toThrow(UnitValueError);
   });

@@ -1,5 +1,5 @@
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { loadConfig } from '@/lib/config';
@@ -22,6 +22,14 @@ describe('collector environment file', () => {
     );
     expect(collectorEnvFilePath({ XDG_CONFIG_HOME: '/cfg', AUD_ENV_FILE: '/x/keys.env' })).toBe(
       '/x/keys.env',
+    );
+  });
+
+  it('requires an absolute AUD_ENV_FILE and ignores a relative XDG_CONFIG_HOME', () => {
+    expect(() => collectorEnvFilePath({ AUD_ENV_FILE: 'keys.env' })).toThrow(/absolute/);
+    expect(collectorEnvFilePath({ AUD_ENV_FILE: '~/keys.env' })).toBe(join(homedir(), 'keys.env'));
+    expect(collectorEnvFilePath({ XDG_CONFIG_HOME: 'relative' })).toBe(
+      join(homedir(), '.config', 'ai-usage-dashboard', 'collector.env'),
     );
   });
 

@@ -12,14 +12,19 @@ import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { parseEnv } from 'node:util';
+import { userPath, xdgBaseDir } from './paths';
 
 export type MutableEnv = Record<string, string | undefined>;
 
-/** Same resolution as `scripts/install-systemd.sh`, so both read one file. */
+/**
+ * The one resolution every entry point and the systemd installer share. An
+ * explicit `AUD_ENV_FILE` must be absolute or start with `~/`; a relative
+ * `XDG_CONFIG_HOME` is ignored, as the XDG spec requires.
+ */
 export function collectorEnvFilePath(env: MutableEnv = process.env): string {
   const explicit = env['AUD_ENV_FILE']?.trim();
-  if (explicit) return explicit;
-  const configHome = env['XDG_CONFIG_HOME']?.trim() || join(homedir(), '.config');
+  if (explicit) return userPath('AUD_ENV_FILE', explicit);
+  const configHome = xdgBaseDir(env['XDG_CONFIG_HOME'], join(homedir(), '.config'));
   return join(configHome, 'ai-usage-dashboard', 'collector.env');
 }
 

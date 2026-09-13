@@ -2,6 +2,16 @@
 
 ## 2026-09-13
 
+- **Decision**: `AUD_DATA_DIR` and `AUD_ENV_FILE` must be absolute or start
+  with `~/`, which is expanded. Other relative paths are rejected at startup
+  instead of being resolved, because every process would resolve them against
+  its own working directory: the systemd collector, a manual `npm run collect`,
+  and the dashboard would open different databases. A relative `XDG_DATA_HOME`
+  or `XDG_CONFIG_HOME` is ignored, as the XDG spec requires. The unit renderer
+  also refuses a relative path placeholder or `PATH` entry. Before this fix,
+  `AUD_DATA_DIR=relative-data` rendered `ReadWritePaths=relative-data`, which
+  systemd ignores with only a warning.
+
 - **Decision**: fixes for the fourth review of PR #1.
   - An attempt that cannot be written to the database counts as an error with
     code `io_error`, whatever the adapter returned. A summary that reported
