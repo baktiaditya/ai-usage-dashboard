@@ -65,3 +65,19 @@ evidence.
 - Verification must match the risk and the claim. `npm run verify` (format + lint + typecheck +
   unit + integration) is the final gate; use focused checks while iterating.
 - Create no commit unless the user explicitly asks in the same message.
+
+## Agent skills
+
+### Issue tracker
+
+GitHub Issues via `gh`; long briefs live in `docs/backlog/`, linked both ways. See
+`docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five default roles (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`,
+`wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context. See `docs/agents/domain.md`.

@@ -25,6 +25,11 @@ provider is worth switching away from right now. This bundle follows
 - [Operations](operations/index.md) - Install, per-provider setup, systemd timer,
   config reference, and troubleshooting.
 
+# Agents
+
+- [Agents](agents/index.md) - Configuration the engineering agent skills read: issue
+  tracker, triage labels, and domain docs layout.
+
 # Backlog
 
 - [Backlog](backlog/index.md) - Triaged work briefs. Working context, not source of

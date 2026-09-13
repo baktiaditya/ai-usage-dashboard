@@ -2,6 +2,15 @@
 
 ## 2026-09-14
 
+- **Decision**: agent skills read their per-repo configuration from
+  [Agents](agents/index.md), set up with `/setup-matt-pocock-skills`. Issues live
+  in GitHub Issues; a brief that is long, needs separate review, or must outlive
+  its issue stays in `docs/backlog/`, linked both ways, as
+  [Backlog](backlog/index.md) already stated. Triage uses the five default role
+  labels, three of which match the backlog status folders. The repo is
+  single-context, with no `CONTEXT.md` or ADR directory yet; decisions stay in
+  this log. `AGENTS.md` points to the three pages.
+
 - **Update**: `npm run db:restore` checks the whole schema before it replaces
   the database. It used to require only `schema_migrations` and
   `collector_runs`. A PR review built a file that recorded every migration
