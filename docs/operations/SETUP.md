@@ -150,6 +150,11 @@ already set takes precedence over the file — an export in your shell, or a val
 the installer baked into the unit (§5). Set `AUD_ENV_FILE` to use a different
 path.
 
+Do not rely on a `.env.local` in the repository for these keys. Next.js loads
+that file into the dashboard server only, so a manual refresh succeeds while
+the systemd collector reports `not_configured` every interval, and the cards
+flip back to `unavailable`.
+
 ### OpenRouter needs a _Management_ key
 
 `GET /api/v1/credits` rejects ordinary inference keys with **HTTP 403**. Create a

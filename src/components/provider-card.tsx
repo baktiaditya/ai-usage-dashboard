@@ -233,6 +233,12 @@ function QuotaWindows({
 }) {
   if (card.windows.length === 0) return null;
 
+  // A bucket name only earns its place when two windows would otherwise read
+  // the same ("5 hour" in two Codex buckets). With one bucket, or when the
+  // bucket is the window itself (Claude's `five_hour`), it just repeats the label.
+  const labelCounts = new Map<string, number>();
+  for (const w of card.windows) labelCounts.set(w.label, (labelCounts.get(w.label) ?? 0) + 1);
+
   return (
     <ul className="flex flex-col gap-3">
       {card.windows.map((w) => (
@@ -243,9 +249,11 @@ function QuotaWindows({
           <div className="mb-1 flex items-baseline justify-between gap-2">
             <span className="text-sm font-medium">
               {w.label}
-              <span className="text-muted-foreground ml-1.5 text-xs font-normal">
-                {w.bucketId !== w.windowKind ? w.bucketId : w.windowKind}
-              </span>
+              {(labelCounts.get(w.label) ?? 0) > 1 ? (
+                <span className="text-muted-foreground ml-1.5 text-xs font-normal">
+                  {w.bucketId}
+                </span>
+              ) : null}
             </span>
             <span className="tabular text-sm font-semibold">
               {w.remainingPercent.toFixed(1)}%
@@ -289,10 +297,23 @@ function CreditBalances({ card }: { card: ProviderCardData }) {
         >
           <div className="mb-1.5 flex items-center justify-between gap-2">
             <span className="text-xs font-semibold tracking-wide uppercase">{b.currency}</span>
+            {/*
+              The provider's own verdict on whether this balance can still pay
+              for API calls — not the collector's status, which the card header
+              already shows. "Available" beside an "Unavailable" card read as a
+              contradiction.
+            */}
             {b.isAvailable === false ? (
-              <Badge tone="error">Insufficient</Badge>
+              <Badge
+                tone="error"
+                title="The provider reports this balance cannot pay for API calls"
+              >
+                Insufficient for API
+              </Badge>
             ) : b.isAvailable === true ? (
-              <Badge tone="healthy">Available</Badge>
+              <Badge tone="healthy" title="The provider reports this balance can pay for API calls">
+                API usable
+              </Badge>
             ) : null}
           </div>
           <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs sm:grid-cols-3">

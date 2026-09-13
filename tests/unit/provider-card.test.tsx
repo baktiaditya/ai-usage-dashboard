@@ -85,6 +85,27 @@ describe('quota card', () => {
     const seven = screen.getByTestId('window-codex-secondary');
     expect(within(seven).getByText('7 day')).toBeInTheDocument();
     expect(within(seven).getByText(/48\.0%/)).toBeInTheDocument();
+
+    // One bucket: its name would only repeat what the label already says.
+    expect(within(five).queryByText('codex')).not.toBeInTheDocument();
+  });
+
+  it('names the bucket only when two windows would otherwise read the same', () => {
+    const base = card().windows[0]!;
+    renderCard(
+      card({
+        windows: [
+          { ...base, bucketId: 'codex', windowKind: 'primary' },
+          { ...base, bucketId: 'codex_other', windowKind: 'other_primary' },
+        ],
+      }),
+    );
+    expect(
+      within(screen.getByTestId('window-codex-primary')).getByText('codex'),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId('window-codex-other_primary')).getByText('codex_other'),
+    ).toBeInTheDocument();
   });
 
   it('exposes each progress bar to assistive technology', () => {
@@ -320,8 +341,16 @@ describe('credit card', () => {
       }),
     );
     expect(
-      within(screen.getByTestId('balance-deepseek-CNY')).getByText('Insufficient'),
+      within(screen.getByTestId('balance-deepseek-CNY')).getByText('Insufficient for API'),
     ).toBeInTheDocument();
+  });
+
+  it('labels a usable balance as the provider verdict, not as card availability', () => {
+    renderCard(creditCard);
+    const usd = screen.getByTestId('balance-deepseek-USD');
+    // "Available" beside an "Unavailable" card header read as a contradiction.
+    expect(within(usd).getByText('API usable')).toBeInTheDocument();
+    expect(within(usd).queryByText('Available')).not.toBeInTheDocument();
   });
 });
 
