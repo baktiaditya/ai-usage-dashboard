@@ -16,8 +16,9 @@
  */
 import { z } from 'zod';
 import { CollectionError } from '../errors';
-import type { CreditBalance, CreditSnapshot, ProviderAdapter } from '../domain';
+import type { CollectContext, CreditBalance, CreditSnapshot, ProviderAdapter } from '../domain';
 import { rawToMoney } from '../money';
+import type { MoneyString } from '../money';
 import { nowIso } from '../time';
 import { getJsonLossless, withBoundedRetry } from './http';
 
@@ -44,6 +45,20 @@ const balanceResponseSchema = z
   })
   .loose();
 
+/**
+ * An absent field is `null`, as the provider intends. A field that is *present*
+ * but not a decimal ("oops", "") is drift, and must fail the collection rather
+ * than land as a healthy snapshot with a silently missing balance.
+ */
+function presentMoney(raw: unknown, field: string): MoneyString | null {
+  if (raw === null || raw === undefined) return null;
+  const money = rawToMoney(raw);
+  if (money === null) {
+    throw new CollectionError('schema_mismatch', `${field} was not a decimal value`);
+  }
+  return money;
+}
+
 export function normalizeDeepseekResponse(
   raw: unknown,
   observedAt: string = nowIso(),
@@ -64,9 +79,9 @@ export function normalizeDeepseekResponse(
   // invent an exchange rate the provider never quoted.
   const balances: CreditBalance[] = data.balance_infos.map((info) => ({
     currency: info.currency.toUpperCase(),
-    totalBalance: rawToMoney(info.total_balance),
-    grantedBalance: rawToMoney(info.granted_balance),
-    toppedUpBalance: rawToMoney(info.topped_up_balance),
+    totalBalance: presentMoney(info.total_balance, 'total_balance'),
+    grantedBalance: presentMoney(info.granted_balance, 'granted_balance'),
+    toppedUpBalance: presentMoney(info.topped_up_balance, 'topped_up_balance'),
     totalCredits: null,
     totalUsage: null,
     remainingCredit: null,
@@ -115,7 +130,7 @@ export function createDeepseekAdapter(
     provider: 'deepseek',
     schemaVersion: DEEPSEEK_SCHEMA_VERSION,
     timeoutMs,
-    async collect(signal: AbortSignal): Promise<CreditSnapshot> {
+    async collect(signal: AbortSignal, context?: CollectContext): Promise<CreditSnapshot> {
       if (!options.apiKey) {
         throw new CollectionError('not_configured', 'DEEPSEEK_API_KEY is not set');
       }
@@ -128,7 +143,12 @@ export function createDeepseekAdapter(
             signal,
             ...(options.fetchImpl ? { fetchImpl: options.fetchImpl } : {}),
           }),
-        { maxRetries: options.maxRetries ?? 2, baseDelayMs: 500, signal },
+        {
+          maxRetries: options.maxRetries ?? 2,
+          baseDelayMs: 500,
+          signal,
+          onRetry: () => context?.recordRetry(),
+        },
       );
       return normalizeDeepseekResponse(value);
     },

@@ -7,9 +7,9 @@
     "node": ">=22.12.0"
   },
   "scripts": {
-    "dev": "next dev --hostname 127.0.0.1 --port 3838",
+    "dev": "tsx scripts/next.ts dev",
     "build": "next build",
-    "start": "next start --hostname 127.0.0.1 --port 3838",
+    "start": "tsx scripts/next.ts start",
     "collect": "tsx scripts/collect.ts",
     "db:migrate": "tsx scripts/migrate.ts",
     "claude:install-statusline": "tsx scripts/install-claude-statusline.ts",

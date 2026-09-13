@@ -120,7 +120,9 @@ export function recordAttempt(
             snapshotId: snapshotRow.id,
             bucketId: w.bucketId,
             windowKind: w.windowKind,
-            usedPercent: clampPercent(w.usedPercent),
+            // Stored as the source reported it; only the derived remaining
+            // percentage is clamped, at presentation time.
+            usedPercent: w.usedPercent,
             windowDurationMinutes: w.windowDurationMinutes,
             resetAt: w.resetsAt,
           })),
@@ -158,12 +160,6 @@ function intToBool(v: number | null): boolean | null {
   return v === null ? null : v === 1;
 }
 
-/** The CHECK constraint is 0..100; clamp rather than reject a drifting source. */
-function clampPercent(v: number): number {
-  if (!Number.isFinite(v)) return 0;
-  return Math.min(100, Math.max(0, v));
-}
-
 // ---------------------------------------------------------------------------
 // Reads
 // ---------------------------------------------------------------------------
@@ -194,14 +190,21 @@ export interface StoredAttempt {
 
 /** Newest snapshot per provider, with its child rows hydrated. */
 export function getLatestSnapshots(db: Db): Map<Provider, StoredSnapshot> {
-  // One row per provider: the highest id among that provider's snapshots.
-  const latestIds = db
-    .select({ id: sql<number>`MAX(${providerSnapshots.id})` })
-    .from(providerSnapshots)
-    .groupBy(providerSnapshots.provider)
-    .all()
-    .map((r) => r.id)
-    .filter((id): id is number => typeof id === 'number');
+  // One row per provider: the newest *observation*, not the newest row. Two runs
+  // can overlap (a manual refresh during a scheduled run), and the one that
+  // persists last may carry the older reading; ordering by id would let it
+  // replace fresher data. `id` only breaks ties between equal timestamps.
+  const latestIds = db.$client
+    .prepare(
+      `SELECT id FROM (
+         SELECT id, ROW_NUMBER() OVER (
+           PARTITION BY provider ORDER BY source_observed_at DESC, id DESC
+         ) AS rn
+         FROM provider_snapshots
+       ) WHERE rn = 1`,
+    )
+    .pluck()
+    .all() as number[];
 
   if (latestIds.length === 0) return new Map();
 
@@ -270,14 +273,20 @@ export function getLatestSnapshots(db: Db): Map<Provider, StoredSnapshot> {
  * scanned window and silently drop its error state and diagnostics.
  */
 export function getLatestAttempts(db: Db): Map<Provider, StoredAttempt> {
-  // `id` is AUTOINCREMENT, so the highest id per provider is its latest attempt.
-  const latestIds = db
-    .select({ id: sql<number>`MAX(${collectorAttempts.id})` })
-    .from(collectorAttempts)
-    .groupBy(collectorAttempts.provider)
-    .all()
-    .map((r) => r.id)
-    .filter((id): id is number => typeof id === 'number');
+  // The latest attempt is the one that *started* last. Insertion order is not:
+  // a slow scheduled attempt that times out can be written after a manual
+  // refresh that began later and succeeded, and must not mask it.
+  const latestIds = db.$client
+    .prepare(
+      `SELECT id FROM (
+         SELECT id, ROW_NUMBER() OVER (
+           PARTITION BY provider ORDER BY started_at DESC, id DESC
+         ) AS rn
+         FROM collector_attempts
+       ) WHERE rn = 1`,
+    )
+    .pluck()
+    .all() as number[];
 
   if (latestIds.length === 0) return new Map();
 

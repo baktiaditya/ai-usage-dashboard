@@ -102,6 +102,8 @@ test('history renders a quota chart for a quota provider', async ({ page }) => {
   await page.getByTestId('range-7d').click();
   await expect(page.getByTestId('history-quota-chart')).toBeVisible({ timeout: 10_000 });
   await expect(page.getByTestId('history-quota-chart')).toContainText('never summed');
+  // The daily min/max the API computes is drawn, not discarded.
+  await expect(page.getByTestId('history-quota-chart')).toContainText('lowest to highest');
 });
 
 test('history states insufficient data rather than drawing a zero line', async ({ page }) => {
@@ -118,6 +120,9 @@ test('history labels DeepSeek movement as balance change, not usage', async ({ p
   await expect(summary).toBeVisible({ timeout: 10_000 });
   await expect(summary).toContainText('Balance change');
   await expect(summary).toContainText('not a usage figure');
+  // The observations behind the delta are charted, one currency per chart.
+  await expect(page.getByTestId('history-credit-trend-CNY')).toBeVisible();
+  await expect(page.getByTestId('history-credit-trend-USD')).toBeVisible();
 });
 
 test('the refresh endpoint rejects a cross-origin POST', async ({ request }) => {

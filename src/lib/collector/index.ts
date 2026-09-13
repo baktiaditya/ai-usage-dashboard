@@ -13,7 +13,7 @@
  *     the summary can never drift from the detail.
  */
 import type { AppConfig } from '../config';
-import type { CollectionResult, Provider, ProviderAdapter } from '../domain';
+import type { CollectContext, CollectionResult, Provider, ProviderAdapter } from '../domain';
 import { CollectionError, isRetryable, isUnavailable } from '../errors';
 import type { ErrorCode } from '../errors';
 import { createCodexAdapter } from '../adapters/codex';
@@ -57,6 +57,14 @@ export interface AttemptRecord {
 export async function runAdapter(adapter: ProviderAdapter): Promise<AttemptRecord> {
   const startedAt = nowIso();
   const controller = new AbortController();
+  // Counted per call, and read on every exit path: a failure that exhausted its
+  // retries, or one cut off by the ceiling, still records what it spent.
+  let retries = 0;
+  const context: CollectContext = {
+    recordRetry: () => {
+      retries += 1;
+    },
+  };
   let timer: ReturnType<typeof setTimeout> | undefined;
 
   const ceiling = new Promise<never>((_resolve, reject) => {
@@ -72,12 +80,12 @@ export async function runAdapter(adapter: ProviderAdapter): Promise<AttemptRecor
   });
 
   try {
-    const snapshot = await Promise.race([adapter.collect(controller.signal), ceiling]);
+    const snapshot = await Promise.race([adapter.collect(controller.signal, context), ceiling]);
     return {
       provider: adapter.provider,
       startedAt,
       finishedAt: nowIso(),
-      result: { outcome: 'success', snapshot, retryCount: 0 },
+      result: { outcome: 'success', snapshot, retryCount: retries },
     };
   } catch (err) {
     const code: ErrorCode =
@@ -102,7 +110,7 @@ export async function runAdapter(adapter: ProviderAdapter): Promise<AttemptRecor
           safeMessage: safeErrorMessage(err),
           retryable: isRetryable(code),
         },
-        retryCount: 0,
+        retryCount: retries,
       },
     };
   } finally {

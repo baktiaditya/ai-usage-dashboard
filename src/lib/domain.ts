@@ -161,7 +161,18 @@ export interface ProviderAdapter<S extends ProviderSnapshot = ProviderSnapshot> 
   readonly schemaVersion: number;
   /** Independent per-adapter budget in milliseconds. */
   readonly timeoutMs: number;
-  collect(signal: AbortSignal): Promise<S>;
+  collect(signal: AbortSignal, context?: CollectContext): Promise<S>;
+}
+
+/**
+ * Per-attempt hooks the collector hands to an adapter.
+ *
+ * Scoped to one `collect` call rather than stored on the adapter, so two
+ * overlapping runs of the same adapter never share a counter.
+ */
+export interface CollectContext {
+  /** Called once before each retry, so the attempt row records the real count. */
+  recordRetry(): void;
 }
 
 // ---------------------------------------------------------------------------

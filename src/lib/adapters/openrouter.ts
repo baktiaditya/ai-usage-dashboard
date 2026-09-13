@@ -22,7 +22,7 @@
  */
 import { z } from 'zod';
 import { CollectionError } from '../errors';
-import type { CreditSnapshot, ProviderAdapter } from '../domain';
+import type { CollectContext, CreditSnapshot, ProviderAdapter } from '../domain';
 import { rawToMoney, subtractMoney } from '../money';
 import { nowIso } from '../time';
 import { getJsonLossless, withBoundedRetry } from './http';
@@ -112,7 +112,7 @@ export function createOpenrouterAdapter(
     provider: 'openrouter',
     schemaVersion: OPENROUTER_SCHEMA_VERSION,
     timeoutMs,
-    async collect(signal: AbortSignal): Promise<CreditSnapshot> {
+    async collect(signal: AbortSignal, context?: CollectContext): Promise<CreditSnapshot> {
       if (!options.managementKey) {
         throw new CollectionError('not_configured', 'OPENROUTER_MANAGEMENT_KEY is not set');
       }
@@ -125,7 +125,12 @@ export function createOpenrouterAdapter(
             signal,
             ...(options.fetchImpl ? { fetchImpl: options.fetchImpl } : {}),
           }),
-        { maxRetries: options.maxRetries ?? 2, baseDelayMs: 500, signal },
+        {
+          maxRetries: options.maxRetries ?? 2,
+          baseDelayMs: 500,
+          signal,
+          onRetry: () => context?.recordRetry(),
+        },
       );
       return normalizeOpenrouterResponse(value);
     },

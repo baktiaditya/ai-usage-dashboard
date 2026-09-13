@@ -9,6 +9,8 @@
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { z } from 'zod';
+import { loadCollectorEnvFile } from './env-file';
+import { compareMoney, toMoneyOrNull } from './money';
 
 const DEFAULT_DATA_DIR = join(
   process.env['XDG_DATA_HOME'] ?? join(homedir(), '.local', 'share'),
@@ -16,16 +18,80 @@ const DEFAULT_DATA_DIR = join(
 );
 
 /** Threshold pair for quota gauges, expressed as *remaining* percent. */
-const quotaThresholdSchema = z.object({
-  watchAtOrBelowPercent: z.number().min(0).max(100),
-  switchAtOrBelowPercent: z.number().min(0).max(100),
-});
+const quotaThresholdSchema = z
+  .object({
+    watchAtOrBelowPercent: z.number().min(0).max(100),
+    switchAtOrBelowPercent: z.number().min(0).max(100),
+  })
+  .refine((t) => t.switchAtOrBelowPercent <= t.watchAtOrBelowPercent, {
+    message: 'switchAtOrBelowPercent must not exceed watchAtOrBelowPercent',
+  });
+
+const decimalString = z
+  .string()
+  .refine((v) => toMoneyOrNull(v) !== null, { message: 'must be a decimal string' });
 
 /** Threshold pair for money, as canonical decimal strings, per currency. */
-const balanceThresholdSchema = z.object({
-  watchAtOrBelow: z.string(),
-  switchAtOrBelow: z.string(),
+const balanceThresholdSchema = z
+  .object({
+    watchAtOrBelow: decimalString,
+    switchAtOrBelow: decimalString,
+  })
+  .refine(
+    (t) => {
+      const watch = toMoneyOrNull(t.watchAtOrBelow);
+      const stop = toMoneyOrNull(t.switchAtOrBelow);
+      // A non-decimal amount is already reported by its own field; nothing to order.
+      return watch === null || stop === null || compareMoney(stop, watch) <= 0;
+    },
+    {
+      message: 'switchAtOrBelow must not exceed watchAtOrBelow',
+    },
+  );
+
+const PROVIDER_PATTERN = '(?:codex|claude|deepseek|openrouter)';
+
+/**
+ * `AUD_THRESHOLDS`: a JSON object merged over the defaults, key by key.
+ *
+ * Quota keys run from general to specific — `default`, `provider`,
+ * `provider:window`, `provider:bucket:window` — so one window can be tuned
+ * without restating the rest. Balance keys stay `provider:CURRENCY`.
+ */
+const thresholdOverridesSchema = z.strictObject({
+  quota: z
+    .record(
+      z.string().regex(new RegExp(`^(?:default|${PROVIDER_PATTERN}(?::[A-Za-z0-9_.-]+){0,2})$`)),
+      quotaThresholdSchema,
+    )
+    .optional(),
+  balance: z
+    .record(
+      z.string().regex(new RegExp(`^${PROVIDER_PATTERN}:[A-Z0-9]{2,16}$`)),
+      balanceThresholdSchema,
+    )
+    .optional(),
 });
+
+function parseThresholdOverrides(
+  raw: string | undefined,
+): z.infer<typeof thresholdOverridesSchema> {
+  if (raw === undefined || raw.trim() === '') return {};
+  let json: unknown;
+  try {
+    json = JSON.parse(raw);
+  } catch {
+    throw new ConfigError('AUD_THRESHOLDS is not valid JSON');
+  }
+  const parsed = thresholdOverridesSchema.safeParse(json);
+  if (!parsed.success) {
+    const issues = parsed.error.issues
+      .map((i) => `${['AUD_THRESHOLDS', ...i.path.map(String)].join('.')}: ${i.message}`)
+      .join('; ');
+    throw new ConfigError(`invalid threshold override: ${issues}`);
+  }
+  return parsed.data;
+}
 
 const numericEnv = (fallback: number, min: number, max: number) =>
   z
@@ -42,6 +108,7 @@ const envSchema = z.object({
   AUD_RETENTION_DAYS: numericEnv(90, 1, 3650),
   AUD_COLLECT_INTERVAL_MINUTES: numericEnv(5, 1, 1440),
   AUD_LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).optional(),
+  AUD_THRESHOLDS: z.string().optional(),
   DEEPSEEK_API_KEY: z.string().optional(),
   OPENROUTER_MANAGEMENT_KEY: z.string().optional(),
 });
@@ -149,17 +216,24 @@ export function loadConfig(env: EnvLike = process.env): AppConfig {
     return t ? t : null;
   };
 
-  // Validate the shipped defaults with the same schemas that would validate
+  // Validate the shipped defaults with the same schemas that validate
   // user-supplied overrides, so a bad default cannot ship silently.
-  const quotaThresholds = Object.fromEntries(
-    Object.entries(DEFAULT_QUOTA_THRESHOLDS).map(([k, v]) => [k, quotaThresholdSchema.parse(v)]),
-  );
-  const balanceThresholds = Object.fromEntries(
-    Object.entries(DEFAULT_BALANCE_THRESHOLDS).map(([k, v]) => [
-      k,
-      balanceThresholdSchema.parse(v),
-    ]),
-  );
+  const overrides = parseThresholdOverrides(e.AUD_THRESHOLDS);
+  const quotaThresholds = {
+    ...Object.fromEntries(
+      Object.entries(DEFAULT_QUOTA_THRESHOLDS).map(([k, v]) => [k, quotaThresholdSchema.parse(v)]),
+    ),
+    ...overrides.quota,
+  };
+  const balanceThresholds = {
+    ...Object.fromEntries(
+      Object.entries(DEFAULT_BALANCE_THRESHOLDS).map(([k, v]) => [
+        k,
+        balanceThresholdSchema.parse(v),
+      ]),
+    ),
+    ...overrides.balance,
+  };
 
   return {
     dataDir,
@@ -188,9 +262,18 @@ export function loadConfig(env: EnvLike = process.env): AppConfig {
 
 let cached: AppConfig | null = null;
 
-/** Process-wide config. Cached so every module sees one consistent view. */
+/**
+ * Process-wide config. Cached so every module sees one consistent view.
+ *
+ * The collector environment file is merged into `process.env` first, so the
+ * CLI, the web server's manual refresh, and the systemd unit all resolve the
+ * same credentials. `loadConfig` itself stays pure for tests.
+ */
 export function getConfig(): AppConfig {
-  cached ??= loadConfig();
+  if (cached === null) {
+    loadCollectorEnvFile(process.env);
+    cached = loadConfig(process.env);
+  }
   return cached;
 }
 

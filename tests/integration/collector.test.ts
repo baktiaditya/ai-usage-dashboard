@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { createOpenrouterAdapter } from '@/lib/adapters/openrouter';
 import { collectOnce, runAdapter } from '@/lib/collector/index';
 import { CollectionError } from '@/lib/errors';
 import type { ErrorCode } from '@/lib/errors';
@@ -118,6 +119,54 @@ describe('runAdapter', () => {
     if (record.result.outcome !== 'success') {
       expect(record.result.failure.safeMessage).not.toContain('sk-or-v1-supersecretvalue');
     }
+  });
+});
+
+describe('retry accounting', () => {
+  it('persists how many retries an attempt took, for success and failure alike', async () => {
+    const flaky: ProviderAdapter = {
+      provider: 'codex',
+      schemaVersion: 1,
+      timeoutMs: 1000,
+      async collect(_signal, context) {
+        context?.recordRetry();
+        context?.recordRetry();
+        return snapshotFor('codex');
+      },
+    };
+    const exhausted: ProviderAdapter = {
+      provider: 'deepseek',
+      schemaVersion: 1,
+      timeoutMs: 1000,
+      async collect(_signal, context) {
+        context?.recordRetry();
+        throw new CollectionError('upstream_error', 'still failing');
+      },
+    };
+
+    await collectOnce({ db: t.db, config, trigger: 'manual', adapters: [flaky, exhausted] });
+    const latest = getLatestAttempts(t.db);
+    expect(latest.get('codex')?.retryCount).toBe(2);
+    expect(latest.get('deepseek')?.retryCount).toBe(1);
+  });
+
+  it('records the retry the HTTP layer actually made (500, then success)', async () => {
+    let calls = 0;
+    const fetchImpl = (async () => {
+      calls += 1;
+      return calls === 1
+        ? new Response('{}', { status: 500 })
+        : new Response('{"data":{"total_credits":10,"total_usage":1}}', { status: 200 });
+    }) as unknown as typeof fetch;
+
+    await collectOnce({
+      db: t.db,
+      config,
+      trigger: 'manual',
+      adapters: [createOpenrouterAdapter({ managementKey: 'k', fetchImpl })],
+    });
+    expect(calls).toBe(2);
+    expect(getLatestAttempts(t.db).get('openrouter')?.retryCount).toBe(1);
   });
 });
 

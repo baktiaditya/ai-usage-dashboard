@@ -17,6 +17,7 @@ import { createDeepseekAdapter } from '@/lib/adapters/deepseek';
 import { createOpenrouterAdapter } from '@/lib/adapters/openrouter';
 import { createClaudeIngestor } from '@/lib/ingestors/claude-statusline';
 import { loadConfig } from '@/lib/config';
+import { loadCollectorEnvFile } from '@/lib/env-file';
 
 const enabled = process.env['LIVE_SMOKE'] === '1';
 const describeLive = enabled ? describe : describe.skip;
@@ -24,6 +25,9 @@ const describeLive = enabled ? describe : describe.skip;
 /** Skip a gate whose credential is absent, rather than failing it. */
 const describeWhen = (condition: boolean) => (enabled && condition ? describe : describe.skip);
 
+// Read keys from the same collector.env the systemd unit uses, so provisioning
+// the file once is enough for this suite too.
+loadCollectorEnvFile(process.env);
 const config = loadConfig(process.env);
 const signal = () => AbortSignal.timeout(30_000);
 

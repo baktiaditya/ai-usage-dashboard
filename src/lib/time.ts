@@ -49,13 +49,13 @@ export function formatAge(ms: number): string {
   return remHours === 0 ? `${days}d` : `${days}d ${remHours}h`;
 }
 
-/**
- * Start of the local calendar day, returned as a UTC instant.
- *
- * Uses `Intl` parts rather than string slicing so DST and non-hour offsets
- * behave. The result is what history queries compare against.
- */
-export function startOfLocalDayUtc(timezone: string, at: Date = new Date()): Date {
+interface LocalDate {
+  readonly year: number;
+  readonly month: number;
+  readonly day: number;
+}
+
+function localParts(timezone: string, at: Date): LocalDate & { readonly wallClockAsUtc: number } {
   const fmt = new Intl.DateTimeFormat('en-CA', {
     timeZone: timezone,
     year: 'numeric',
@@ -67,30 +67,67 @@ export function startOfLocalDayUtc(timezone: string, at: Date = new Date()): Dat
     hour12: false,
   });
   const parts = Object.fromEntries(fmt.formatToParts(at).map((p) => [p.type, p.value]));
-  const localMidnightAsUtc = Date.UTC(
-    Number(parts['year']),
-    Number(parts['month']) - 1,
-    Number(parts['day']),
-  );
-  // How far the zone is ahead of UTC at this instant.
-  const asUtc = Date.UTC(
-    Number(parts['year']),
-    Number(parts['month']) - 1,
-    Number(parts['day']),
+  const year = Number(parts['year']);
+  const month = Number(parts['month']);
+  const day = Number(parts['day']);
+  const wallClockAsUtc = Date.UTC(
+    year,
+    month - 1,
+    day,
     Number(parts['hour']) === 24 ? 0 : Number(parts['hour']),
     Number(parts['minute']),
     Number(parts['second']),
   );
-  const offsetMs = asUtc - at.getTime();
-  return new Date(localMidnightAsUtc - offsetMs);
+  return { year, month, day, wallClockAsUtc };
 }
 
-/** Start of the local day `days` days ago, as a UTC instant. */
+/** How far the zone's wall clock is ahead of UTC at `at`, to the second. */
+function offsetAt(timezone: string, at: Date): number {
+  const whole = Math.floor(at.getTime() / 1000) * 1000;
+  return localParts(timezone, new Date(whole)).wallClockAsUtc - whole;
+}
+
+/**
+ * The UTC instant of 00:00 on a local calendar date.
+ *
+ * The offset must be the one in force *at that midnight*, not at the moment of
+ * the query: on a DST transition day they differ by an hour. The first guess
+ * uses the offset at UTC midnight of the same date; one refinement with the
+ * offset at the guessed instant settles it on either side of a transition.
+ */
+function localMidnightUtc(timezone: string, date: LocalDate): Date {
+  const midnightAsUtc = Date.UTC(date.year, date.month - 1, date.day);
+  const guess = midnightAsUtc - offsetAt(timezone, new Date(midnightAsUtc));
+  return new Date(midnightAsUtc - offsetAt(timezone, new Date(guess)));
+}
+
+/**
+ * Start of the local calendar day, returned as a UTC instant.
+ *
+ * Uses `Intl` parts rather than string slicing so DST and non-hour offsets
+ * behave. The result is what history queries compare against.
+ */
+export function startOfLocalDayUtc(timezone: string, at: Date = new Date()): Date {
+  return localMidnightUtc(timezone, localParts(timezone, at));
+}
+
+/**
+ * Start of the local day `days` calendar days ago, as a UTC instant.
+ *
+ * Steps back whole calendar days, never `days × 24h`: a range that crosses a
+ * DST transition contains one 23- or 25-hour day.
+ */
 export function startOfLocalDayNDaysAgoUtc(
   timezone: string,
   days: number,
   at: Date = new Date(),
 ): Date {
-  const todayStart = startOfLocalDayUtc(timezone, at);
-  return new Date(todayStart.getTime() - days * 86_400_000);
+  const today = localParts(timezone, at);
+  // Date.UTC normalises an out-of-range day into the correct month and year.
+  const target = new Date(Date.UTC(today.year, today.month - 1, today.day - days));
+  return localMidnightUtc(timezone, {
+    year: target.getUTCFullYear(),
+    month: target.getUTCMonth() + 1,
+    day: target.getUTCDate(),
+  });
 }

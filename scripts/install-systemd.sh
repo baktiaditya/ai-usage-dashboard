@@ -77,12 +77,28 @@ if [[ ! -f "$TSX_BIN" ]]; then
   exit 1
 fi
 
+# Absolute interpreter paths are not sufficient on their own: the Codex adapter
+# spawns `codex` by name, and an nvm-installed codex is a `#!/usr/bin/env node`
+# script. Bake a PATH that reaches both into the unit.
+SERVICE_PATH="$(dirname "$NODE_BIN")"
+CODEX_BIN="$(command -v codex || true)"
+if [[ -n "$CODEX_BIN" ]]; then
+  CODEX_DIR="$(dirname "$CODEX_BIN")"
+  [[ ":$SERVICE_PATH:" == *":$CODEX_DIR:"* ]] || SERVICE_PATH="$SERVICE_PATH:$CODEX_DIR"
+else
+  echo "warning: codex not found on PATH; the Codex card will report an error under the timer" >&2
+fi
+SERVICE_PATH="$SERVICE_PATH:/usr/local/bin:/usr/bin:/bin"
+CODEX_HOME_DIR="${CODEX_HOME:-$HOME/.codex}"
+
 mkdir -p "$GEN_DIR" "$DATA_DIR"
 chmod 0700 "$DATA_DIR"
 
 render() {
   sed \
     -e "s|__WORKDIR__|$WORKDIR|g" \
+    -e "s|__PATH__|$SERVICE_PATH|g" \
+    -e "s|__CODEXHOME__|$CODEX_HOME_DIR|g" \
     -e "s|__NODE__|$NODE_BIN|g" \
     -e "s|__TSX__|$TSX_BIN|g" \
     -e "s|__DATADIR__|$DATA_DIR|g" \

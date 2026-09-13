@@ -14,6 +14,12 @@ Type=oneshot
 WorkingDirectory=__WORKDIR__
 ExecStart=__NODE__ __TSX__ __WORKDIR__/scripts/collect.ts
 
+# A user service has no PATH from the login shell. The Codex adapter spawns
+# `codex` by name, and an nvm-installed codex is itself a `#!/usr/bin/env node`
+# script, so naming node absolutely in ExecStart is not enough on its own.
+Environment=PATH=__PATH__
+Environment=CODEX_HOME=__CODEXHOME__
+
 # Credentials live outside the repository. `-` means "start anyway if absent",
 # which is what keeps the dashboard useful before any key is provisioned.
 EnvironmentFile=-__ENVFILE__
@@ -32,6 +38,9 @@ PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=read-only
 ReadWritePaths=__DATADIR__
+# `codex app-server` writes its own state under CODEX_HOME and exits early when
+# that directory is read-only. `-` keeps the unit valid on a machine without Codex.
+ReadWritePaths=-__CODEXHOME__
 ProtectKernelTunables=true
 ProtectKernelModules=true
 ProtectControlGroups=true

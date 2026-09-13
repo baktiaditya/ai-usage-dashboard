@@ -170,6 +170,63 @@ describe('timeouts and transport failures', () => {
     expect(Date.now() - started).toBeLessThan(2000);
   });
 
+  it('keeps the timeout armed while the body is read, not only until the headers', async () => {
+    // Headers arrive at once; the body sends a fragment and then stalls. A
+    // timeout cleared at the headers would leave this read open indefinitely.
+    const impl = vi.fn(async (_url: string, init?: RequestInit) => {
+      const body = new ReadableStream<Uint8Array>({
+        start(stream) {
+          stream.enqueue(new TextEncoder().encode('{"data":'));
+          init?.signal?.addEventListener('abort', () =>
+            stream.error(new DOMException('aborted', 'AbortError')),
+          );
+        },
+      });
+      return new Response(body, { status: 200 });
+    }) as unknown as typeof fetch;
+
+    const adapter = createOpenrouterAdapter({
+      managementKey: 'k',
+      fetchImpl: impl,
+      timeoutMs: 200,
+      maxRetries: 0,
+    });
+    const started = Date.now();
+    await expect(adapter.collect(signal())).rejects.toMatchObject({ code: 'timeout' });
+    expect(Date.now() - started).toBeLessThan(2000);
+  });
+
+  it('starts no request when the caller budget is already spent', async () => {
+    const { impl, calls } = capturingFetch(fixtureText('openrouter', 'valid'));
+    const controller = new AbortController();
+    controller.abort();
+
+    const adapter = createOpenrouterAdapter({ managementKey: 'k', fetchImpl: impl });
+    await expect(adapter.collect(controller.signal)).rejects.toMatchObject({ code: 'timeout' });
+    expect(calls).toHaveLength(0);
+  });
+
+  it('does not start another attempt when aborted during the retry backoff', async () => {
+    let calls = 0;
+    const impl = vi.fn(async () => {
+      calls += 1;
+      return jsonResponse('{}', 503);
+    }) as unknown as typeof fetch;
+    const controller = new AbortController();
+
+    const adapter = createOpenrouterAdapter({ managementKey: 'k', fetchImpl: impl, maxRetries: 3 });
+    const pending = adapter.collect(controller.signal);
+    // The first request is issued synchronously; wait until its 503 has been
+    // handled and the (>= 500ms) backoff is underway before aborting, so the
+    // abort lands mid-backoff rather than before the retry decision.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(calls).toBe(1);
+    controller.abort();
+
+    await expect(pending).rejects.toMatchObject({ code: 'upstream_error' });
+    expect(calls).toBe(1);
+  });
+
   it('classifies a transport failure as network_error without leaking the URL', async () => {
     const impl = vi.fn(async () => {
       throw new TypeError('fetch failed to https://api.deepseek.com/user/balance');

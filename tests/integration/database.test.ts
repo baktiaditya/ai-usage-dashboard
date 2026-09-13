@@ -1,6 +1,14 @@
+import { execFile } from 'node:child_process';
+import { mkdtempSync, rmSync, statSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import Database from 'better-sqlite3';
+import { drizzle } from 'drizzle-orm/better-sqlite3';
 import { openDb, runMigrations } from '@/lib/db/client';
+import type { Db } from '@/lib/db/client';
+import { MIGRATIONS } from '@/lib/db/migrations.generated';
+import * as schema from '@/lib/db/schema';
 import {
   applyRetention,
   finishRun,
@@ -123,6 +131,89 @@ describe('migrations', () => {
     expect(t.db.$client.pragma('busy_timeout', { simple: true })).toBe(5000);
   });
 
+  it('lets several processes open a fresh database at once without racing the migrations', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'aud-race-'));
+    const path = join(dir, 'usage.db');
+    const tsx = join(process.cwd(), 'node_modules', 'tsx', 'dist', 'cli.mjs');
+    const child = join(process.cwd(), 'tests', 'helpers', 'open-db-child.ts');
+    const startAt = String(Date.now() + 3000);
+    try {
+      const outcomes = await Promise.all(
+        Array.from(
+          { length: 6 },
+          () =>
+            new Promise<string>((resolve) => {
+              execFile(process.execPath, [tsx, child, path, startAt], (_err, stdout) =>
+                resolve(stdout),
+              );
+            }),
+        ),
+      );
+      // Before the fix: "table collector_runs already exists" or "database is locked".
+      expect(outcomes).toEqual(Array(6).fill('ok'));
+
+      const check = new Database(path, { readonly: true });
+      const versions = check.prepare('SELECT version FROM schema_migrations').pluck().all();
+      check.close();
+      expect(versions).toEqual(MIGRATIONS.map((m) => m.version));
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 30_000);
+
+  it('upgrades a 0000 database in place, keeping rows and lifting the 0..100 limit', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'aud-upgrade-'));
+    const raw = new Database(join(dir, 'usage.db'));
+    try {
+      raw.exec(
+        'CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL) STRICT',
+      );
+      raw.exec(MIGRATIONS[0]!.sql);
+      raw.prepare('INSERT INTO schema_migrations VALUES (0, ?)').run('2026-09-12T00:00:00.000Z');
+      const legacy = drizzle(raw, { schema }) as Db;
+      const { snapshotId } = recordAttempt(legacy, {
+        runId: startRun(legacy, 'scheduled'),
+        provider: 'codex',
+        startedAt: '2026-09-12T12:00:01.000Z',
+        finishedAt: '2026-09-12T12:00:01.000Z',
+        retryCount: 0,
+        result: { outcome: 'success', snapshot: quota() },
+      });
+
+      expect(runMigrations(raw)).toBe(MIGRATIONS.length - 1);
+
+      const kept = getLatestSnapshots(legacy).get('codex');
+      expect(kept?.id).toBe(snapshotId);
+      expect(kept?.windows.map((w) => w.usedPercent)).toEqual([37, 52]);
+      // The rebuilt table accepts a source value the old CHECK refused.
+      raw
+        .prepare(
+          'INSERT INTO quota_windows (snapshot_id, bucket_id, window_kind, used_percent) VALUES (?,?,?,?)',
+        )
+        .run(snapshotId, 'codex', 'tertiary', 101);
+    } finally {
+      raw.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('keeps the database and its WAL/SHM sidecars owner-only under a permissive umask', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'aud-perms-'));
+    const path = join(dir, 'usage.db');
+    const previous = process.umask(0o022);
+    try {
+      const db = openDb({ path });
+      startRun(db, 'manual'); // a write, so the WAL and shared-memory files exist
+      for (const file of [path, `${path}-wal`, `${path}-shm`]) {
+        expect((statSync(file).mode & 0o777).toString(8), file).toBe('600');
+      }
+      db.$client.close();
+    } finally {
+      process.umask(previous);
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it('uses STRICT tables so a type error is rejected at the database', () => {
     // STRICT refuses a value it cannot losslessly convert to the declared type.
     expect(() =>
@@ -156,15 +247,22 @@ describe('constraints', () => {
     ).toThrow();
   });
 
-  it('forbids a percentage outside 0..100', () => {
-    const { snapshotId } = write(quota());
-    expect(() =>
-      t.db.$client
-        .prepare(
-          'INSERT INTO quota_windows (snapshot_id, bucket_id, window_kind, used_percent) VALUES (?,?,?,?)',
-        )
-        .run(snapshotId, 'x', 'y', 101),
-    ).toThrow();
+  it('stores a drifting source percentage verbatim instead of clamping it', () => {
+    // Only the derived remaining percentage is clamped, at presentation time.
+    write(
+      quota({
+        windows: [
+          {
+            bucketId: 'codex',
+            windowKind: 'primary',
+            usedPercent: 120.5,
+            windowDurationMinutes: 300,
+            resetsAt: null,
+          },
+        ],
+      }),
+    );
+    expect(getLatestSnapshots(t.db).get('codex')?.windows[0]?.usedPercent).toBe(120.5);
   });
 
   it('forbids two rows for the same currency in one snapshot', () => {
@@ -377,6 +475,47 @@ describe('reads', () => {
     expect(latest.get('codex')?.outcome).toBe('error');
     expect(latest.get('codex')?.errorCode).toBe('timeout');
     expect(latest.get('deepseek')?.outcome).toBe('unavailable');
+  });
+
+  it('keeps the newest observation when an overlapping run persists an older one last', () => {
+    write(quota({ observedAt: '2026-09-12T12:00:00.000Z' }));
+    write(quota({ observedAt: '2026-09-12T11:00:00.000Z' }));
+
+    expect(getLatestSnapshots(t.db).get('codex')?.sourceObservedAt).toBe(
+      '2026-09-12T12:00:00.000Z',
+    );
+  });
+
+  it('does not let a slow failed attempt, persisted last, mask a newer success', () => {
+    // A manual refresh starts later and succeeds quickly...
+    recordAttempt(t.db, {
+      runId: startRun(t.db, 'manual'),
+      provider: 'codex',
+      startedAt: '2026-09-12T12:00:05.000Z',
+      finishedAt: '2026-09-12T12:00:06.000Z',
+      retryCount: 0,
+      result: { outcome: 'success', snapshot: quota() },
+    });
+    // ...while a scheduled attempt that began earlier times out afterwards.
+    recordAttempt(t.db, {
+      runId: startRun(t.db, 'scheduled'),
+      provider: 'codex',
+      startedAt: '2026-09-12T12:00:00.000Z',
+      finishedAt: '2026-09-12T12:00:20.000Z',
+      retryCount: 0,
+      result: {
+        outcome: 'error',
+        failure: {
+          provider: 'codex',
+          attemptedAt: '2026-09-12T12:00:00.000Z',
+          code: 'timeout',
+          safeMessage: 'no response',
+          retryable: true,
+        },
+      },
+    });
+
+    expect(getLatestAttempts(t.db).get('codex')?.outcome).toBe('success');
   });
 
   it('finds the newest baseline strictly before a cutoff', () => {

@@ -1,8 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import {
+  Area,
   CartesianGrid,
+  ComposedChart,
   LabelList,
   Line,
   LineChart,
@@ -16,6 +18,7 @@ import { Badge } from '@/components/ui/badge';
 import type { ProviderCard } from '@/lib/queries/overview';
 import type { CreditHistoryResult, HistoryRange, QuotaHistoryResult } from '@/lib/queries/history';
 import { formatMoney } from '@/lib/money';
+import type { MoneyString } from '@/lib/money';
 import { cn } from '@/lib/cn';
 
 type HistoryResult = QuotaHistoryResult | CreditHistoryResult;
@@ -165,28 +168,36 @@ function QuotaChart({ result }: { result: QuotaHistoryResult }) {
   // Quota is a gauge: daily latest / min / max, never a sum.
   const days = [...new Set(result.series.flatMap((s) => s.points.map((p) => p.day)))].sort();
   const rows = days.map((day) => {
-    const row: Record<string, string | number> = { day };
+    const row: Record<string, string | number | [number, number]> = { day };
     for (const s of result.series) {
+      const key = `${s.bucketId}:${s.windowKind}`;
       const point = s.points.find((p) => p.day === day);
-      if (point) row[`${s.bucketId}:${s.windowKind}`] = point.latestPercent;
+      if (point) {
+        row[`${key}:latest`] = point.latestPercent;
+        row[`${key}:range`] = [point.minPercent, point.maxPercent];
+      }
     }
     return row;
   });
+  // Source percentages are stored unclamped, so a drifting reading above 100
+  // must stay on the plot rather than being cut off at the frame.
+  const peak = Math.max(100, ...result.series.flatMap((s) => s.points.map((p) => p.maxPercent)));
 
   return (
     <div className="flex flex-col gap-3" data-testid="history-quota-chart">
       <p className="text-muted-foreground text-xs">
-        Latest utilisation observed each day, per window. Quota is a gauge that resets, so daily
-        samples are shown as levels and never summed into a daily total.
+        The line is the latest utilisation observed each day, per window; the shaded band spans that
+        day&apos;s lowest to highest reading. Quota is a gauge that resets, so daily samples are
+        shown as levels and never summed into a daily total.
       </p>
       <div className="h-64 w-full">
         <ResponsiveContainer width="100%" height="100%">
           {/* Right margin leaves room for the end-of-line value labels. */}
-          <LineChart data={rows} margin={{ top: 8, right: 44, bottom: 4, left: -16 }}>
+          <ComposedChart data={rows} margin={{ top: 8, right: 44, bottom: 4, left: -16 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
             <XAxis dataKey="day" tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} />
             <YAxis
-              domain={[0, 100]}
+              domain={[0, peak]}
               unit="%"
               tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }}
             />
@@ -198,33 +209,51 @@ function QuotaChart({ result }: { result: QuotaHistoryResult }) {
                 fontSize: 12,
                 color: 'var(--foreground)',
               }}
+              formatter={(value: unknown) =>
+                Array.isArray(value)
+                  ? `${formatPercent(value[0])} – ${formatPercent(value[1])}`
+                  : formatPercent(value)
+              }
             />
             {result.series.map((s, i) => (
-              <Line
-                key={`${s.bucketId}:${s.windowKind}`}
-                type="monotone"
-                dataKey={`${s.bucketId}:${s.windowKind}`}
-                stroke={SERIES_COLORS[i % SERIES_COLORS.length]}
-                strokeWidth={2}
-                dot={false}
-                connectNulls
-                isAnimationActive={false}
-              >
-                {/*
+              <Fragment key={`${s.bucketId}:${s.windowKind}`}>
+                <Area
+                  type="monotone"
+                  dataKey={`${s.bucketId}:${s.windowKind}:range`}
+                  name={`${s.bucketId} · ${s.windowKind} daily min–max`}
+                  stroke="none"
+                  fill={SERIES_COLORS[i % SERIES_COLORS.length]}
+                  fillOpacity={0.14}
+                  activeDot={false}
+                  connectNulls
+                  isAnimationActive={false}
+                />
+                <Line
+                  type="monotone"
+                  dataKey={`${s.bucketId}:${s.windowKind}:latest`}
+                  name={`${s.bucketId} · ${s.windowKind} latest`}
+                  stroke={SERIES_COLORS[i % SERIES_COLORS.length]}
+                  strokeWidth={2}
+                  dot={false}
+                  connectNulls
+                  isAnimationActive={false}
+                >
+                  {/*
                   Label only the final point. Two slots in the light palette sit
                   below 3:1 against a white surface, so the chart owes a visible
                   label rather than relying on the stroke colour alone — and the
                   latest utilisation is the number worth reading anyway.
                 */}
-                <LabelList
-                  dataKey={`${s.bucketId}:${s.windowKind}`}
-                  content={(props: unknown) => (
-                    <EndLabel {...(props as EndLabelProps)} lastIndex={rows.length - 1} />
-                  )}
-                />
-              </Line>
+                  <LabelList
+                    dataKey={`${s.bucketId}:${s.windowKind}:latest`}
+                    content={(props: unknown) => (
+                      <EndLabel {...(props as EndLabelProps)} lastIndex={rows.length - 1} />
+                    )}
+                  />
+                </Line>
+              </Fragment>
             ))}
-          </LineChart>
+          </ComposedChart>
         </ResponsiveContainer>
       </div>
       <ul className="flex flex-wrap gap-3 text-xs">
@@ -299,10 +328,113 @@ function CreditSummary({
         ))}
       </ul>
 
+      <CreditTrend result={result} timezone={timezone} />
+
       <p className="text-muted-foreground text-[11px]">
         Period boundaries follow {timezone}. Timestamps are stored in UTC and converted only for
         display.
       </p>
+    </div>
+  );
+}
+
+function formatPercent(v: unknown): string {
+  const n = Number(v);
+  return Number.isFinite(n) ? `${n.toFixed(1)}%` : '—';
+}
+
+/**
+ * The observations behind the delta, one small chart per currency.
+ *
+ * Currencies are never drawn on a shared axis: 30 CNY and 15 USD are different
+ * magnitudes, and a second y-scale would invite comparing them. Values are
+ * converted to numbers only to position the line; every figure a reader sees
+ * comes from the exact decimal string.
+ */
+function CreditTrend({ result, timezone }: { result: CreditHistoryResult; timezone: string }) {
+  const isUsage = result.metric === 'usage_delta';
+  const tick = new Intl.DateTimeFormat('en-GB', {
+    timeZone: timezone,
+    day: '2-digit',
+    month: 'short',
+  });
+  const full = new Intl.DateTimeFormat('en-GB', {
+    timeZone: timezone,
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  });
+
+  const byCurrency = new Map<string, { t: number; value: number; exact: MoneyString }[]>();
+  for (const p of result.series) {
+    if (p.value === null) continue;
+    const points = byCurrency.get(p.currency) ?? [];
+    points.push({ t: Date.parse(p.observedAt), value: Number(p.value), exact: p.value });
+    byCurrency.set(p.currency, points);
+  }
+  if (byCurrency.size === 0) return null;
+
+  return (
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      {[...byCurrency.entries()]
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([currency, points]) => (
+          <figure
+            key={currency}
+            className="flex flex-col gap-1"
+            data-testid={`history-credit-trend-${currency}`}
+          >
+            <figcaption className="text-muted-foreground text-xs">
+              {currency} {isUsage ? 'cumulative usage counter' : 'balance'} as observed
+            </figcaption>
+            <div className="h-40 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={points} margin={{ top: 8, right: 12, bottom: 4, left: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                  <XAxis
+                    dataKey="t"
+                    type="number"
+                    scale="time"
+                    domain={['dataMin', 'dataMax']}
+                    tickFormatter={(t: number) => tick.format(t)}
+                    tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }}
+                  />
+                  <YAxis
+                    width={48}
+                    domain={['auto', 'auto']}
+                    tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      background: 'var(--surface)',
+                      border: '1px solid var(--border)',
+                      borderRadius: 8,
+                      fontSize: 12,
+                      color: 'var(--foreground)',
+                    }}
+                    labelFormatter={(t: unknown) => full.format(Number(t))}
+                    formatter={(_value: unknown, _name: unknown, item: { payload?: unknown }) => [
+                      `${formatMoney((item.payload as { exact: MoneyString }).exact)} ${currency}`,
+                      isUsage ? 'Usage counter' : 'Balance',
+                    ]}
+                  />
+                  <Line
+                    type="linear"
+                    dataKey="value"
+                    name={currency}
+                    stroke="var(--series-1)"
+                    strokeWidth={2}
+                    dot={
+                      points.length <= 12
+                        ? { r: 4, strokeWidth: 0, fill: 'var(--series-1)' }
+                        : false
+                    }
+                    isAnimationActive={false}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </figure>
+        ))}
     </div>
   );
 }

@@ -63,15 +63,27 @@ export function computeAdvisory(input: AdvisoryInput): Advisory {
     : creditAdvisory(provider, snapshot, config);
 }
 
-function quotaThresholdsFor(config: AppConfig, provider: Provider) {
-  return (
-    config.thresholds.quota[provider] ??
-    config.thresholds.quota['default'] ?? { watchAtOrBelowPercent: 20, switchAtOrBelowPercent: 10 }
-  );
+/**
+ * The most specific configured threshold for a quota window: the exact window,
+ * then the window kind for the provider, then the provider, then `default`.
+ */
+function quotaThresholdsFor(
+  config: AppConfig,
+  provider: Provider,
+  window?: { readonly bucketId: string; readonly windowKind: string },
+) {
+  const keys = window
+    ? [`${provider}:${window.bucketId}:${window.windowKind}`, `${provider}:${window.windowKind}`]
+    : [];
+  for (const key of [...keys, provider, 'default']) {
+    const threshold = config.thresholds.quota[key];
+    if (threshold) return threshold;
+  }
+  return { watchAtOrBelowPercent: 20, switchAtOrBelowPercent: 10 };
 }
 
 function quotaAdvisory(provider: Provider, snapshot: StoredSnapshot, config: AppConfig): Advisory {
-  const t = quotaThresholdsFor(config, provider);
+  const providerThreshold = quotaThresholdsFor(config, provider);
   const reasons: AdvisoryReason[] = [];
   let state: Advisory['state'] = 'ok';
 
@@ -99,6 +111,7 @@ function quotaAdvisory(provider: Provider, snapshot: StoredSnapshot, config: App
   }
 
   for (const w of snapshot.windows) {
+    const t = quotaThresholdsFor(config, provider, w);
     const remaining = clampPercent(100 - w.usedPercent);
     const subject = `${w.bucketId}:${w.windowKind}`;
     if (remaining <= t.switchAtOrBelowPercent) {
@@ -127,7 +140,7 @@ function quotaAdvisory(provider: Provider, snapshot: StoredSnapshot, config: App
       subject: provider,
       metric: 'quota_remaining_percent',
       observed: 'all windows above thresholds',
-      threshold: `> ${t.watchAtOrBelowPercent}%`,
+      threshold: `> ${providerThreshold.watchAtOrBelowPercent}%`,
       message: 'Every quota window is above the watch threshold.',
     });
   }

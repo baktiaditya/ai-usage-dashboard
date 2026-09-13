@@ -317,6 +317,19 @@ describe('credit history', () => {
     expect(result.deltas[0]?.change).toBeNull();
   });
 
+  it('detects a counter reset inside the period even after the counter climbs back', () => {
+    // Endpoints alone read 10 -> 20 as "+10"; the drop from 80 to 5 says the
+    // counter restarted in between, so no delta across it is honest.
+    writeCredit('openrouter', '2026-09-01T00:00:00.000Z', '100', '10');
+    writeCredit('openrouter', '2026-09-08T00:00:00.000Z', '100', '80');
+    writeCredit('openrouter', '2026-09-10T00:00:00.000Z', '100', '5');
+    writeCredit('openrouter', '2026-09-12T00:00:00.000Z', '100', '20');
+
+    const result = buildCreditHistory(t.db, config, 'openrouter', '7d', NOW);
+    expect(result.deltas[0]?.discontinuity).toBe(true);
+    expect(result.deltas[0]?.change).toBeNull();
+  });
+
   it('labels DeepSeek movement as balance change, never as usage', () => {
     writeCredit('deepseek', '2026-09-01T00:00:00.000Z', '50', '0');
     writeCredit('deepseek', '2026-09-12T00:00:00.000Z', '45', '0');

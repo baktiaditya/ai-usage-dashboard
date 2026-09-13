@@ -67,6 +67,13 @@ function shellQuote(s: string): string {
   return `'${s.replaceAll("'", `'\\''`)}'`;
 }
 
+/** Inverse of `shellQuote` for the `AUD_WRAPPED_CMD=` assignment `buildCommand` writes. */
+function wrappedCommandOf(command: string): string | null {
+  const match = /AUD_WRAPPED_CMD='((?:[^']|'\\'')*)'/.exec(command);
+  const quoted = match?.[1];
+  return quoted === undefined ? null : quoted.replaceAll(`'\\''`, "'");
+}
+
 function main(): number {
   const argv = process.argv.slice(2);
   const apply = argv.includes('--apply');
@@ -96,14 +103,26 @@ function main(): number {
       );
       return 1;
     }
+    // `--wrap-existing` embedded the previous command in ours. Hand it back
+    // rather than leaving the user with no status line at all.
+    const restored = existingCommand ? wrappedCommandOf(existingCommand) : null;
     if (!apply) {
-      process.stdout.write(`DRY RUN: would remove statusLine from ${path}\nRe-run with --apply.\n`);
+      process.stdout.write(
+        restored
+          ? `DRY RUN: would restore the wrapped status line in ${path}:\n  ${restored}\nRe-run with --apply.\n`
+          : `DRY RUN: would remove statusLine from ${path}\nRe-run with --apply.\n`,
+      );
       return 0;
     }
     backup(path);
-    delete settings['statusLine'];
+    if (restored) settings['statusLine'] = { type: 'command', command: restored };
+    else delete settings['statusLine'];
     writeSettings(path, settings);
-    process.stdout.write(`Removed the bridge status line from ${path}\n`);
+    process.stdout.write(
+      restored
+        ? `Removed the bridge and restored the status line it wrapped in ${path}\n`
+        : `Removed the bridge status line from ${path}\n`,
+    );
     return 0;
   }
 

@@ -48,6 +48,28 @@ describe('deepseek normalisation', () => {
     expect(snap.balances[0]?.totalBalance).toBe('42');
   });
 
+  it('rejects a balance that is present but not a decimal, instead of storing it as absent', () => {
+    const raw = {
+      is_available: true,
+      balance_infos: [{ currency: 'USD', total_balance: 'oops', granted_balance: '0' }],
+    };
+    try {
+      normalizeDeepseekResponse(raw);
+      expect.unreachable('should have thrown');
+    } catch (err) {
+      expect((err as CollectionError).code).toBe('schema_mismatch');
+      expect((err as CollectionError).message).toContain('total_balance');
+    }
+  });
+
+  it('still records a field the provider omitted as absent', () => {
+    const snap = normalizeDeepseekResponse({
+      is_available: true,
+      balance_infos: [{ currency: 'USD', total_balance: '1.5' }],
+    });
+    expect(snap.balances[0]).toMatchObject({ totalBalance: '1.5', grantedBalance: null });
+  });
+
   it.each([
     ['malformed-missing-balance-infos', 'schema_mismatch'],
     ['malformed-empty-currencies', 'not_entitled'],

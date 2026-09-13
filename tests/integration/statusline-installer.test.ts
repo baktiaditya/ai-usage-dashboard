@@ -173,6 +173,18 @@ describe('the installer never destroys existing configuration', () => {
     expect(readSettings()['statusLine']).toEqual({ type: 'command', command: 'someone-elses.sh' });
   });
 
+  it('restores the command it wrapped on uninstall instead of deleting it', () => {
+    // Quotes inside the command exercise the shell-quoting round trip.
+    const original = `printf '%s' "it's mine"`;
+    writeFileSync(settings, JSON.stringify({ statusLine: { type: 'command', command: original } }));
+    expect(run(['--apply', '--wrap-existing']).status).toBe(0);
+
+    const r = run(['--uninstall', '--apply']);
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain('restored the status line it wrapped');
+    expect(readSettings()['statusLine']).toEqual({ type: 'command', command: original });
+  });
+
   it('removes only its own installation on uninstall', () => {
     writeFileSync(settings, JSON.stringify({ model: 'opus' }));
     run(['--apply']);

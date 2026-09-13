@@ -116,6 +116,42 @@ describe('quota advisories', () => {
   });
 });
 
+describe('configured threshold overrides', () => {
+  const tuned = testConfig({
+    AUD_THRESHOLDS: JSON.stringify({
+      quota: { 'codex:secondary': { watchAtOrBelowPercent: 50, switchAtOrBelowPercent: 30 } },
+      balance: { 'deepseek:USD': { watchAtOrBelow: '50', switchAtOrBelow: '10' } },
+    }),
+  });
+
+  it('applies a per-window quota threshold without changing the other windows', () => {
+    // 60% and 45% remaining: fine under the default 20%, but the secondary
+    // window was tuned to watch at 50%.
+    const a = computeAdvisory({
+      provider: 'codex',
+      status: 'healthy',
+      snapshot: quotaSnapshot([40, 55]),
+      config: tuned,
+      statusReason: '',
+    });
+    expect(a.state).toBe('watch');
+    expect(a.reasons).toHaveLength(1);
+    expect(a.reasons[0]).toMatchObject({ subject: 'codex:secondary', threshold: '<= 50%' });
+  });
+
+  it('applies an overridden balance threshold for its currency', () => {
+    const a = computeAdvisory({
+      provider: 'deepseek',
+      status: 'healthy',
+      snapshot: creditSnapshot('deepseek', [{ currency: 'USD', totalBalance: '40' }]),
+      config: tuned,
+      statusReason: '',
+    });
+    expect(a.state).toBe('watch');
+    expect(a.reasons[0]?.threshold).toBe('<= 50.00 USD');
+  });
+});
+
 describe('balance advisories', () => {
   it('applies per-currency thresholds without mixing USD and CNY', () => {
     // 20 CNY is above the CNY watch level of 35? No — it is below it, so it

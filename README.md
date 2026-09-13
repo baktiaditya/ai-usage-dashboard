@@ -94,7 +94,7 @@ so scheduled and manual runs cannot drift apart in behaviour.
 
 | Command                             | Does                                                              |
 | ----------------------------------- | ----------------------------------------------------------------- |
-| `npm run dev` / `npm run start`     | dashboard on `127.0.0.1:3838`                                     |
+| `npm run dev` / `npm run start`     | dashboard on `127.0.0.1:3838` (or `AUD_HOST`/`AUD_PORT`)          |
 | `npm run collect`                   | one collection pass (`--manual`, `--provider=codex,deepseek`)     |
 | `npm run db:migrate`                | apply migrations, print schema state                              |
 | `npm run claude:install-statusline` | install the bridge (dry run by default)                           |

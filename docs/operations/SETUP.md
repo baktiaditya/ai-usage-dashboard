@@ -141,6 +141,11 @@ DEEPSEEK_API_KEY=...
 OPENROUTER_MANAGEMENT_KEY=...
 ```
 
+The systemd unit reads this file through `EnvironmentFile=`. Every other entry
+point loads the same file itself: `npm run collect`, `npm run test:live`, and
+the dashboard's manual refresh. A variable already exported in your shell
+takes precedence over the file. Set `AUD_ENV_FILE` to use a different path.
+
 ### OpenRouter needs a _Management_ key
 
 `GET /api/v1/credits` rejects ordinary inference keys with **HTTP 403**. Create a
@@ -198,7 +203,12 @@ loginctl enable-linger "$USER"
 The generated unit uses absolute paths for `node` and `tsx` (a user service has
 no `PATH` from your shell), `UMask=0077`, a bounded `TimeoutStartSec`, and a
 restricted sandbox (`ProtectSystem=strict`, `ProtectHome=read-only`, with only
-the data directory writable). The timer uses `Persistent=true` so one missed run
+the data directory and `CODEX_HOME` writable). Absolute paths alone are not
+enough for Codex: the adapter spawns `codex` by name, and an nvm-installed
+`codex` is a `#!/usr/bin/env node` script, so the installer also bakes a `PATH`
+covering the `node` and `codex` directories found at install time. `codex
+app-server` exits early when `~/.codex` is read-only, hence the second writable
+path. Re-run the installer after switching Node versions with nvm. The timer uses `Persistent=true` so one missed run
 is caught up after a reboot rather than leaving the dashboard stale for a full
 interval.
 
@@ -229,17 +239,19 @@ to 6 refreshes per provider per minute.
 
 Every value has a safe default; all are optional.
 
-| Variable                       | Default                             | Notes                                           |
-| ------------------------------ | ----------------------------------- | ----------------------------------------------- |
-| `AUD_DATA_DIR`                 | `~/.local/share/ai-usage-dashboard` | database + spool                                |
-| `AUD_TIMEZONE`                 | `Asia/Jakarta`                      | only affects calendar-day boundaries in history |
-| `AUD_HOST`                     | `127.0.0.1`                         | loopback only; anything else is rejected        |
-| `AUD_PORT`                     | `3838`                              |                                                 |
-| `AUD_RETENTION_DAYS`           | `90`                                |                                                 |
-| `AUD_COLLECT_INTERVAL_MINUTES` | `5`                                 | also drives the freshness budget                |
-| `AUD_LOG_LEVEL`                | `info`                              | `debug` \| `info` \| `warn` \| `error`          |
-| `DEEPSEEK_API_KEY`             | —                                   | absent ⇒ `unavailable`                          |
-| `OPENROUTER_MANAGEMENT_KEY`    | —                                   | absent ⇒ `unavailable`                          |
+| Variable                       | Default                                      | Notes                                           |
+| ------------------------------ | -------------------------------------------- | ----------------------------------------------- |
+| `AUD_DATA_DIR`                 | `~/.local/share/ai-usage-dashboard`          | database + spool                                |
+| `AUD_TIMEZONE`                 | `Asia/Jakarta`                               | only affects calendar-day boundaries in history |
+| `AUD_HOST`                     | `127.0.0.1`                                  | loopback only; anything else is rejected        |
+| `AUD_PORT`                     | `3838`                                       | `npm run dev` / `npm run start` bind to it      |
+| `AUD_THRESHOLDS`               | —                                            | JSON advisory overrides; see Thresholds below   |
+| `AUD_RETENTION_DAYS`           | `90`                                         |                                                 |
+| `AUD_COLLECT_INTERVAL_MINUTES` | `5`                                          | also drives the freshness budget                |
+| `AUD_LOG_LEVEL`                | `info`                                       | `debug` \| `info` \| `warn` \| `error`          |
+| `AUD_ENV_FILE`                 | `~/.config/ai-usage-dashboard/collector.env` | credential file; see §4                         |
+| `DEEPSEEK_API_KEY`             | —                                            | absent ⇒ `unavailable`                          |
+| `OPENROUTER_MANAGEMENT_KEY`    | —                                            | absent ⇒ `unavailable`                          |
 
 ### Thresholds
 
@@ -253,6 +265,19 @@ and CNY never share a limit.
 | `deepseek:USD`        | ≤ 5              | ≤ 1                |
 | `deepseek:CNY`        | ≤ 35             | ≤ 7                |
 | `openrouter:USD`      | ≤ 5              | ≤ 1                |
+
+Override any of them with `AUD_THRESHOLDS`, a JSON object merged over the
+defaults key by key (set it in your shell or in `collector.env`):
+
+```bash
+AUD_THRESHOLDS='{"quota":{"codex:secondary":{"watchAtOrBelowPercent":30,"switchAtOrBelowPercent":15}},"balance":{"deepseek:USD":{"watchAtOrBelow":"10","switchAtOrBelow":"2"}}}'
+```
+
+A quota window uses the most specific key present: `provider:bucket:window`,
+then `provider:window`, then `provider`, then `default`. Balance keys are
+`provider:CURRENCY`, with amounts as decimal strings so they compare exactly.
+An override that does not parse, names an unknown provider, or sets `switch`
+above `watch` stops startup with a configuration error instead of being ignored.
 
 ---
 

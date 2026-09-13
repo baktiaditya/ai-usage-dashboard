@@ -43,6 +43,51 @@ describe('configuration', () => {
     expect(() => loadConfig({ AUD_RETENTION_DAYS: '0' })).toThrow(ConfigError);
   });
 
+  it('merges AUD_THRESHOLDS over the defaults key by key', () => {
+    const c = loadConfig({
+      AUD_THRESHOLDS: JSON.stringify({
+        quota: { 'codex:secondary': { watchAtOrBelowPercent: 30, switchAtOrBelowPercent: 15 } },
+        balance: { 'deepseek:USD': { watchAtOrBelow: '10', switchAtOrBelow: '2.5' } },
+      }),
+    });
+    expect(c.thresholds.quota['codex:secondary']).toEqual({
+      watchAtOrBelowPercent: 30,
+      switchAtOrBelowPercent: 15,
+    });
+    // Untouched keys keep their shipped defaults.
+    expect(c.thresholds.quota['default']).toEqual({
+      watchAtOrBelowPercent: 20,
+      switchAtOrBelowPercent: 10,
+    });
+    expect(c.thresholds.balance['deepseek:USD']).toEqual({
+      watchAtOrBelow: '10',
+      switchAtOrBelow: '2.5',
+    });
+    expect(c.thresholds.balance['deepseek:CNY']).toEqual({
+      watchAtOrBelow: '35',
+      switchAtOrBelow: '7',
+    });
+  });
+
+  it.each([
+    ['not JSON', '{quota:'],
+    [
+      'switch above watch',
+      '{"quota":{"codex":{"watchAtOrBelowPercent":10,"switchAtOrBelowPercent":20}}}',
+    ],
+    [
+      'a non-decimal amount',
+      '{"balance":{"deepseek:USD":{"watchAtOrBelow":"ten","switchAtOrBelow":"1"}}}',
+    ],
+    [
+      'an unknown provider key',
+      '{"balance":{"acme:USD":{"watchAtOrBelow":"5","switchAtOrBelow":"1"}}}',
+    ],
+    ['an unknown section', '{"quotas":{}}'],
+  ])('rejects a threshold override with %s instead of ignoring it', (_label, raw) => {
+    expect(() => loadConfig({ AUD_THRESHOLDS: raw })).toThrow(ConfigError);
+  });
+
   it('keeps USD and CNY balance thresholds separate', () => {
     const c = loadConfig({});
     expect(c.thresholds.balance['deepseek:USD']).not.toEqual(c.thresholds.balance['deepseek:CNY']);
@@ -113,5 +158,39 @@ describe('calendar boundaries follow the configured timezone', () => {
       new Date('2026-09-12T05:00:00.000Z'),
     );
     expect(start.toISOString()).toBe('2026-09-05T17:00:00.000Z');
+  });
+
+  it('uses the offset in force at local midnight on a DST transition day', () => {
+    // US spring-forward, 2026-03-08: midnight is still EST (UTC-5) though 11:00 is EDT.
+    expect(
+      startOfLocalDayUtc('America/New_York', new Date('2026-03-08T15:00:00.000Z')).toISOString(),
+    ).toBe('2026-03-08T05:00:00.000Z');
+    // US fall-back, 2026-11-01: midnight is still EDT (UTC-4) though 11:00 is EST.
+    expect(
+      startOfLocalDayUtc('America/New_York', new Date('2026-11-01T16:00:00.000Z')).toISOString(),
+    ).toBe('2026-11-01T04:00:00.000Z');
+    // UK spring-forward, 2026-03-29: midnight is GMT, noon is BST.
+    expect(
+      startOfLocalDayUtc('Europe/London', new Date('2026-03-29T12:00:00.000Z')).toISOString(),
+    ).toBe('2026-03-29T00:00:00.000Z');
+  });
+
+  it('walks back calendar days, not 24-hour blocks, across a DST transition', () => {
+    // From 2026-03-09 (EDT), one local day back is 2026-03-08 00:00 EST.
+    expect(
+      startOfLocalDayNDaysAgoUtc(
+        'America/New_York',
+        1,
+        new Date('2026-03-09T15:00:00.000Z'),
+      ).toISOString(),
+    ).toBe('2026-03-08T05:00:00.000Z');
+    // Seven days back from 2026-03-12 lands before the transition, in EST.
+    expect(
+      startOfLocalDayNDaysAgoUtc(
+        'America/New_York',
+        7,
+        new Date('2026-03-12T15:00:00.000Z'),
+      ).toISOString(),
+    ).toBe('2026-03-05T05:00:00.000Z');
   });
 });

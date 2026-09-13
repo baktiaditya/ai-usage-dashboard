@@ -7,7 +7,7 @@
  * readers never block the writer, and a writer that arrives mid-transaction
  * waits instead of failing with SQLITE_BUSY.
  */
-import { chmodSync, existsSync, mkdirSync } from 'node:fs';
+import { chmodSync, closeSync, existsSync, mkdirSync, openSync } from 'node:fs';
 import { dirname } from 'node:path';
 import Database from 'better-sqlite3';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
@@ -26,31 +26,34 @@ const BUSY_TIMEOUT_MS = 5000;
  * code path works in the bundled Next.js server, in the tsx CLI, and in Vitest.
  */
 export function runMigrations(sqlite: Database.Database): number {
-  sqlite.exec(
-    'CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL) STRICT',
-  );
-  const applied = new Set(
-    sqlite
-      .prepare('SELECT version FROM schema_migrations')
-      .all()
-      .map((r) => (r as { version: number }).version),
-  );
+  // The web server and the collector can open a fresh database at the same
+  // moment. Reading the applied set outside a write lock lets both see it empty
+  // and both run the same DDL. `BEGIN IMMEDIATE` takes the write lock before
+  // the read, so the second process waits out `busy_timeout`, re-reads, and
+  // finds nothing left to do. The pending set lands together or not at all.
+  const migrate = sqlite.transaction(() => {
+    sqlite.exec(
+      'CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL) STRICT',
+    );
+    const applied = new Set(
+      sqlite
+        .prepare('SELECT version FROM schema_migrations')
+        .all()
+        .map((r) => (r as { version: number }).version),
+    );
 
-  let count = 0;
-  for (const migration of [...MIGRATIONS].sort((a, b) => a.version - b.version)) {
-    if (applied.has(migration.version)) continue;
-
-    // Each migration is atomic: either the whole file lands or none of it does.
-    const tx = sqlite.transaction(() => {
+    let count = 0;
+    for (const migration of [...MIGRATIONS].sort((a, b) => a.version - b.version)) {
+      if (applied.has(migration.version)) continue;
       sqlite.exec(migration.sql);
       sqlite
         .prepare('INSERT OR REPLACE INTO schema_migrations (version, applied_at) VALUES (?, ?)')
         .run(migration.version, new Date().toISOString());
-    });
-    tx();
-    count += 1;
-  }
-  return count;
+      count += 1;
+    }
+    return count;
+  });
+  return migrate.immediate();
 }
 
 export interface OpenDbOptions {
@@ -63,32 +66,70 @@ export interface OpenDbOptions {
 export function openDb(options: OpenDbOptions): Db {
   const { path, readonly = false, migrate = true } = options;
 
-  if (path !== ':memory:') {
+  const onDisk = path !== ':memory:';
+  if (onDisk) {
     const dir = dirname(path);
     mkdirSync(dir, { recursive: true, mode: 0o700 });
+    if (!readonly) ensureOwnerOnly(path);
   }
 
   const sqlite = new Database(path, { readonly });
 
+  // Before anything that can contend for a lock — including the switch to WAL,
+  // which needs an exclusive one on a fresh file — so a second opener waits
+  // instead of failing with "database is locked".
+  sqlite.pragma(`busy_timeout = ${BUSY_TIMEOUT_MS}`);
   // WAL survives across connections; setting it on a readonly handle fails, so
   // only the writer configures it.
   if (!readonly) {
-    sqlite.pragma('journal_mode = WAL');
+    enableWal(sqlite);
     sqlite.pragma('synchronous = NORMAL');
   }
-  sqlite.pragma(`busy_timeout = ${BUSY_TIMEOUT_MS}`);
   sqlite.pragma('foreign_keys = ON');
 
   if (migrate && !readonly) {
     runMigrations(sqlite);
-    if (path !== ':memory:' && existsSync(path)) {
-      // The database holds no secrets by design, but it does hold usage
-      // history; keep it owner-only regardless.
-      chmodSync(path, 0o600);
-    }
   }
 
   return drizzle(sqlite, { schema }) as Db;
+}
+
+/**
+ * Switch to WAL, waiting out a concurrent opener.
+ *
+ * Converting a fresh file to WAL needs an exclusive lock, and SQLite answers
+ * `SQLITE_BUSY` on that path without consulting `busy_timeout`. When the web
+ * server and the collector open a new database together, one of them would
+ * fail outright; retrying for the same budget gives it the wait it expected.
+ */
+function enableWal(sqlite: Database.Database): void {
+  const deadline = Date.now() + BUSY_TIMEOUT_MS;
+  for (;;) {
+    try {
+      sqlite.pragma('journal_mode = WAL');
+      return;
+    } catch (err) {
+      const busy = (err as { code?: string }).code?.startsWith('SQLITE_BUSY') ?? false;
+      if (!busy || Date.now() >= deadline) throw err;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25);
+    }
+  }
+}
+
+/**
+ * Keep the database and its WAL/SHM sidecars owner-only.
+ *
+ * The database holds no secrets by design, but it does hold usage history.
+ * SQLite creates `-wal` and `-shm` with the *main file's* permissions, so the
+ * main file is created `0600` before SQLite ever opens it; chmod'ing it
+ * afterwards would leave sidecars already created under a permissive umask
+ * world-readable. Existing files from an older install are tightened too.
+ */
+function ensureOwnerOnly(path: string): void {
+  closeSync(openSync(path, 'a', 0o600));
+  for (const file of [path, `${path}-wal`, `${path}-shm`]) {
+    if (existsSync(file)) chmodSync(file, 0o600);
+  }
 }
 
 let shared: Db | null = null;

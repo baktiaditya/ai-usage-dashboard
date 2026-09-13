@@ -1,5 +1,29 @@
 # Bundle Update Log
 
+## 2026-09-13
+
+- **Update**: fixes for the fifteen confirmed PR #1 review findings change
+  several operator-facing facts, now in [Setup](operations/SETUP.md):
+  - The collector environment file is loaded by every entry point (`npm run collect`, `npm run test:live`, and the dashboard's manual refresh), not only
+    by the systemd unit. `AUD_ENV_FILE` overrides the path, and exported shell
+    variables take precedence. The provisioning brief's steps therefore work as
+    written.
+  - The generated unit bakes a `PATH` that covers the `node` and `codex`
+    directories, and makes `CODEX_HOME` writable. Before this, the unit was
+    live-verified to fail: `codex` was not found without `PATH`, and
+    `codex app-server` exited early under `ProtectHome=read-only`.
+  - `npm run dev` and `npm run start` bind to `AUD_HOST`/`AUD_PORT` through
+    `scripts/next.ts`, the same source the refresh origin guard reads.
+  - `AUD_THRESHOLDS` overrides advisory thresholds per provider, window, or
+    currency.
+
+- **Decision**: `quota_windows.used_percent` stores the source value unclamped
+  (migration `0001` rebuilds the table without its 0–100 `CHECK`), matching the
+  [plan](plan/AI_Usage_Dashboard_Implementation_Plan.md): only the derived
+  remaining percentage is clamped, at presentation time. "Latest" snapshot and
+  attempt are selected by observation and start time, not by row id, so an
+  overlapping run that persists last cannot replace newer data.
+
 ## 2026-09-12
 
 - **Update**: `AGENTS.md` step 1 gains a semantic-search obligation. The

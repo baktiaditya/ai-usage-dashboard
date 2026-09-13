@@ -221,7 +221,22 @@ export function buildCreditHistory(
   const baseByCurrency = new Map(baseline.map((b) => [b.currency, pick(b)]));
 
   const latestByCurrency = new Map<string, MoneyString | null>();
-  for (const r of rows) latestByCurrency.set(r.currency, pick(r));
+  // For a cumulative counter, only an increase is possible in normal operation;
+  // any decrease between two consecutive readings means the counter restarted
+  // upstream. Comparing only the endpoints would miss a reset that has already
+  // climbed back above the baseline (10 → 80 → 5 → 20 reads as "+10").
+  const resetByCurrency = new Set<string>();
+  const previousByCurrency = new Map(baseByCurrency);
+  for (const r of rows) {
+    const value = pick(r);
+    latestByCurrency.set(r.currency, value);
+    if (value === null) continue;
+    const previous = previousByCurrency.get(r.currency) ?? null;
+    if (metric === 'usage_delta' && previous !== null && compareMoney(value, previous) < 0) {
+      resetByCurrency.add(r.currency);
+    }
+    previousByCurrency.set(r.currency, value);
+  }
 
   const deltas: CreditDelta[] = [...latestByCurrency.entries()].map(([currency, to]) => {
     const from = baseByCurrency.get(currency) ?? null;
@@ -229,9 +244,7 @@ export function buildCreditHistory(
       return { currency, change: null, from, to, discontinuity: false };
     }
     const change = subtractMoney(to, from);
-    // For a cumulative counter, only an increase is possible in normal
-    // operation; a decrease means the counter restarted upstream.
-    const discontinuity = metric === 'usage_delta' && compareMoney(to, from) < 0;
+    const discontinuity = resetByCurrency.has(currency);
     return {
       currency,
       change: discontinuity ? null : change,
