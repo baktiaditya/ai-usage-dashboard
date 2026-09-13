@@ -16,9 +16,8 @@
 import { join, resolve } from 'node:path';
 import { getConfig } from '../src/lib/config';
 import { backupDatabase, backupStamp } from '../src/lib/db/backup';
+import { displayPath } from '../src/lib/paths';
 import { safeErrorMessage } from '../src/lib/redact';
-
-const home = (path: string) => path.replace(process.env['HOME'] ?? '~', '~');
 
 async function main(): Promise<number> {
   const args = process.argv.slice(2);
@@ -42,7 +41,9 @@ async function main(): Promise<number> {
 
   try {
     const summary = await backupDatabase(config.databasePath, destination);
-    process.stdout.write(`${JSON.stringify({ backup: home(destination), ...summary }, null, 2)}\n`);
+    process.stdout.write(
+      `${JSON.stringify({ backup: displayPath(destination), ...summary }, null, 2)}\n`,
+    );
     return 0;
   } catch (err) {
     process.stderr.write(`backup failed: ${safeErrorMessage(err)}\n`);

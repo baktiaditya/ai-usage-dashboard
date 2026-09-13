@@ -26,6 +26,20 @@ export function userPath(name: string, raw: string, home: string = homedir()): s
   );
 }
 
+/**
+ * A path as a person should read it: `<home>/x` becomes `~/x`.
+ *
+ * Only a whole leading home directory is shortened. `/mnt/backup/home/you` and
+ * `/home/youngster` stay as they are, and nothing is shortened when the home
+ * directory is empty or `/`, where every path would otherwise gain a `~`.
+ */
+export function displayPath(path: string, home: string = homedir()): string {
+  const base = home.replace(/\/+$/, '');
+  if (base === '') return path;
+  if (path === base) return '~';
+  return path.startsWith(`${base}/`) ? `~${path.slice(base.length)}` : path;
+}
+
 /** An XDG base directory, or `fallback` when unset or relative, as the XDG spec requires. */
 export function xdgBaseDir(raw: string | undefined, fallback: string): string {
   const value = raw?.trim();

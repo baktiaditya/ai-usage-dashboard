@@ -8,6 +8,7 @@
  */
 import { getConfig } from '../src/lib/config';
 import { openDb } from '../src/lib/db/client';
+import { displayPath } from '../src/lib/paths';
 import { safeErrorMessage } from '../src/lib/redact';
 
 function main(): number {
@@ -38,7 +39,7 @@ function main(): number {
     process.stdout.write(
       `${JSON.stringify(
         {
-          database: config.databasePath.replace(process.env['HOME'] ?? '~', '~'),
+          database: displayPath(config.databasePath),
           journalMode,
           migrations: applied.map((m) => m.version),
           tables: tables.map((t) => t.name),

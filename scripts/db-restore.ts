@@ -18,9 +18,8 @@
 import { resolve } from 'node:path';
 import { getConfig } from '../src/lib/config';
 import { restoreDatabase } from '../src/lib/db/backup';
+import { displayPath } from '../src/lib/paths';
 import { safeErrorMessage } from '../src/lib/redact';
-
-const home = (path: string) => path.replace(process.env['HOME'] ?? '~', '~');
 
 function main(): number {
   const args = process.argv.slice(2);
@@ -46,12 +45,12 @@ function main(): number {
     process.stdout.write(
       `${JSON.stringify(
         {
-          restored: home(config.databasePath),
-          from: home(source),
+          restored: displayPath(config.databasePath),
+          from: displayPath(source),
           schemaVersion: result.schemaVersion,
           migrated: result.migrated,
           runs: result.runs,
-          previous: result.previous === null ? null : home(result.previous),
+          previous: result.previous === null ? null : displayPath(result.previous),
         },
         null,
         2,
