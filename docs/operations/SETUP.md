@@ -458,6 +458,18 @@ systemctl --user cat ai-usage-dashboard-collector.service
 journalctl --user -u ai-usage-dashboard-collector.service -n 50
 ```
 
+**The dashboard says "database disk image is malformed"** — check the file on
+disk first. `npm run db:backup` verifies the copy it writes, so a backup that
+succeeds means the database is intact. Then the web server has lost track of the
+database's WAL, a bug in builds before 2026-09-14. Rebuild and restart it:
+
+```bash
+npm run build
+systemctl --user restart ai-usage-dashboard-web.service
+```
+
+If the backup fails its integrity check, restore an earlier backup (§1).
+
 **`npm install` warns about install scripts** — `better-sqlite3` compiles a
 native module. Approve it with `npm approve-scripts better-sqlite3`.
 

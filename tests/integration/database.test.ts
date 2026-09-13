@@ -1,5 +1,5 @@
-import { execFile } from 'node:child_process';
-import { mkdtempSync, rmSync, statSync } from 'node:fs';
+import { execFile, execFileSync } from 'node:child_process';
+import { existsSync, mkdtempSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -210,6 +210,38 @@ describe('migrations', () => {
       db.$client.close();
     } finally {
       process.umask(previous);
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("never releases an open connection's locks by opening the database again in the same process", () => {
+    // SQLite's POSIX locks belong to the process, and closing any descriptor on
+    // the file drops them. The Next.js server opens the database from more than
+    // one bundle. Before the fix, that second open let the next collector to
+    // close delete the WAL the first connection still used, and the server went
+    // on reading a stale database until it reported it malformed.
+    const dir = mkdtempSync(join(tmpdir(), 'aud-locks-'));
+    const path = join(dir, 'usage.db');
+    const driver = JSON.stringify(join(process.cwd(), 'node_modules', 'better-sqlite3'));
+    const collector = `
+      const db = new (require(${driver}))(process.argv[1]);
+      db.pragma('busy_timeout = 5000');
+      db.prepare("INSERT INTO collector_runs (trigger, started_at) VALUES ('scheduled', ?)")
+        .run(new Date().toISOString());
+      db.close();`;
+    const web = openDb({ path });
+    const runs = () => web.$client.prepare('SELECT COUNT(*) FROM collector_runs').pluck().get();
+    let again: Db | undefined;
+    try {
+      expect(runs()).toBe(0);
+      again = openDb({ path });
+      for (let i = 0; i < 3; i++) execFileSync(process.execPath, ['-e', collector, path]);
+
+      expect(existsSync(`${path}-wal`)).toBe(true);
+      expect(runs()).toBe(3);
+    } finally {
+      again?.$client.close();
+      web.$client.close();
       rmSync(dir, { recursive: true, force: true });
     }
   });

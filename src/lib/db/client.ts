@@ -124,9 +124,22 @@ function enableWal(sqlite: Database.Database): void {
  * main file is created `0600` before SQLite ever opens it; chmod'ing it
  * afterwards would leave sidecars already created under a permissive umask
  * world-readable. Existing files from an older install are tightened too.
+ *
+ * An existing database file is never opened here, only created when absent.
+ * SQLite's locks are POSIX advisory locks, which belong to the process, and
+ * closing *any* descriptor on the file releases all of them. The Next.js server
+ * bundles this module more than once, so a second `openDb` in a process that
+ * already holds a connection would drop that connection's locks. The next
+ * collector to close would then believe it was the last connection,
+ * checkpoint, and delete the WAL and SHM the server is still using, and the
+ * server would read a stale database until it reported it malformed.
  */
 function ensureOwnerOnly(path: string): void {
-  closeSync(openSync(path, 'a', 0o600));
+  try {
+    closeSync(openSync(path, 'wx', 0o600));
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
+  }
   for (const file of [path, `${path}-wal`, `${path}-shm`]) {
     if (existsSync(file)) chmodSync(file, 0o600);
   }

@@ -2,6 +2,17 @@
 
 ## 2026-09-14
 
+- **Update**: the web server could lose its database locks. Next.js bundles
+  the database client into several server chunks, so the page and the API
+  routes each open a connection in one process. Every `openDb` also opened and
+  closed a descriptor on the database file, and that close releases every
+  POSIX lock the process holds on the file. The next collector to close then
+  believed it was the last connection and deleted the WAL and SHM the server
+  still used. The dashboard reported `database disk image is malformed` while
+  the file on disk passed `integrity_check`. `ensureOwnerOnly` now only creates
+  the file and never opens an existing one. A server built before the fix
+  recovers with a rebuild and a restart ([Setup](operations/SETUP.md) §10).
+
 - **Update**: `npm run db:backup` and `npm run db:restore` supply the backup and
   restore tests that plan M6 requires and a PR review found missing.
   - Backup uses SQLite's online backup API, so it captures rows still in the
