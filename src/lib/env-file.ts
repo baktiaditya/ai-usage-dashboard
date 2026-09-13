@@ -2,11 +2,11 @@
  * The collector environment file.
  *
  * Provider keys live in one file outside the repository
- * (`~/.config/ai-usage-dashboard/collector.env`, mode `0600`). The systemd unit
- * reads it through `EnvironmentFile=`, but every other entry point — `npm run
- * collect`, `npm run test:live`, and the web server's manual refresh — is a
- * collector too. Loading the same file here keeps all of them on one credential
- * source, so a key that works for the timer also works for a manual refresh.
+ * (`~/.config/ai-usage-dashboard/collector.env`, mode `0600`). Every entry
+ * point — the systemd unit, `npm run collect`, `npm run test:live`, and the web
+ * server's manual refresh — loads it here, so they share one credential source
+ * and one parser. The unit uses no `EnvironmentFile=`: that would let the file
+ * override the data directory and interval the installer baked into it.
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';

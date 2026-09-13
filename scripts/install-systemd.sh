@@ -17,9 +17,6 @@ set -euo pipefail
 WORKDIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 UNIT_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
 GEN_DIR="$WORKDIR/systemd/generated"
-DATA_DIR="${AUD_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/ai-usage-dashboard}"
-ENV_FILE="${AUD_ENV_FILE:-${XDG_CONFIG_HOME:-$HOME/.config}/ai-usage-dashboard/collector.env}"
-INTERVAL="${AUD_COLLECT_INTERVAL_MINUTES:-5}"
 
 SERVICE="ai-usage-dashboard-collector.service"
 TIMER="ai-usage-dashboard-collector.timer"
@@ -91,6 +88,17 @@ fi
 SERVICE_PATH="$SERVICE_PATH:/usr/local/bin:/usr/bin:/bin"
 CODEX_HOME_DIR="${CODEX_HOME:-$HOME/.codex}"
 
+# --- resolve collector settings ---------------------------------------------
+# The data directory and interval come from the collector's own configuration
+# (shell exports, then collector.env, then defaults), not from this shell alone.
+# A value set only in collector.env would otherwise leave the sandbox writable
+# at one path while the collector writes to another.
+if ! RESOLVED="$("$NODE_BIN" "$TSX_BIN" "$WORKDIR/scripts/print-collector-config.ts")"; then
+  echo "could not resolve the collector configuration; nothing was rendered" >&2
+  exit 1
+fi
+{ read -r ENV_FILE; read -r DATA_DIR; read -r INTERVAL; } <<<"$RESOLVED"
+
 mkdir -p "$GEN_DIR" "$DATA_DIR"
 chmod 0700 "$DATA_DIR"
 
@@ -119,6 +127,7 @@ if [[ $do_install -eq 0 ]]; then
   cat <<EOF
 
 Nothing was installed (render-only is the default).
+Data directory: $DATA_DIR (every ${INTERVAL}m)
 
 Review the files above, then:
   scripts/install-systemd.sh --install          # copy into $UNIT_DIR
@@ -151,6 +160,7 @@ if [[ $do_enable -eq 1 ]]; then
   echo
   echo "Enabled and started $TIMER (every ${INTERVAL}m)."
   echo "Linger keeps it running after logout: loginctl enable-linger \$USER"
+  echo "Re-run this installer after changing AUD_DATA_DIR or AUD_COLLECT_INTERVAL_MINUTES."
   systemctl --user list-timers "$TIMER" --no-pager || true
 else
   cat <<EOF

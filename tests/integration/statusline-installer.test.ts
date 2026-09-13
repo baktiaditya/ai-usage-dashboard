@@ -185,6 +185,30 @@ describe('the installer never destroys existing configuration', () => {
     expect(readSettings()['statusLine']).toEqual({ type: 'command', command: original });
   });
 
+  it('keeps padding and custom fields through wrap, refresh, and uninstall', () => {
+    const original = {
+      type: 'command',
+      command: 'my-own-script.sh',
+      padding: 7,
+      customField: { keep: true },
+    };
+    writeFileSync(settings, JSON.stringify({ statusLine: original }));
+
+    expect(run(['--apply', '--wrap-existing']).status).toBe(0);
+    const wrapped = readSettings()['statusLine'] as Record<string, unknown>;
+    expect(wrapped['padding']).toBe(7);
+    expect(wrapped['customField']).toEqual({ keep: true });
+
+    // A plain re-run refreshes the bridge without losing what it wraps.
+    expect(run(['--apply']).status).toBe(0);
+    expect((readSettings()['statusLine'] as { command: string }).command).toContain(
+      'AUD_WRAPPED_CMD=',
+    );
+
+    expect(run(['--uninstall', '--apply']).status).toBe(0);
+    expect(readSettings()['statusLine']).toEqual(original);
+  });
+
   it('removes only its own installation on uninstall', () => {
     writeFileSync(settings, JSON.stringify({ model: 'opus' }));
     run(['--apply']);

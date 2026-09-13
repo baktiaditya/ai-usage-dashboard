@@ -87,18 +87,52 @@ function offsetAt(timezone: string, at: Date): number {
   return localParts(timezone, new Date(whole)).wallClockAsUtc - whole;
 }
 
+const HOUR_MS = 3_600_000;
+
+function dateKey(date: LocalDate): number {
+  return date.year * 10_000 + date.month * 100 + date.day;
+}
+
 /**
- * The UTC instant of 00:00 on a local calendar date.
+ * The first UTC instant whose local calendar date is `date`.
+ *
+ * Usually 00:00, but not when a transition skips midnight itself (Havana,
+ * Santiago and the Azores spring forward from 00:00 to 01:00): then the day
+ * begins at the transition. Every zone offset lies within ±14h, so the local
+ * date is still the previous one 15h before UTC midnight and already reached
+ * 15h after it; a binary search at one-second resolution — transitions fall on
+ * whole seconds — finds the boundary exactly.
+ */
+function firstInstantOfLocalDate(timezone: string, date: LocalDate, midnightAsUtc: number): Date {
+  const target = dateKey(date);
+  let before = midnightAsUtc - 15 * HOUR_MS;
+  let reached = midnightAsUtc + 15 * HOUR_MS;
+  while (reached - before > 1000) {
+    const mid = Math.floor((before + reached) / 2000) * 1000;
+    if (dateKey(localParts(timezone, new Date(mid))) >= target) reached = mid;
+    else before = mid;
+  }
+  return new Date(reached);
+}
+
+/**
+ * The UTC instant at which a local calendar date begins.
  *
  * The offset must be the one in force *at that midnight*, not at the moment of
  * the query: on a DST transition day they differ by an hour. The first guess
  * uses the offset at UTC midnight of the same date; one refinement with the
- * offset at the guessed instant settles it on either side of a transition.
+ * offset at the guessed instant settles it on either side of a transition. If
+ * the result does not read 00:00 on that date, midnight does not exist there
+ * and the day starts at the transition instead.
  */
 function localMidnightUtc(timezone: string, date: LocalDate): Date {
   const midnightAsUtc = Date.UTC(date.year, date.month - 1, date.day);
   const guess = midnightAsUtc - offsetAt(timezone, new Date(midnightAsUtc));
-  return new Date(midnightAsUtc - offsetAt(timezone, new Date(guess)));
+  const refined = midnightAsUtc - offsetAt(timezone, new Date(guess));
+  if (localParts(timezone, new Date(refined)).wallClockAsUtc === midnightAsUtc) {
+    return new Date(refined);
+  }
+  return firstInstantOfLocalDate(timezone, date, midnightAsUtc);
 }
 
 /**

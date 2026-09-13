@@ -20,9 +20,15 @@ ExecStart=__NODE__ __TSX__ __WORKDIR__/scripts/collect.ts
 Environment=PATH=__PATH__
 Environment=CODEX_HOME=__CODEXHOME__
 
-# Credentials live outside the repository. `-` means "start anyway if absent",
-# which is what keeps the dashboard useful before any key is provisioned.
-EnvironmentFile=-__ENVFILE__
+# Resolved by the installer with the collector's own precedence, so the timer,
+# the writable data path below, and the collector agree. There is deliberately
+# no `EnvironmentFile=`: systemd would let the file override these values. The
+# collector loads the credential file itself and fills only unset variables,
+# which keeps these authoritative. An absent file is fine: DeepSeek and
+# OpenRouter then report "unavailable".
+Environment="AUD_ENV_FILE=__ENVFILE__"
+Environment="AUD_DATA_DIR=__DATADIR__"
+Environment=AUD_COLLECT_INTERVAL_MINUTES=__INTERVAL__
 
 # Never let a hung provider hold a slot; the collector's own per-adapter
 # timeouts are shorter, so reaching this is already an anomaly.

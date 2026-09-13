@@ -115,7 +115,9 @@ function main(): number {
       return 0;
     }
     backup(path);
-    if (restored) settings['statusLine'] = { type: 'command', command: restored };
+    // Only `command` was ever replaced, so only `command` is handed back: the
+    // user's padding and any other field they set come back with it.
+    if (restored) settings['statusLine'] = { ...existing, type: 'command', command: restored };
     else delete settings['statusLine'];
     writeSettings(path, settings);
     process.stdout.write(
@@ -126,9 +128,20 @@ function main(): number {
     return 0;
   }
 
-  const wrapped = wrapExisting && !alreadyOurs ? existingCommand : null;
+  // Refreshing our own installation carries its wrapped command forward;
+  // otherwise a re-run would silently drop the status line it composes with.
+  const wrapped = alreadyOurs
+    ? existingCommand && wrappedCommandOf(existingCommand)
+    : wrapExisting
+      ? existingCommand
+      : null;
   const command = buildCommand(config.spoolPath, wrapped);
-  const desired: StatusLineConfig = { type: 'command', command, padding: 0 };
+  // Wrapping or refreshing replaces only `command`, keeping the configured
+  // padding and any other field. A fresh install renders flush.
+  const desired: StatusLineConfig =
+    existing && (wrapped || alreadyOurs)
+      ? { ...existing, type: 'command', command }
+      : { type: 'command', command, padding: 0 };
 
   if (printOnly) {
     process.stdout.write(`${JSON.stringify({ statusLine: desired }, null, 2)}\n`);

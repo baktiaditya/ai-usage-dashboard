@@ -2,6 +2,26 @@
 
 ## 2026-09-13
 
+- **Update**: fixes for the second review of PR #1 change these facts in
+  [Setup](operations/SETUP.md):
+  - The collector unit has no `EnvironmentFile=`. The installer resolves the
+    environment file, data directory, and interval through the collector's own
+    configuration and bakes them in as `Environment=` values. The collector reads
+    `collector.env` itself and fills only unset variables. Before this, a data
+    directory set only in `collector.env` sent the collector's writes outside the
+    unit's `ReadWritePaths`, because systemd lets `EnvironmentFile=` override
+    `Environment=`.
+  - `npm run dev` and `npm run start` refuse a passed-through `--hostname` or
+    `--port`, because `next` keeps the last value and would bypass the loopback
+    check.
+  - `npm run test:e2e` builds before serving, so a clean checkout never tests a
+    missing or stale `.next`.
+
+- **Decision**: a local day starts at its first instant, not necessarily at
+  00:00. Where a transition skips midnight (Havana, Santiago, the Azores), the
+  day begins at the transition. A sweep of every IANA zone across 2026–2027
+  confirms the boundary on all transition days.
+
 - **Update**: fixes for the fifteen confirmed PR #1 review findings change
   several operator-facing facts, now in [Setup](operations/SETUP.md):
   - The collector environment file is loaded by every entry point (`npm run collect`, `npm run test:live`, and the dashboard's manual refresh), not only

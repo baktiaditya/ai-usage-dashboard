@@ -141,10 +141,11 @@ DEEPSEEK_API_KEY=...
 OPENROUTER_MANAGEMENT_KEY=...
 ```
 
-The systemd unit reads this file through `EnvironmentFile=`. Every other entry
-point loads the same file itself: `npm run collect`, `npm run test:live`, and
-the dashboard's manual refresh. A variable already exported in your shell
-takes precedence over the file. Set `AUD_ENV_FILE` to use a different path.
+Every entry point loads this file itself: the systemd collector, `npm run
+collect`, `npm run test:live`, and the dashboard's manual refresh. A variable
+already set takes precedence over the file — an export in your shell, or a value
+the installer baked into the unit (§5). Set `AUD_ENV_FILE` to use a different
+path.
 
 ### OpenRouter needs a _Management_ key
 
@@ -211,6 +212,13 @@ app-server` exits early when `~/.codex` is read-only, hence the second writable
 path. Re-run the installer after switching Node versions with nvm. The timer uses `Persistent=true` so one missed run
 is caught up after a reboot rather than leaving the dashboard stale for a full
 interval.
+
+The installer resolves the environment file, `AUD_DATA_DIR`, and
+`AUD_COLLECT_INTERVAL_MINUTES` the way the collector does — shell exports, then
+`collector.env`, then defaults — and bakes them into the unit, so the writable
+path, the timer, and the collector cannot point at different places. An invalid
+value stops the installer before anything is rendered. **Re-run the installer
+after changing either setting**, in the shell or in `collector.env`.
 
 **Exit codes:** `0` every provider was success or unavailable; `1` at least one
 provider errored (the run still persisted everything else); `2` the run could
@@ -356,8 +364,9 @@ credits endpoint needs a Management key.
 the key. A user systemd service does not inherit your shell environment; put it
 in `~/.config/ai-usage-dashboard/collector.env`.
 
-**The timer runs but nothing updates** — check `EnvironmentFile` resolved and the
-service can write the data directory:
+**The timer runs but nothing updates** — check that the unit's `AUD_DATA_DIR`
+matches its `ReadWritePaths` and the directory the dashboard reads (re-run the
+installer after changing it):
 
 ```bash
 systemctl --user cat ai-usage-dashboard-collector.service

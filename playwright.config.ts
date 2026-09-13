@@ -28,13 +28,14 @@ export default defineConfig({
     { name: 'mobile', use: { ...devices['Pixel 7'] } },
   ],
   webServer: {
-    // Seed, then serve the production build through `npm run start`, which binds
-    // to AUD_PORT — the path that keeps the refresh origin guard and the server
-    // on the same port.
-    command: 'npm run seed:demo && npm run start',
+    // Build, seed, then serve through `npm run start`, which binds to AUD_PORT —
+    // the path that keeps the refresh origin guard and the server on the same
+    // port. The build is part of the command so a clean checkout never runs
+    // against a missing or stale `.next`.
+    command: 'npm run build && npm run seed:demo && npm run start',
     url: `http://127.0.0.1:${PORT}`,
     reuseExistingServer: false,
-    timeout: 120_000,
+    timeout: 300_000,
     env: {
       AUD_DATA_DIR: DATA_DIR,
       // Never merge a provisioned ~/.config/ai-usage-dashboard/collector.env.

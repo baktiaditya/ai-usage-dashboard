@@ -175,6 +175,33 @@ describe('calendar boundaries follow the configured timezone', () => {
     ).toBe('2026-03-29T00:00:00.000Z');
   });
 
+  it('starts the day at the transition when a zone skips midnight itself', () => {
+    // Havana springs forward 00:00 CST -> 01:00 CDT: 04:00Z would be 23:00 the day before.
+    expect(
+      startOfLocalDayUtc('America/Havana', new Date('2026-03-08T15:00:00.000Z')).toISOString(),
+    ).toBe('2026-03-08T05:00:00.000Z');
+    // Azores springs forward 00:00 -01:00 -> 01:00 +00:00.
+    expect(
+      startOfLocalDayUtc('Atlantic/Azores', new Date('2026-03-29T12:00:00.000Z')).toISOString(),
+    ).toBe('2026-03-29T01:00:00.000Z');
+    // Santiago springs forward 00:00 -04:00 -> 01:00 -03:00.
+    expect(
+      startOfLocalDayUtc('America/Santiago', new Date('2026-09-06T15:00:00.000Z')).toISOString(),
+    ).toBe('2026-09-06T04:00:00.000Z');
+    // Santiago falls back 00:00 -03:00 -> 23:00 -04:00: the day's first 00:00 is at 04:00Z.
+    expect(
+      startOfLocalDayUtc('America/Santiago', new Date('2026-04-05T15:00:00.000Z')).toISOString(),
+    ).toBe('2026-04-05T04:00:00.000Z');
+    // The same boundary when reached by walking back from a later day.
+    expect(
+      startOfLocalDayNDaysAgoUtc(
+        'America/Havana',
+        2,
+        new Date('2026-03-10T15:00:00.000Z'),
+      ).toISOString(),
+    ).toBe('2026-03-08T05:00:00.000Z');
+  });
+
   it('walks back calendar days, not 24-hour blocks, across a DST transition', () => {
     // From 2026-03-09 (EDT), one local day back is 2026-03-08 00:00 EST.
     expect(
