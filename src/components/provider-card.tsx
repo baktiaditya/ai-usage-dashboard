@@ -235,55 +235,84 @@ function QuotaWindows({
   timezone: string;
   tone: 'healthy' | 'stale' | 'unavailable' | 'error';
 }) {
-  if (card.windows.length === 0) return null;
+  if (card.windows.length === 0 && card.endedWindows.length === 0) return null;
+
+  // An ended window sits where it always did, shortest window first, so the
+  // "5 hour" row does not jump below "7 day" while it waits for a new window.
+  // The sort is stable: windows of equal length keep the source's order.
+  const rows = [
+    ...card.windows.map((w) => ({ ended: false as const, w })),
+    ...card.endedWindows.map((w) => ({ ended: true as const, w })),
+  ].sort(
+    (a, b) =>
+      (a.w.windowDurationMinutes ?? Number.POSITIVE_INFINITY) -
+      (b.w.windowDurationMinutes ?? Number.POSITIVE_INFINITY),
+  );
 
   // A bucket name only earns its place when two windows would otherwise read
   // the same ("5 hour" in two Codex buckets). With one bucket, or when the
   // bucket is the window itself (Claude's `five_hour`), it just repeats the label.
   const labelCounts = new Map<string, number>();
-  for (const w of card.windows) labelCounts.set(w.label, (labelCounts.get(w.label) ?? 0) + 1);
+  for (const { w } of rows) labelCounts.set(w.label, (labelCounts.get(w.label) ?? 0) + 1);
+
+  const heading = (w: { label: string; bucketId: string }) => (
+    <span className="text-sm font-medium">
+      {w.label}
+      {(labelCounts.get(w.label) ?? 0) > 1 ? (
+        <span className="text-muted-foreground ml-1.5 text-xs font-normal">{w.bucketId}</span>
+      ) : null}
+    </span>
+  );
 
   return (
     <ul className="flex flex-col gap-3">
-      {card.windows.map((w) => (
-        <li
-          key={`${w.bucketId}-${w.windowKind}`}
-          data-testid={`window-${card.provider}-${w.windowKind}`}
-        >
-          <div className="mb-1 flex items-baseline justify-between gap-2">
-            <span className="text-sm font-medium">
-              {w.label}
-              {(labelCounts.get(w.label) ?? 0) > 1 ? (
-                <span className="text-muted-foreground ml-1.5 text-xs font-normal">
-                  {w.bucketId}
-                </span>
-              ) : null}
-            </span>
-            <span className="tabular text-sm font-semibold">
-              {w.remainingPercent.toFixed(1)}%
-              <span className="text-muted-foreground ml-1 text-xs font-normal">left</span>
-            </span>
-          </div>
-          <Progress
-            remainingPercent={w.remainingPercent}
-            tone={tone}
-            label={`${card.label} ${w.label} quota remaining`}
-          />
-          <p className="text-muted-foreground mt-1 flex flex-wrap gap-x-3 text-[11px]">
-            <span className="tabular">used {w.usedPercent.toFixed(1)}%</span>
-            <span>
-              {w.resetsAt === null ? (
-                'reset time unknown'
-              ) : (
-                <>
-                  resets {absoluteTime(w.resetsAt, timezone)}
-                  {w.resetPassed ? ' (already passed)' : ''}
-                </>
-              )}
-            </span>
-          </p>
-        </li>
-      ))}
+      {rows.map((row) =>
+        row.ended ? (
+          <li
+            key={`${row.w.bucketId}-${row.w.windowKind}`}
+            data-testid={`window-ended-${card.provider}-${row.w.windowKind}`}
+          >
+            <div className="mb-1 flex items-baseline justify-between gap-2">
+              {heading(row.w)}
+              <span className="text-muted-foreground text-xs">not started</span>
+            </div>
+            <p className="text-muted-foreground text-[11px]">
+              ended {absoluteTime(row.w.endedAt, timezone)} · no new window reported yet
+            </p>
+          </li>
+        ) : (
+          <li
+            key={`${row.w.bucketId}-${row.w.windowKind}`}
+            data-testid={`window-${card.provider}-${row.w.windowKind}`}
+          >
+            <div className="mb-1 flex items-baseline justify-between gap-2">
+              {heading(row.w)}
+              <span className="tabular text-sm font-semibold">
+                {row.w.remainingPercent.toFixed(1)}%
+                <span className="text-muted-foreground ml-1 text-xs font-normal">left</span>
+              </span>
+            </div>
+            <Progress
+              remainingPercent={row.w.remainingPercent}
+              tone={tone}
+              label={`${card.label} ${row.w.label} quota remaining`}
+            />
+            <p className="text-muted-foreground mt-1 flex flex-wrap gap-x-3 text-[11px]">
+              <span className="tabular">used {row.w.usedPercent.toFixed(1)}%</span>
+              <span>
+                {row.w.resetsAt === null ? (
+                  'reset time unknown'
+                ) : (
+                  <>
+                    resets {absoluteTime(row.w.resetsAt, timezone)}
+                    {row.w.resetPassed ? ' (already passed)' : ''}
+                  </>
+                )}
+              </span>
+            </p>
+          </li>
+        ),
+      )}
     </ul>
   );
 }

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { buildOverview, labelWindow } from '@/lib/queries/overview';
+import { buildOverview, findEndedWindows, labelWindow } from '@/lib/queries/overview';
 import { buildCreditHistory, buildQuotaHistory } from '@/lib/queries/history';
 import { recordAttempt, startRun } from '@/lib/db/repository';
 import type { CreditSnapshot, Provider, QuotaSnapshot } from '@/lib/domain';
@@ -242,6 +242,119 @@ describe('overview', () => {
     expect(json).not.toMatch(/Bearer\s+\S+/);
     expect(json).not.toMatch(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/);
     expect(json).not.toContain('accountId');
+  });
+});
+
+function writeClaude(observedAt: string, windows: QuotaSnapshot['windows']) {
+  const snap: QuotaSnapshot = {
+    kind: 'quota',
+    provider: 'claude',
+    observedAt,
+    collectedAt: observedAt,
+    sourceVersion: 'claude-code/2.1.270',
+    schemaVersion: 1,
+    usageAllowed: null,
+    limitReachedCode: null,
+    sourceEventId: null,
+    windows,
+  };
+  return recordAttempt(t.db, {
+    runId: startRun(t.db, 'scheduled'),
+    provider: 'claude',
+    startedAt: observedAt,
+    finishedAt: observedAt,
+    retryCount: 0,
+    result: { outcome: 'success', snapshot: snap },
+  });
+}
+
+function fiveHour(resetsAt: string) {
+  return {
+    bucketId: 'five_hour',
+    windowKind: 'five_hour',
+    usedPercent: 90,
+    windowDurationMinutes: 300,
+    resetsAt,
+  };
+}
+
+const SEVEN_DAY = {
+  bucketId: 'seven_day',
+  windowKind: 'seven_day',
+  usedPercent: 27,
+  windowDurationMinutes: 10080,
+  resetsAt: '2026-09-15T23:00:00.000Z',
+};
+
+function claudeCard() {
+  return buildOverview(t.db, config, NOW).cards.find((c) => c.provider === 'claude')!;
+}
+
+describe('ended windows', () => {
+  it('lists a window the source dropped at its reset, with no percentage', () => {
+    // Claude Code omits five_hour between a reset and the next window's first request.
+    writeClaude('2026-09-12T11:30:00.000Z', [fiveHour('2026-09-12T11:50:00.000Z'), SEVEN_DAY]);
+    writeClaude('2026-09-12T11:50:01.000Z', [SEVEN_DAY]);
+
+    const card = claudeCard();
+    expect(card.windows.map((w) => w.windowKind)).toEqual(['seven_day']);
+    expect(card.endedWindows).toEqual([
+      {
+        bucketId: 'five_hour',
+        windowKind: 'five_hour',
+        windowDurationMinutes: 300,
+        label: '5 hour',
+        endedAt: '2026-09-12T11:50:00.000Z',
+      },
+    ]);
+    expect(card.endedWindows[0]).not.toHaveProperty('usedPercent');
+  });
+
+  it('stops listing it once the source reports the next window', () => {
+    writeClaude('2026-09-12T11:30:00.000Z', [fiveHour('2026-09-12T11:50:00.000Z'), SEVEN_DAY]);
+    writeClaude('2026-09-12T11:50:01.000Z', [SEVEN_DAY]);
+    writeClaude('2026-09-12T11:52:00.000Z', [fiveHour('2026-09-12T16:50:00.000Z'), SEVEN_DAY]);
+
+    const card = claudeCard();
+    expect(card.windows.map((w) => w.windowKind)).toEqual(['five_hour', 'seven_day']);
+    expect(card.endedWindows).toEqual([]);
+  });
+
+  it('follows the newest observation, not the newest row', () => {
+    // A late-persisted older reading must not hide the gap or invent one.
+    writeClaude('2026-09-12T11:50:01.000Z', [SEVEN_DAY]);
+    writeClaude('2026-09-12T11:30:00.000Z', [fiveHour('2026-09-12T11:50:00.000Z'), SEVEN_DAY]);
+
+    expect(claudeCard().endedWindows.map((w) => w.windowKind)).toEqual(['five_hour']);
+  });
+
+  it('explains only a gap that the reset accounts for', () => {
+    const latest = [SEVEN_DAY];
+    const at = '2026-09-12T11:50:01.000Z';
+
+    // Missing before its reset: the silence is not explained by a reset.
+    expect(findEndedWindows(latest, [fiveHour('2026-09-12T15:00:00.000Z')], at)).toEqual([]);
+    // Gone for longer than its own length: no longer a gap between two windows.
+    expect(findEndedWindows(latest, [fiveHour('2026-09-12T06:50:01.000Z')], at)).toEqual([]);
+    expect(findEndedWindows(latest, [fiveHour('2026-09-12T06:50:02.000Z')], at)).toHaveLength(1);
+    // A reset at the observation instant counts.
+    expect(findEndedWindows(latest, [fiveHour(at)], at)).toHaveLength(1);
+    // No reset time or no known length: nothing to reason from.
+    expect(findEndedWindows(latest, [{ ...fiveHour(at), resetsAt: null }], at)).toEqual([]);
+    expect(
+      findEndedWindows(latest, [{ ...fiveHour(at), windowDurationMinutes: null }], at),
+    ).toEqual([]);
+  });
+
+  it('keeps ended windows out of freshness and of every non-quota card', () => {
+    writeClaude('2026-09-12T11:30:00.000Z', [fiveHour('2026-09-12T11:50:00.000Z'), SEVEN_DAY]);
+    writeClaude('2026-09-12T11:50:01.000Z', [SEVEN_DAY]);
+    writeCredit('openrouter', '2026-09-12T11:58:00.000Z', '100.5', '25.75');
+
+    const cards = buildOverview(t.db, config, NOW).cards;
+    // The dropped window's past reset would otherwise read as a reset with no new observation.
+    expect(cards.find((c) => c.provider === 'claude')!.status).toBe('healthy');
+    expect(cards.find((c) => c.provider === 'openrouter')!.endedWindows).toEqual([]);
   });
 });
 

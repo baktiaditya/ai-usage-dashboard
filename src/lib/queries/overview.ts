@@ -10,7 +10,12 @@ import type { AppConfig } from '../config';
 import type { Advisory, CardStatus, Provider, QuotaWindow, CreditBalance } from '../domain';
 import { PROVIDERS, PROVIDER_KIND, PROVIDER_LABELS } from '../domain';
 import type { Db } from '../db/client';
-import { getLastSuccessAt, getLatestAttempts, getLatestSnapshots } from '../db/repository';
+import {
+  getLastSeenWindows,
+  getLastSuccessAt,
+  getLatestAttempts,
+  getLatestSnapshots,
+} from '../db/repository';
 import { evaluateFreshness, maxAgeMs } from '../freshness';
 import { computeAdvisory } from '../advisory';
 import { ERROR_CODE_HINTS } from '../errors';
@@ -22,6 +27,21 @@ export interface OverviewWindow extends QuotaWindow {
   readonly label: string;
   /** True when this window's reset time is already in the past. */
   readonly resetPassed: boolean;
+}
+
+/**
+ * A window the source reported before but left out of its latest observation,
+ * after that window had already reset. Claude Code does this between a reset
+ * and the first request of the next window. No percentage is carried: the old
+ * reading ended with its window, and the new one does not exist yet.
+ */
+export interface EndedWindow {
+  readonly bucketId: string;
+  readonly windowKind: string;
+  readonly windowDurationMinutes: number | null;
+  readonly label: string;
+  /** When the last reported window reset. */
+  readonly endedAt: string;
 }
 
 export interface ProviderCard {
@@ -41,6 +61,8 @@ export interface ProviderCard {
   readonly schemaVersion: number | null;
   /** Present only for quota providers. */
   readonly windows: readonly OverviewWindow[];
+  /** Quota providers only: windows that reset and have not been reported since. */
+  readonly endedWindows: readonly EndedWindow[];
   /** Present only for credit providers. */
   readonly balances: readonly CreditBalance[];
   readonly usageAllowed: boolean | null;
@@ -94,10 +116,46 @@ export function labelWindow(w: QuotaWindow): string {
   return byKind ?? w.windowKind;
 }
 
+/**
+ * Windows missing from the latest observation because they reset before it.
+ *
+ * A window counts only when its last reading reset at or before the latest
+ * observation and less than one window length earlier. A window gone for longer
+ * than its own length, one without a known length or reset, or one that went
+ * missing before its reset, is left out: the source's silence then says
+ * nothing this card can explain.
+ */
+export function findEndedWindows(
+  latest: readonly QuotaWindow[],
+  lastSeen: readonly QuotaWindow[],
+  observedAt: string,
+): EndedWindow[] {
+  const observedMs = Date.parse(observedAt);
+  const present = new Set(latest.map((w) => `${w.bucketId}\u0000${w.windowKind}`));
+  const ended: EndedWindow[] = [];
+  for (const w of lastSeen) {
+    if (present.has(`${w.bucketId}\u0000${w.windowKind}`)) continue;
+    if (w.resetsAt === null || w.windowDurationMinutes === null) continue;
+    const resetMs = Date.parse(w.resetsAt);
+    if (!(resetMs <= observedMs && resetMs > observedMs - w.windowDurationMinutes * 60_000)) {
+      continue;
+    }
+    ended.push({
+      bucketId: w.bucketId,
+      windowKind: w.windowKind,
+      windowDurationMinutes: w.windowDurationMinutes,
+      label: labelWindow(w),
+      endedAt: w.resetsAt,
+    });
+  }
+  return ended;
+}
+
 export function buildOverview(db: Db, config: AppConfig, now: Date = new Date()): Overview {
   const snapshots = getLatestSnapshots(db);
   const attempts = getLatestAttempts(db);
   const lastSuccess = getLastSuccessAt(db);
+  const lastSeenWindows = getLastSeenWindows(db);
 
   const cards: ProviderCard[] = PROVIDERS.map((provider) => {
     const snapshot = snapshots.get(provider);
@@ -123,6 +181,14 @@ export function buildOverview(db: Db, config: AppConfig, now: Date = new Date())
             resetPassed: w.resetsAt !== null && Date.parse(w.resetsAt) <= now.getTime(),
           }))
         : [];
+    const endedWindows =
+      snapshot?.kind === 'quota'
+        ? findEndedWindows(
+            snapshot.windows,
+            lastSeenWindows.get(provider) ?? [],
+            snapshot.sourceObservedAt,
+          )
+        : [];
 
     return {
       provider,
@@ -138,6 +204,7 @@ export function buildOverview(db: Db, config: AppConfig, now: Date = new Date())
       sourceVersion: snapshot?.sourceVersion ?? null,
       schemaVersion: snapshot?.schemaVersion ?? null,
       windows,
+      endedWindows,
       balances: snapshot?.kind === 'credit' ? snapshot.balances : [],
       usageAllowed: snapshot?.usageAllowed ?? null,
       limitReachedCode: snapshot?.limitReachedCode ?? null,

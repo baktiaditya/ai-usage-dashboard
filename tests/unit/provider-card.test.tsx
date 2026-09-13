@@ -53,6 +53,7 @@ function card(overrides: Partial<ProviderCard> = {}): ProviderCard {
         resetPassed: false,
       },
     ],
+    endedWindows: [],
     balances: [],
     usageAllowed: true,
     limitReachedCode: null,
@@ -154,6 +155,38 @@ describe('quota card', () => {
       }),
     );
     expect(screen.getByText(/already passed/)).toBeInTheDocument();
+  });
+
+  it('keeps a window that reset without a successor in its place, with no percentage', () => {
+    const [, seven] = card().windows;
+    const { container } = renderCard(
+      card({
+        windows: [seven!],
+        endedWindows: [
+          {
+            bucketId: 'codex',
+            windowKind: 'primary',
+            windowDurationMinutes: 300,
+            label: '5 hour',
+            endedAt: '2026-09-12T11:50:00.000Z',
+          },
+        ],
+      }),
+    );
+
+    const ended = screen.getByTestId('window-ended-codex-primary');
+    expect(within(ended).getByText('5 hour')).toBeInTheDocument();
+    expect(within(ended).getByText(/ended .* no new window reported yet/)).toBeInTheDocument();
+    // The old reading ended with its window; showing it would claim a level
+    // the source no longer reports.
+    expect(within(ended).queryByText(/%/)).not.toBeInTheDocument();
+    expect(screen.getAllByRole('progressbar')).toHaveLength(1);
+
+    // Shortest window first, as when both were reported.
+    const order = [...container.querySelectorAll('[data-testid^="window-"]')].map((el) =>
+      el.getAttribute('data-testid'),
+    );
+    expect(order).toEqual(['window-ended-codex-primary', 'window-codex-secondary']);
   });
 });
 

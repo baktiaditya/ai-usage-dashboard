@@ -300,18 +300,18 @@ The MVP may proceed with unavailable adapters, but acceptance for a given provid
 
 ## 9. Top risks and mitigations
 
-| Risk                                      | Mitigation                                                                                                                   |
-| ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| CLI format/protocol changes               | Isolated adapters, per-version fixtures, generated schema at discovery, subset validation, version guards, and `unavailable` |
-| Claude idle or account ineligible         | Event timestamps + stale policy; do not promise realtime polling; show unavailable with a setup hint                         |
-| OpenRouter Management Key leak            | `0600` environment file, process-only access, redaction, never sent to the UI, document administrative privileges            |
-| API rate limits                           | Conservative poll interval, jitter, timeouts, bounded backoff, and last-snapshot cache                                       |
-| Subscription quota mistaken for cost      | Separate quota gauges from money/counters; do not convert to USD                                                             |
-| DeepSeek balance mistaken for usage       | Label balance changes explicitly and do not compute spend without a transaction/usage API                                    |
-| Reset time missing or already passed      | Nullable field; stale status after reset passes with no new observation; show `unknown` when null                            |
-| Money values off due to floating point    | Decimal strings/scaled integers and decimal-safe calculations                                                                |
-| Scheduler and web process writing at once | SQLite WAL, `busy_timeout`, short transactions, dedup keys, and overlap tests                                                |
-| Credential/PII leakage                    | Field allowlists before logging/storage, redaction tests, no raw payloads, localhost binding, and CSRF guards                |
+| Risk                                      | Mitigation                                                                                                                                                                                                                          |
+| ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| CLI format/protocol changes               | Isolated adapters, per-version fixtures, generated schema at discovery, subset validation, version guards, and `unavailable`                                                                                                        |
+| Claude idle or account ineligible         | Event timestamps + stale policy; do not promise realtime polling; show unavailable with a setup hint                                                                                                                                |
+| OpenRouter Management Key leak            | `0600` environment file, process-only access, redaction, never sent to the UI, document administrative privileges                                                                                                                   |
+| API rate limits                           | Conservative poll interval, jitter, timeouts, bounded backoff, and last-snapshot cache                                                                                                                                              |
+| Subscription quota mistaken for cost      | Separate quota gauges from money/counters; do not convert to USD                                                                                                                                                                    |
+| DeepSeek balance mistaken for usage       | Label balance changes explicitly and do not compute spend without a transaction/usage API                                                                                                                                           |
+| Reset time missing or already passed      | Nullable field; stale status after reset passes with no new observation; show `unknown` when null; a window the source stops reporting once it resets stays on the card as ended, with no percentage, for at most one window length |
+| Money values off due to floating point    | Decimal strings/scaled integers and decimal-safe calculations                                                                                                                                                                       |
+| Scheduler and web process writing at once | SQLite WAL, `busy_timeout`, short transactions, dedup keys, and overlap tests                                                                                                                                                       |
+| Credential/PII leakage                    | Field allowlists before logging/storage, redaction tests, no raw payloads, localhost binding, and CSRF guards                                                                                                                       |
 
 ## 10. Out of scope for MVP
 

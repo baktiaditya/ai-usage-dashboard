@@ -265,6 +265,54 @@ export function getLatestSnapshots(db: Db): Map<Provider, StoredSnapshot> {
 }
 
 /**
+ * The newest stored reading of every quota window each provider has ever
+ * reported, one per bucket and kind.
+ *
+ * A source can stop reporting a window without saying why: Claude Code omits
+ * `five_hour` between the moment a window resets and the first request of the
+ * next one. Comparing this against the latest snapshot is how the overview
+ * tells that gap apart from a window that simply does not exist.
+ */
+export function getLastSeenWindows(db: Db): Map<Provider, QuotaWindow[]> {
+  const rows = db.$client
+    .prepare(
+      `SELECT provider, bucket_id, window_kind, used_percent, window_duration_minutes, reset_at
+       FROM (
+         SELECT s.provider, w.bucket_id, w.window_kind, w.used_percent,
+                w.window_duration_minutes, w.reset_at,
+                ROW_NUMBER() OVER (
+                  PARTITION BY s.provider, w.bucket_id, w.window_kind
+                  ORDER BY s.source_observed_at DESC, s.id DESC
+                ) AS rn
+         FROM quota_windows w
+         JOIN provider_snapshots s ON s.id = w.snapshot_id
+       ) WHERE rn = 1`,
+    )
+    .all() as {
+    provider: Provider;
+    bucket_id: string;
+    window_kind: string;
+    used_percent: number;
+    window_duration_minutes: number | null;
+    reset_at: string | null;
+  }[];
+
+  const out = new Map<Provider, QuotaWindow[]>();
+  for (const r of rows) {
+    const list = out.get(r.provider) ?? [];
+    list.push({
+      bucketId: r.bucket_id,
+      windowKind: r.window_kind,
+      usedPercent: r.used_percent,
+      windowDurationMinutes: r.window_duration_minutes,
+      resetsAt: r.reset_at,
+    });
+    out.set(r.provider, list);
+  }
+  return out;
+}
+
+/**
  * Most recent attempt per provider — the basis for the `error` card state.
  *
  * Resolved with a grouped MAX rather than by scanning a fixed slice of recent

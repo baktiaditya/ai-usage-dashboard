@@ -2,6 +2,17 @@
 
 ## 2026-09-14
 
+- **Update**: a quota window no longer vanishes from a card when the source
+  stops reporting it at its reset. Claude Code's status line omits
+  `five_hour` from the moment the window resets until the first request of the
+  next one, and the Claude card then showed only "7 day". The overview now
+  compares the latest snapshot with the newest stored reading of each window.
+  A window whose last reading reset at or before the latest observation, less
+  than one window length earlier, is listed as ended: its label, when it
+  ended, and no percentage, because the old reading ended with its window and
+  the new one does not exist yet. Ended windows feed neither freshness nor the
+  advisory. Plan §9 records the rule.
+
 - **Update**: the web server could lose its database locks. Next.js bundles
   the database client into several server chunks, so the page and the API
   routes each open a connection in one process. Every `openDb` also opened and
