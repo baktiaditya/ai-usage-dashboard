@@ -1,5 +1,22 @@
 # Bundle Update Log
 
+## 2026-09-14
+
+- **Decision**: ad-hoc browser work uses the global `agent-browser` CLI, not the
+  Playwright MCP server. The rule is copied from Kyomi-pos
+  (`agent-guides/testing.md`, "Ad-Hoc Browser Automation") into a new
+  `AGENTS.md` section, because this repository has no `agent-guides/` split. It
+  is adapted in three ways:
+  - The spec lane is `npm run test:e2e`.
+  - The dashboard's default URL is named.
+  - A named `AGENT_BROWSER_SESSION` plus `agent-browser close` is required,
+    because the default session is shared by every agent and conversation on
+    the machine.
+
+  The tool is machine tooling, not a dependency: v0.36.0 on this machine, where
+  `agent-browser doctor --offline --quick` passes. The Playwright e2e lane is
+  unchanged.
+
 ## 2026-09-13
 
 - **Decision**: `AUD_DATA_DIR` and `AUD_ENV_FILE` must be absolute or start

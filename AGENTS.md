@@ -35,6 +35,31 @@ implementation lives in `src/`.
 4. For code review, pin the exact base and head, then corroborate every finding against the direct
    diff and relevant runtime behavior. Graph output is navigation, not defect evidence by itself.
 
+## Browser Automation
+
+For ad-hoc inspection outside the spec lane — the running dashboard, a rendered card or chart, a
+layout at a given viewport — use the global `agent-browser` CLI rather than the Playwright MCP
+server. Its targeted accessibility snapshots keep interaction compact. It is machine tooling, not a
+project dependency; Playwright remains the automated runner behind `npm run test:e2e`.
+
+Work in a named session: the default session is one browser shared by every agent and conversation
+on the machine, and using it can navigate away from a page someone else has open. Start with
+`export AGENT_BROWSER_SESSION="$(agent-browser session id --scope worktree --prefix <task>)"` and
+finish with `agent-browser close`.
+
+Core loop:
+
+1. `agent-browser open <url>` — the dashboard defaults to `http://127.0.0.1:3838/`.
+2. `agent-browser snapshot -i`
+3. `click`, `fill`, or `press` by `@eN` ref.
+4. Re-snapshot after each page change.
+
+Use `agent-browser --help` or `agent-browser skills get core` for other commands, and
+`agent-browser doctor --offline --quick` for installation diagnosis. Linux Chrome sandbox issues can
+involve unprivileged user namespaces; the persistent machine fix lives in
+`/etc/sysctl.d/60-userns.conf`. macOS needs no equivalent. A browser-visible claim needs browser
+evidence.
+
 ## Completion and Git
 
 - Verification must match the risk and the claim. `npm run verify` (format + lint + typecheck +
