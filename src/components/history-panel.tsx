@@ -56,6 +56,7 @@ export function HistoryPanel({ cards, timezone }: HistoryPanelProps) {
   const requestKey = `${provider}:${range}`;
   const [fetched, setFetched] = useState<{
     key: string;
+    provider: typeof provider;
     data: HistoryResult | null;
     error: string | null;
   } | null>(null);
@@ -70,10 +71,10 @@ export function HistoryPanel({ cards, timezone }: HistoryPanelProps) {
         return (await res.json()) as HistoryResult;
       })
       .then((result) => {
-        if (!cancelled) setFetched({ key, data: result, error: null });
+        if (!cancelled) setFetched({ key, provider, data: result, error: null });
       })
       .catch(() => {
-        if (!cancelled) setFetched({ key, data: null, error: 'Could not load history.' });
+        if (!cancelled) setFetched({ key, provider, data: null, error: 'Could not load history.' });
       });
 
     return () => {
@@ -82,10 +83,14 @@ export function HistoryPanel({ cards, timezone }: HistoryPanelProps) {
   }, [provider, range]);
 
   const loading = fetched?.key !== requestKey;
-  const data = loading ? null : (fetched?.data ?? null);
-  const error = loading ? null : (fetched?.error ?? null);
+  // While the next selection loads, the previous result stays on screen, dimmed.
+  // Swapping it for a one-line placeholder collapsed the panel and grew it back,
+  // which shortened the page for a moment and moved the reader's scroll position.
+  const data = fetched?.data ?? null;
+  const error = fetched?.error ?? null;
 
-  const activeCard = cards.find((c) => c.provider === provider);
+  // Labelled by the provider the shown result belongs to, not the one loading.
+  const shownCard = cards.find((c) => c.provider === (fetched?.provider ?? provider));
 
   return (
     <Card data-testid="history-panel">
@@ -134,30 +139,47 @@ export function HistoryPanel({ cards, timezone }: HistoryPanelProps) {
       </CardHeader>
 
       <CardContent>
-        {loading ? (
+        {fetched === null ? (
           <p
             className="text-muted-foreground py-8 text-center text-sm"
             data-testid="history-loading"
           >
             Loading history…
           </p>
-        ) : error ? (
-          <p className="text-danger py-8 text-center text-sm" role="alert">
-            {error}
-          </p>
-        ) : !data ? null : !data.availability.available ? (
-          // Insufficient history is stated, never rendered as a zero line.
-          <div
-            className="border-border text-muted-foreground rounded-lg border border-dashed px-4 py-8 text-center text-sm"
-            data-testid="history-insufficient"
-          >
-            <p className="text-foreground mb-1 font-medium">Insufficient history</p>
-            <p className="mx-auto max-w-prose text-xs">{data.availability.reason}</p>
-          </div>
-        ) : data.metric === 'quota_utilization' ? (
-          <QuotaChart result={data} />
         ) : (
-          <CreditSummary result={data} label={activeCard?.label ?? provider} timezone={timezone} />
+          <div
+            className={cn('transition-opacity', loading && 'pointer-events-none opacity-50')}
+            aria-busy={loading}
+            data-testid="history-content"
+          >
+            {loading && (
+              <p className="sr-only" role="status" data-testid="history-loading">
+                Loading history…
+              </p>
+            )}
+            {error ? (
+              <p className="text-danger py-8 text-center text-sm" role="alert">
+                {error}
+              </p>
+            ) : !data ? null : !data.availability.available ? (
+              // Insufficient history is stated, never rendered as a zero line.
+              <div
+                className="border-border text-muted-foreground rounded-lg border border-dashed px-4 py-8 text-center text-sm"
+                data-testid="history-insufficient"
+              >
+                <p className="text-foreground mb-1 font-medium">Insufficient history</p>
+                <p className="mx-auto max-w-prose text-xs">{data.availability.reason}</p>
+              </div>
+            ) : data.metric === 'quota_utilization' ? (
+              <QuotaChart result={data} />
+            ) : (
+              <CreditSummary
+                result={data}
+                label={shownCard?.label ?? fetched.provider}
+                timezone={timezone}
+              />
+            )}
+          </div>
         )}
       </CardContent>
     </Card>

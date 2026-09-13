@@ -125,6 +125,39 @@ test('history labels DeepSeek movement as balance change, not usage', async ({ p
   await expect(page.getByTestId('history-credit-trend-USD')).toBeVisible();
 });
 
+test('switching history keeps the panel in place while the next selection loads', async ({
+  page,
+}) => {
+  // Before the fix the panel collapsed to a one-line placeholder between tabs,
+  // shortening the page for a moment and moving the reader's scroll position.
+  // The next response is held so that in-between state is observable, and the
+  // shortest the page gets is recorded on every frame.
+  await expect(page.getByTestId('history-quota-chart')).toBeVisible({ timeout: 10_000 });
+  await page.route('**/api/history?provider=claude*', async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    await route.continue();
+  });
+  const before = await page.evaluate(() => document.documentElement.scrollHeight);
+  await page.evaluate(() => {
+    const w = window as unknown as { shortest: number };
+    w.shortest = document.documentElement.scrollHeight;
+    const sample = () => {
+      w.shortest = Math.min(w.shortest, document.documentElement.scrollHeight);
+      requestAnimationFrame(sample);
+    };
+    requestAnimationFrame(sample);
+  });
+
+  await page.getByTestId('history-provider-claude').click();
+  await expect(page.getByTestId('history-content')).toHaveAttribute('aria-busy', 'true');
+  await expect(page.getByTestId('history-insufficient')).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId('history-content')).toHaveAttribute('aria-busy', 'false');
+
+  const after = await page.evaluate(() => document.documentElement.scrollHeight);
+  const shortest = await page.evaluate(() => (window as unknown as { shortest: number }).shortest);
+  expect(shortest).toBeGreaterThanOrEqual(Math.min(before, after));
+});
+
 test('the refresh endpoint rejects a cross-origin POST', async ({ request }) => {
   const res = await request.post('/api/providers/codex/refresh', {
     headers: { origin: 'https://evil.example.com' },
