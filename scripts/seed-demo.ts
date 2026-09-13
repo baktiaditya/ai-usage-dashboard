@@ -17,6 +17,7 @@ import type { Db } from '../src/lib/db/client';
 import type { CreditSnapshot, Provider, ProviderAdapter, QuotaSnapshot } from '../src/lib/domain';
 import type { MoneyString } from '../src/lib/money';
 import { CollectionError } from '../src/lib/errors';
+import { safeErrorMessage } from '../src/lib/redact';
 
 const config = getConfig();
 
@@ -179,6 +180,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((err: unknown) => {
-  process.stderr.write(`seed failed: ${String(err)}\n`);
+  process.stderr.write(`seed failed: ${safeErrorMessage(err)}\n`);
   process.exitCode = 1;
 });

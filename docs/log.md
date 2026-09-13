@@ -2,6 +2,14 @@
 
 ## 2026-09-13
 
+- **Update**: the third review of PR #1 found two standards gaps, now closed:
+  - The status-line installer sets `settings.json` and its backup to `0600`
+    even when they already existed. Before this, `writeFileSync`'s `mode`
+    applied only on creation and `copyFileSync` kept the source mode, so a `0644`
+    file stayed `0644`.
+  - `npm run seed:demo` routes its failure message through the redactor like
+    every other entry point.
+
 - **Update**: fixes for the second review of PR #1 change these facts in
   [Setup](operations/SETUP.md):
   - The collector unit has no `EnvironmentFile=`. The installer resolves the

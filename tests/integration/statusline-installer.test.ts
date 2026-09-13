@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -131,6 +132,18 @@ describe('the installer never destroys existing configuration', () => {
   it('writes settings with restrictive permissions', () => {
     run(['--apply']);
     expect(statSync(settings).mode & 0o777).toBe(0o600);
+  });
+
+  it('tightens an existing permissive settings file and its backup', () => {
+    // `writeFileSync`'s mode only applies on creation, and a copy keeps the source's.
+    writeFileSync(settings, JSON.stringify({ model: 'opus' }), { mode: 0o644 });
+    chmodSync(settings, 0o644);
+    expect(run(['--apply']).status).toBe(0);
+
+    expect(statSync(settings).mode & 0o777).toBe(0o600);
+    const backups = readdirSync(claudeDir).filter((f) => f.startsWith('settings.json.backup-'));
+    expect(backups).toHaveLength(1);
+    expect(statSync(join(claudeDir, backups[0]!)).mode & 0o777).toBe(0o600);
   });
 
   it('refuses to touch a settings file it cannot parse', () => {

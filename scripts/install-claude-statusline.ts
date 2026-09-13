@@ -19,7 +19,14 @@
  *   npm run claude:install-statusline -- --print         # snippet to paste by hand
  *   npm run claude:install-statusline -- --uninstall --apply
  */
-import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { getConfig } from '../src/lib/config';
@@ -214,12 +221,17 @@ function backup(path: string): void {
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
   const dest = `${path}.backup-${stamp}`;
   copyFileSync(path, dest);
+  // `copyFileSync` copies the source's mode, and a backup is as sensitive as the
+  // settings it preserves.
+  chmodSync(dest, 0o600);
   process.stdout.write(`Backed up existing settings to ${dest}\n`);
 }
 
 function writeSettings(path: string, settings: Record<string, unknown>): void {
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, `${JSON.stringify(settings, null, 2)}\n`, { mode: 0o600 });
+  // `mode` applies only when the file is created; tighten one that already existed.
+  chmodSync(path, 0o600);
 }
 
 try {
