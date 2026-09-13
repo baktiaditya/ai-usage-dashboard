@@ -12,6 +12,8 @@
     "start": "tsx scripts/next.ts start",
     "collect": "tsx scripts/collect.ts",
     "db:migrate": "tsx scripts/migrate.ts",
+    "db:backup": "tsx scripts/db-backup.ts",
+    "db:restore": "tsx scripts/db-restore.ts",
     "claude:install-statusline": "tsx scripts/install-claude-statusline.ts",
     "systemd:install": "bash scripts/install-systemd.sh",
     "lint": "eslint .",

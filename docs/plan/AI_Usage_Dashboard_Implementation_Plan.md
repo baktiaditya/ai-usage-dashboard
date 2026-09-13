@@ -125,6 +125,7 @@ The dashboard makes no automatic routing decisions in the MVP. It only presents 
 
 - Provide a one-shot command, e.g. `npm run collect`, as the single orchestration path for scheduled and manual collection.
 - Run that command every 5 minutes via a user-level `systemd` service + timer. Do not rely on in-process Next.js intervals as the primary scheduler.
+- Optionally serve the dashboard itself at boot as a user-level web unit, installed with `--with-web`. See the 2026-09-14 decision in the [log](../log.md).
 - Pull Codex, DeepSeek, and OpenRouter in parallel with independent timeouts; ingest the Claude spool in the same run.
 - Use SQLite WAL mode, `busy_timeout`, short transactions, and unique constraints to handle overlap between collector/manual refresh and the web process.
 - Default retention 90 days. Daily aggregates may be kept longer once their rollup and idempotency rules are tested.

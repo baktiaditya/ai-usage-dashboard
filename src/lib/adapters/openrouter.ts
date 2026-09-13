@@ -25,7 +25,7 @@ import { CollectionError } from '../errors';
 import type { CollectContext, CreditSnapshot, ProviderAdapter } from '../domain';
 import { rawToMoney, subtractMoney } from '../money';
 import { nowIso } from '../time';
-import { getJsonLossless, withBoundedRetry } from './http';
+import { getJsonLossless, losslessMoney, withBoundedRetry } from './http';
 
 export const OPENROUTER_SCHEMA_VERSION = 1;
 export const OPENROUTER_CREDITS_URL = 'https://openrouter.ai/api/v1/credits';
@@ -33,14 +33,12 @@ export const OPENROUTER_CREDITS_URL = 'https://openrouter.ai/api/v1/credits';
 /** OpenRouter denominates credits in USD only. */
 export const OPENROUTER_CURRENCY = 'USD';
 
-const moneyish = z.union([z.string(), z.object({ __rawNumber: z.string() })]);
-
 const creditsResponseSchema = z
   .object({
     data: z
       .object({
-        total_credits: moneyish,
-        total_usage: moneyish,
+        total_credits: losslessMoney,
+        total_usage: losslessMoney,
       })
       .loose(),
   })

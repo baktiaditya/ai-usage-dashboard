@@ -50,6 +50,40 @@ A relative path is rejected at startup, because each process would resolve it
 against its own working directory and open a different database. The default
 honours `XDG_DATA_HOME` when that is absolute, and ignores it otherwise.
 
+### Backup and restore
+
+Copying `usage.db` by hand can miss the newest rows, which stay in `usage.db-wal` until SQLite
+checkpoints them. Use the scripts instead:
+
+```bash
+npm run db:backup                      # <data dir>/backups/usage-<UTC timestamp>.db
+npm run db:backup -- ~/usage-copy.db   # or a file of your choosing
+```
+
+A backup runs while the collector and the dashboard keep writing, and produces one verified `0600`
+file. A backup inside the data directory does not survive losing the disk, so copy it elsewhere too.
+
+To restore, stop everything that has the database open, restore, and start it again. Leave the web
+unit out of both `systemctl` lines if you did not install it.
+
+```bash
+systemctl --user stop ai-usage-dashboard-collector.timer ai-usage-dashboard-web.service
+npm run db:restore -- ~/usage-copy.db
+systemctl --user start ai-usage-dashboard-collector.timer ai-usage-dashboard-web.service
+```
+
+The restore refuses, and changes nothing, in any of these cases:
+
+- a process still holds the database open, including a collector run already in progress or an
+  `npm run dev`;
+- the file is not an intact dashboard database;
+- it comes from a newer build;
+- it is a live database copied with a non-empty WAL beside it.
+
+A backup from an older build is migrated forward. The database it replaces moves aside, together
+with its WAL, to `usage.db.pre-restore-<UTC timestamp>`. Delete that once the restored dashboard
+looks right.
+
 ---
 
 ## 2. Codex
@@ -60,6 +94,10 @@ official JSON-RPC handshake, and calls `account/rateLimits/read`.
 Authentication stays entirely inside the Codex CLI. This application never reads
 `~/.codex/auth.json`, never extracts a token, and never calls the OpenAI backend
 directly. If `codex` is logged in, the card works.
+
+Minimum supported version: **`codex-cli 0.154.0`**, the version the adapter is live-verified against
+([M0 Discovery](../discovery/M0_DISCOVERY.md)). Older releases are untested. Run
+`npm run test:live` again after upgrading the CLI.
 
 Verify:
 
@@ -125,6 +163,10 @@ spend limit). If your account does not expose it, the bridge still runs and the
 card reads `unavailable` with the reason _"the status line ran but this account
 exposed no rate_limits"_ — which is a different, and more useful, message than
 "no event yet".
+
+Minimum supported version: **Claude Code 2.1.269**, the version whose status-line `rate_limits` the
+bridge is live-verified against ([M0 Discovery](../discovery/M0_DISCOVERY.md)). Older releases are
+untested.
 
 ---
 

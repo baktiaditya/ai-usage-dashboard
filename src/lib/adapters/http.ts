@@ -5,10 +5,17 @@
  * `response.json()`. That is the whole point: `response.json()` would convert
  * OpenRouter's `100.5` into a double before we ever saw the digits.
  */
+import { z } from 'zod';
 import { CollectionError, classifyHttpStatus, isRetryable } from '../errors';
 import type { ErrorCode } from '../errors';
 import { parseJsonLossless } from '../money';
 import { redactText } from '../redact';
+
+/**
+ * A money field as `parseJsonLossless` leaves it: a JSON string as sent, or the
+ * source text of a JSON number. `rawToMoney` normalises either shape.
+ */
+export const losslessMoney = z.union([z.string(), z.object({ __rawNumber: z.string() })]);
 
 export interface HttpGetOptions {
   readonly url: string;

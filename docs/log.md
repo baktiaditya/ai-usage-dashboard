@@ -2,6 +2,29 @@
 
 ## 2026-09-14
 
+- **Update**: `npm run db:backup` and `npm run db:restore` supply the backup and
+  restore tests that plan M6 requires and a PR review found missing.
+  - Backup uses SQLite's online backup API, so it captures rows still in the
+    WAL while the units run. It writes one verified `0600` file.
+  - Restore refuses while any process holds the database open, and refuses a
+    file that is not an intact dashboard database, comes from a newer schema,
+    or has a non-empty WAL beside it.
+  - Restore moves the replaced database aside together with its WAL. A probe
+    showed why: a WAL left beside a restored file is replayed on the next
+    open, so the file opens as the old database and still passes
+    `integrity_check`.
+
+  Procedure: [Setup](operations/SETUP.md) §1.
+
+- **Update**: Setup names the minimum supported CLI versions, as plan §4.1
+  requires: `codex-cli 0.154.0` and Claude Code 2.1.269, the versions
+  live-verified in [M0 Discovery](discovery/M0_DISCOVERY.md). Older releases
+  are untested rather than known broken.
+
+- **Update**: plan §3.3 now names the optional boot-time web unit, so the plan
+  agrees with the web-unit decision below. A PR review had read the unit as
+  unrequested scope.
+
 - **Proposed**: reach the dashboard from a phone over Tailscale, in
   [access-dashboard-over-tailscale](backlog/ready-for-human/access-dashboard-over-tailscale.md).
   `tailscale serve` proxies tailnet HTTPS to the loopback server, so the

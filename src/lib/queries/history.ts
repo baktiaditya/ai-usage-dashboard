@@ -179,7 +179,7 @@ export function buildCreditHistory(
   const rows = getCreditHistory(db, provider, sinceIso);
   const baseline = getCreditBaselineBefore(db, provider, sinceIso);
 
-  const pick = (r: { totalUsage: MoneyString | null; totalBalance: MoneyString | null }) =>
+  const metricValue = (r: { totalUsage: MoneyString | null; totalBalance: MoneyString | null }) =>
     metric === 'usage_delta' ? r.totalUsage : r.totalBalance;
 
   // A balance is plotted as observed. A usage counter is plotted as usage since
@@ -188,7 +188,7 @@ export function buildCreditHistory(
   const series = rows.map((r) => ({
     observedAt: r.observedAt,
     currency: r.currency,
-    value: pick(r),
+    value: metricValue(r),
   }));
 
   if (rows.length === 0) {
@@ -221,7 +221,7 @@ export function buildCreditHistory(
     };
   }
 
-  const baseByCurrency = new Map(baseline.map((b) => [b.currency, pick(b)]));
+  const baseByCurrency = new Map(baseline.map((b) => [b.currency, metricValue(b)]));
 
   const latestByCurrency = new Map<string, MoneyString | null>();
   // For a cumulative counter, only an increase is possible in normal operation;
@@ -232,7 +232,7 @@ export function buildCreditHistory(
   const previousByCurrency = new Map(baseByCurrency);
   const usageSeries: CreditHistoryResult['series'][number][] = [];
   for (const r of rows) {
-    const value = pick(r);
+    const value = metricValue(r);
     latestByCurrency.set(r.currency, value);
     if (value === null) continue;
     const previous = previousByCurrency.get(r.currency) ?? null;

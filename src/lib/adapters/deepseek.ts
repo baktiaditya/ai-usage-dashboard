@@ -20,14 +20,13 @@ import type { CollectContext, CreditBalance, CreditSnapshot, ProviderAdapter } f
 import { rawToMoney } from '../money';
 import type { MoneyString } from '../money';
 import { nowIso } from '../time';
-import { getJsonLossless, withBoundedRetry } from './http';
+import { getJsonLossless, losslessMoney, withBoundedRetry } from './http';
 
 export const DEEPSEEK_SCHEMA_VERSION = 1;
 export const DEEPSEEK_BALANCE_URL = 'https://api.deepseek.com/user/balance';
 
-// `parseJsonLossless` wraps every JSON number, so a field that should be a
-// decimal string is accepted as either shape and normalised below.
-const moneyish = z.union([z.string(), z.object({ __rawNumber: z.string() })]).nullish();
+// DeepSeek may omit a balance field, unlike OpenRouter.
+const moneyish = losslessMoney.nullish();
 
 const balanceInfoSchema = z
   .object({
