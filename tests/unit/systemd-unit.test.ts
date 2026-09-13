@@ -65,16 +65,17 @@ describe('systemd unit rendering', () => {
     expect(() => renderUnit('X=__NOPE__', values)).toThrow(UnitValueError);
   });
 
-  it.each(['ai-usage-dashboard-collector.service', 'ai-usage-dashboard-collector.timer'])(
-    'renders the shipped %s template completely',
-    (unit) => {
-      const template = readFileSync(join(process.cwd(), 'systemd', `${unit}.template`), 'utf8');
-      const out = renderUnit(template, values);
-      expect(out).not.toMatch(/__[A-Z]+__/);
-      if (unit.endsWith('.service')) {
-        expect(out).toContain('Environment="AUD_DATA_DIR=/data/a&b|c"');
-        expect(out).toContain('ReadWritePaths=/data/a&b|c');
-      }
-    },
-  );
+  it.each([
+    'ai-usage-dashboard-collector.service',
+    'ai-usage-dashboard-collector.timer',
+    'ai-usage-dashboard-web.service',
+  ])('renders the shipped %s template completely', (unit) => {
+    const template = readFileSync(join(process.cwd(), 'systemd', `${unit}.template`), 'utf8');
+    const out = renderUnit(template, values);
+    expect(out).not.toMatch(/__[A-Z]+__/);
+    if (unit.endsWith('.service')) {
+      expect(out).toContain('Environment="AUD_DATA_DIR=/data/a&b|c"');
+      expect(out).toContain('ReadWritePaths=/data/a&b|c');
+    }
+  });
 });

@@ -92,16 +92,16 @@ so scheduled and manual runs cannot drift apart in behaviour.
 
 ## Commands
 
-| Command                             | Does                                                              |
-| ----------------------------------- | ----------------------------------------------------------------- |
-| `npm run dev` / `npm run start`     | dashboard on `127.0.0.1:3838` (or `AUD_HOST`/`AUD_PORT`)          |
-| `npm run collect`                   | one collection pass (`--manual`, `--provider=codex,deepseek`)     |
-| `npm run db:migrate`                | apply migrations, print schema state                              |
-| `npm run claude:install-statusline` | install the bridge (dry run by default)                           |
-| `npm run systemd:install`           | render the user service + timer (install/enable are opt-in flags) |
-| `npm run verify`                    | format + lint + typecheck + unit + integration                    |
-| `npm run test:e2e`                  | browser smoke at desktop and mobile widths                        |
-| `npm run test:live`                 | opt-in live checks; skips gates whose credential is absent        |
+| Command                             | Does                                                                                                      |
+| ----------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `npm run dev` / `npm run start`     | dashboard on `127.0.0.1:3838` (or `AUD_HOST`/`AUD_PORT`)                                                  |
+| `npm run collect`                   | one collection pass (`--manual`, `--provider=codex,deepseek`)                                             |
+| `npm run db:migrate`                | apply migrations, print schema state                                                                      |
+| `npm run claude:install-statusline` | install the bridge (dry run by default)                                                                   |
+| `npm run systemd:install`           | render the collector units and the optional web unit (install, enable, and `--with-web` are opt-in flags) |
+| `npm run verify`                    | format + lint + typecheck + unit + integration                                                            |
+| `npm run test:e2e`                  | browser smoke at desktop and mobile widths                                                                |
+| `npm run test:live`                 | opt-in live checks; skips gates whose credential is absent                                                |
 
 ## Status
 

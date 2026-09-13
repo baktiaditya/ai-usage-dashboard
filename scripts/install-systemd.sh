@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 #
-# Generate and (optionally) install the user-level collector service + timer.
+# Generate and (optionally) install the user-level collector service + timer,
+# and, with --with-web, the dashboard web server.
 #
 # Nothing is installed or enabled without an explicit flag. The default run only
 # renders the units into systemd/generated/ so they can be read before anything
@@ -9,8 +10,9 @@
 #   scripts/install-systemd.sh                 # render only (default)
 #   scripts/install-systemd.sh --install       # render + copy into ~/.config/systemd/user
 #   scripts/install-systemd.sh --install --enable
+#   scripts/install-systemd.sh --install --enable --with-web   # also serve the dashboard
 #   scripts/install-systemd.sh --status
-#   scripts/install-systemd.sh --disable
+#   scripts/install-systemd.sh --disable [--with-web]
 #
 set -euo pipefail
 
@@ -20,11 +22,13 @@ GEN_DIR="$WORKDIR/systemd/generated"
 
 SERVICE="ai-usage-dashboard-collector.service"
 TIMER="ai-usage-dashboard-collector.timer"
+WEB="ai-usage-dashboard-web.service"
 
 do_install=0
 do_enable=0
 do_disable=0
 do_status=0
+do_web=0
 
 for arg in "$@"; do
   case "$arg" in
@@ -32,8 +36,9 @@ for arg in "$@"; do
     --enable)  do_install=1; do_enable=1 ;;
     --disable) do_disable=1 ;;
     --status)  do_status=1 ;;
+    --with-web) do_web=1 ;;
     -h|--help)
-      sed -n '3,16p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+      sed -n '3,15p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     *)
@@ -50,12 +55,20 @@ if [[ $do_status -eq 1 ]]; then
   echo
   echo "Recent collector logs:"
   journalctl --user -u "$SERVICE" -n 20 --no-pager || true
+  if [[ -f "$UNIT_DIR/$WEB" ]]; then
+    echo
+    systemctl --user status "$WEB" --no-pager || true
+  fi
   exit 0
 fi
 
 if [[ $do_disable -eq 1 ]]; then
   systemctl --user disable --now "$TIMER" 2>/dev/null || true
   echo "Disabled and stopped $TIMER."
+  if [[ $do_web -eq 1 ]]; then
+    systemctl --user disable --now "$WEB" 2>/dev/null || true
+    echo "Disabled and stopped $WEB."
+  fi
   echo "Unit files remain in $UNIT_DIR; delete them by hand to remove completely."
   exit 0
 fi
@@ -71,6 +84,11 @@ fi
 TSX_BIN="$WORKDIR/node_modules/tsx/dist/cli.mjs"
 if [[ ! -f "$TSX_BIN" ]]; then
   echo "tsx not found at $TSX_BIN — run 'npm install' first" >&2
+  exit 1
+fi
+# The web unit serves an existing production build and never builds at boot.
+if [[ $do_web -eq 1 && $do_install -eq 1 && ! -f "$WORKDIR/.next/BUILD_ID" ]]; then
+  echo "no production build in $WORKDIR/.next — run 'npm run build' first; nothing was installed" >&2
   exit 1
 fi
 
@@ -107,7 +125,7 @@ if ! RESOLVED="$(
   echo "nothing was installed" >&2
   exit 1
 fi
-{ read -r ENV_FILE; read -r DATA_DIR; read -r INTERVAL; } <<<"$RESOLVED"
+{ read -r ENV_FILE; read -r DATA_DIR; read -r INTERVAL; read -r HOST; read -r PORT; } <<<"$RESOLVED"
 
 mkdir -p "$DATA_DIR"
 chmod 0700 "$DATA_DIR"
@@ -115,6 +133,7 @@ chmod 0700 "$DATA_DIR"
 echo "Rendered units into $GEN_DIR:"
 echo "  $GEN_DIR/$SERVICE"
 echo "  $GEN_DIR/$TIMER"
+echo "  $GEN_DIR/$WEB"
 
 if [[ $do_install -eq 0 ]]; then
   cat <<EOF
@@ -125,6 +144,7 @@ Data directory: $DATA_DIR (every ${INTERVAL}m)
 Review the files above, then:
   scripts/install-systemd.sh --install          # copy into $UNIT_DIR
   scripts/install-systemd.sh --install --enable # copy, enable and start the timer
+  add --with-web to also serve the dashboard on http://$HOST:$PORT/ at boot
 EOF
   exit 0
 fi
@@ -132,6 +152,7 @@ fi
 mkdir -p "$UNIT_DIR"
 install -m 0600 "$GEN_DIR/$SERVICE" "$UNIT_DIR/$SERVICE"
 install -m 0600 "$GEN_DIR/$TIMER"   "$UNIT_DIR/$TIMER"
+[[ $do_web -eq 1 ]] && install -m 0600 "$GEN_DIR/$WEB" "$UNIT_DIR/$WEB"
 systemctl --user daemon-reload
 echo "Installed into $UNIT_DIR."
 
@@ -155,11 +176,29 @@ if [[ $do_enable -eq 1 ]]; then
   echo "Linger keeps it running after logout: loginctl enable-linger \$USER"
   echo "Re-run this installer after changing AUD_DATA_DIR or AUD_COLLECT_INTERVAL_MINUTES."
   systemctl --user list-timers "$TIMER" --no-pager || true
+
+  if [[ $do_web -eq 1 ]]; then
+    # Another process on the port (a `npm run dev` left running) would make the
+    # service crash-loop into its start limit; say so instead.
+    if ! systemctl --user is-active --quiet "$WEB" \
+      && [[ -n "$(ss -ltnH "sport = :$PORT" 2>/dev/null)" ]]; then
+      echo "port $PORT is already in use by another process; stop it, then run:" >&2
+      echo "  systemctl --user enable --now $WEB" >&2
+      exit 1
+    fi
+    systemctl --user enable "$WEB"
+    # restart, not start: a re-install must pick up the new unit and build.
+    systemctl --user restart "$WEB"
+    echo
+    echo "Enabled and started $WEB on http://$HOST:$PORT/."
+    echo "After pulling changes: npm run build && systemctl --user restart $WEB"
+  fi
 else
   cat <<EOF
 
 Not enabled. To start collecting:
   systemctl --user enable --now $TIMER
+$([[ $do_web -eq 1 ]] && echo "  systemctl --user enable --now $WEB")
 
 To check on it later:
   scripts/install-systemd.sh --status

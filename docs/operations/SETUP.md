@@ -256,6 +256,34 @@ authentication, TLS and an origin policy first, and none of those exist yet.
 Manual refresh uses `POST`, requires a same-origin request, and is rate limited
 to 6 refreshes per provider per minute.
 
+### Start on boot (systemd)
+
+To have the dashboard up whenever the machine is, install the web unit next to
+the collector. It serves an existing production build, so build first:
+
+```bash
+npm run build
+scripts/install-systemd.sh --install --enable --with-web
+```
+
+The unit runs the same `scripts/next.ts start` path as `npm run start`, with the
+collector's sandbox and resolved settings, so it reads the database the timer
+writes. Manual refresh runs inside it, which is why the data directory and
+`CODEX_HOME` are writable. It restarts on failure, at most five starts in five
+minutes, and with linger enabled (§5) it starts at boot without a login.
+
+It never builds by itself — a slow or failing build at boot would leave the
+dashboard down — so after pulling changes:
+
+```bash
+npm run build && systemctl --user restart ai-usage-dashboard-web.service
+```
+
+Stop any `npm run dev` or `npm run start` first: the installer refuses to start
+the unit while another process holds the port. `--status` includes the web unit
+once it is installed, and `--disable --with-web` stops it along with the timer.
+Follow its logs with `journalctl --user -u ai-usage-dashboard-web.service -f`.
+
 ---
 
 ## 7. Configuration reference

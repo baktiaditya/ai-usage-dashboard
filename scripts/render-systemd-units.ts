@@ -12,8 +12,8 @@
  * agree with what the collector will actually use. Values are substituted
  * literally and escaped for systemd (`src/lib/systemd-unit.ts`).
  *
- * On success it prints, one per line, the environment file, the data directory
- * and the interval, for the installer to report.
+ * On success it prints, one per line, the environment file, the data directory,
+ * the interval, the host and the port, for the installer to report and check.
  */
 import { chmodSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -23,7 +23,11 @@ import { safeErrorMessage } from '../src/lib/redact';
 import { renderUnit } from '../src/lib/systemd-unit';
 import type { UnitValues } from '../src/lib/systemd-unit';
 
-const UNITS = ['ai-usage-dashboard-collector.service', 'ai-usage-dashboard-collector.timer'];
+const UNITS = [
+  'ai-usage-dashboard-collector.service',
+  'ai-usage-dashboard-collector.timer',
+  'ai-usage-dashboard-web.service',
+];
 
 function required(name: string): string {
   const value = process.env[name];
@@ -62,7 +66,9 @@ try {
     chmodSync(dest, 0o600);
   }
 
-  process.stdout.write(`${envFile}\n${config.dataDir}\n${config.collectIntervalMinutes}\n`);
+  process.stdout.write(
+    `${envFile}\n${config.dataDir}\n${config.collectIntervalMinutes}\n${config.host}\n${config.port}\n`,
+  );
 } catch (err) {
   process.stderr.write(`could not render the systemd units: ${safeErrorMessage(err)}\n`);
   process.exitCode = 2;

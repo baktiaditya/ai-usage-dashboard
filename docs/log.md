@@ -2,6 +2,32 @@
 
 ## 2026-09-14
 
+- **Proposed**: now that the dashboard runs at boot, two backlog briefs keep
+  development from reaching production. Both wait on the user in
+  `ready-for-human/`:
+  - [isolate-dev-server-from-production](backlog/ready-for-human/isolate-dev-server-from-production.md):
+    `npm run dev` gets its own port and data directory by default. Today it
+    shares port 3838 and the database with the web unit, and migrations apply
+    on open.
+  - [separate-production-checkout](backlog/ready-for-human/separate-production-checkout.md):
+    after PR #1 merges, both units run from a dedicated checkout of `main`, so
+    a development build cannot replace what production serves.
+
+- **Decision**: the dashboard web server can start at boot as a systemd user unit,
+  `ai-usage-dashboard-web.service`, installed with `--with-web`. pm2 was rejected
+  for three reasons:
+  - It adds a global daemon whose boot integration (`pm2 startup`) registers a
+    systemd service anyway.
+  - It would need its own answer to the nvm-managed `node`, which the installer
+    already resolves.
+  - It would split one application across two process managers.
+
+  The unit reuses the collector's rendering, sandbox, and resolved settings,
+  because manual refresh runs the collector in-process. It serves a production
+  build but never builds at start, since a slow or failing build at boot would
+  leave the dashboard down. The installer therefore refuses to install without
+  `.next/BUILD_ID`, and refuses to start while another process holds the port.
+
 - **Decision**: ad-hoc browser work uses the global `agent-browser` CLI, not the
   Playwright MCP server. The rule is copied from Kyomi-pos
   (`agent-guides/testing.md`, "Ad-Hoc Browser Automation") into a new
