@@ -37,8 +37,9 @@ A shared database is the larger risk:
 - Every process resolves the same default data directory, and `openDb` in
   `src/lib/db/client.ts` applies pending migrations on open. A development branch with a new
   migration would upgrade the live database under the older production build.
-- `scripts/seed-demo.ts` writes wherever `getConfig()` points. Its header says it "can never touch
-  a real collection", but without `AUD_DATA_DIR` it seeds the real default directory.
+- `npm run seed:demo` now refuses to run without an exported `AUD_DATA_DIR`, because it deletes every
+  collector run in the database it opens. Seeding a development directory still needs that
+  variable typed by hand.
 
 A working interim needs no code:
 `AUD_PORT=3839 AUD_DATA_DIR=~/.local/share/ai-usage-dashboard-dev npm run dev`. This brief turns
@@ -46,9 +47,8 @@ that habit into the default.
 
 ## Dependencies and Gates
 
-- The web unit, the installer's `--with-web` flag, and its Setup section are committed on the
-  branch this work lands on. They are uncommitted in the worktree at the time of writing. Owner:
-  user.
+- The web unit, the installer's `--with-web` flag, and its Setup section are on the branch this
+  work lands on. They were committed to PR #1 in `f80c013`. Owner: user, by merging.
 - The default values are confirmed (see Open Questions). Owner: user.
 
 ## Scope
@@ -60,7 +60,7 @@ that habit into the default.
   Next.js process as `AUD_PORT` and `AUD_DATA_DIR`, so `getConfig()` inside the server agrees with
   the bind.
 - `dev` refuses to start when the development port equals `AUD_PORT`.
-- Seeding demo data cannot land in the production data directory by accident.
+- A `seed:dev` shortcut that seeds the development data directory.
 - Setup, README, and `.env.example` document the development settings. The "stop any `npm run
 dev`" sentence in Setup §6 is corrected.
 
@@ -83,11 +83,8 @@ dev`" sentence in Setup §6 is corrected.
      variables win over `collector.env`, because `loadCollectorEnvFile` fills only unset keys, so
      the server's cached config reads the development values.
    - Keep the bind-flag refusal, and name `AUD_DEV_PORT` in its message.
-3. `scripts/seed-demo.ts`:
-   - Refuse to run unless `AUD_DATA_DIR` is exported explicitly. Check before `getConfig()` merges
-     `collector.env`.
-   - Accept `--dev` to target `devDataDir`, with a `seed:dev` package script.
-   - Playwright already exports `AUD_DATA_DIR`, so `npm run test:e2e` is unaffected.
+3. `scripts/seed-demo.ts`: accept `--dev` to target `devDataDir`, with a `seed:dev` package script.
+   The explicit-`AUD_DATA_DIR` guard already in the script stays.
 4. Document the development server in Setup §6, add the two rows to §7, update the README
    command table and `.env.example`, and record the decision in `docs/log.md`.
 
@@ -97,7 +94,7 @@ dev`" sentence in Setup §6 is corrected.
 | ---------------------------------------- | ----------------------------------------------------------------------- |
 | `src/lib/config.ts`                      | `AUD_DEV_PORT`, `AUD_DEV_DATA_DIR`; `devPort` and `devDataDir`          |
 | `scripts/next.ts`                        | `dev` binds and passes the development port and data directory          |
-| `scripts/seed-demo.ts`                   | Refuses an implicit data directory; `--dev` target                      |
+| `scripts/seed-demo.ts`                   | `--dev` target                                                          |
 | `package.json`                           | `seed:dev` script                                                       |
 | `tests/unit/config-time.test.ts`         | Defaults, validation, and `~/` expansion for the development settings   |
 | `tests/integration/next-wrapper.test.ts` | `dev` refuses a port equal to `AUD_PORT` before starting                |
@@ -114,8 +111,7 @@ dev`" sentence in Setup §6 is corrected.
       is unchanged.
 - [ ] `AUD_DEV_PORT` equal to `AUD_PORT` stops `npm run dev` with an error before any server
       starts.
-- [ ] `npm run seed:demo` refuses without an exported `AUD_DATA_DIR`, `npm run seed:dev` seeds
-      the development directory, and `npm run test:e2e` still passes.
+- [ ] `npm run seed:dev` seeds the development directory, and `npm run test:e2e` still passes.
 - [ ] `npm run start` and both systemd units behave exactly as before.
 - [ ] `npm run verify` passes.
 

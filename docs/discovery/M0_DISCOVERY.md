@@ -7,7 +7,7 @@ description: Re-probed machine baseline, per-provider gate evidence, fixed decis
 # M0 — Discovery and feasibility gates
 
 Re-probed **2026-09-12 (Asia/Jakarta)**, superseding the plan's 2026-09-12 baseline
-where noted. Nothing here records a secret, an email, an account ID, a raw auth
+where noted. The DeepSeek and OpenRouter gates closed live on **2026-09-14**. Nothing here records a secret, an email, an account ID, a raw auth
 payload, or a current quota/balance value.
 
 ## Machine baseline
@@ -113,10 +113,13 @@ gauge exactly like the other two, so the bridge allowlists it and the ingestor
 labels it. This account did not report one, so it simply never appeared — which
 is the intended behaviour, not a gap.
 
-### DeepSeek — NOT PASSED (no credential on this machine)
+### DeepSeek — PASSED (live)
 
-`DEEPSEEK_API_KEY` is absent, so no live call was made. The contract was taken
-from <https://api-docs.deepseek.com/api/get-user-balance>:
+Passed live on 2026-09-14, once `DEEPSEEK_API_KEY` was provisioned in `collector.env`:
+`npm run test:live` returned at least one currency with decimal-string balances and no usage
+field, and scheduled collector runs record `success`. No balance value is recorded here.
+
+The contract, from <https://api-docs.deepseek.com/api/get-user-balance>:
 
 ```
 { is_available: boolean,
@@ -133,12 +136,16 @@ application ever labels a DeepSeek number "usage".
 
 Fixtures are synthetic and marked as such in their `_fixture.note`.
 
-**Exact action to close this gate**: put a real `DEEPSEEK_API_KEY` in the
-collector environment file (`docs/operations/SETUP.md` §4), then `npm run test:live`.
+**Gate closed** by provisioning the key in the collector environment file
+(`docs/operations/SETUP.md` §4) and running `npm run test:live`.
 
-### OpenRouter — NOT PASSED (no credential on this machine)
+### OpenRouter — PASSED (live)
 
-`OPENROUTER_MANAGEMENT_KEY` is absent. Contract from
+Passed live on 2026-09-14 with a Management key in `collector.env`: `npm run test:live`
+returned credits, usage, and an exact decimal remainder, and scheduled collector runs record
+`success`. No credit value is recorded here.
+
+Contract from
 <https://openrouter.ai/docs/api/api-reference/credits/get-remaining-credits>:
 
 ```
@@ -157,8 +164,8 @@ Two facts drove implementation decisions:
    yields 403. That is a different problem from a missing key (401) and gets its
    own error code so the hint can be specific.
 
-**Exact action to close this gate**: put a real `OPENROUTER_MANAGEMENT_KEY` in
-the collector environment file, then `npm run test:live`.
+**Gate closed** by provisioning a Management key in the collector environment file and
+running `npm run test:live`.
 
 ## Decisions fixed at M0
 

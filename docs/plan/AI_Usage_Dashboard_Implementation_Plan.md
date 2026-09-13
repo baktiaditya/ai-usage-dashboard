@@ -21,8 +21,8 @@ A local dashboard for monitoring Codex and Claude Code quota and DeepSeek and Op
 > - Claude Code `2.1.267` → `2.1.269`, and `subscriptionType` `null` → **`pro`**,
 >   so the account is eligible for `rate_limits`.
 > - The Codex and Claude gates passed **live** (Claude with a real status-line event,
->   `five_hour` + `seven_day` windows); DeepSeek/OpenRouter still have no credential
->   so they are fixture-tested only.
+>   `five_hour` + `seven_day` windows). DeepSeek/OpenRouter had no credential at M0
+>   and were fixture-tested only; both gates passed live on 2026-09-14.
 > - Node 24 supports JSON source-text access, which underpins the decimal-safe
 >   strategy for OpenRouter JSON numbers.
 >

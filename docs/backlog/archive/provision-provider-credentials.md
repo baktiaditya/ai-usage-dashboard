@@ -2,7 +2,11 @@
 
 ## Status
 
-Ready for human
+Archived
+
+Closed on 2026-09-14. Both keys are provisioned in `collector.env`, `npm run test:live` passes all
+four provider gates with nothing skipped, and the collector timer is enabled; scheduled runs record
+`success` for DeepSeek and OpenRouter.
 
 The status above must match the directory that contains this brief. Move the file with
 `git mv` when its readiness changes.
@@ -67,11 +71,11 @@ cards correctly render as `unavailable` with a setup hint.
 
 ## Acceptance Criteria
 
-- [ ] `npm run test:live` passes all four provider gates with nothing skipped for
+- [x] `npm run test:live` passes all four provider gates with nothing skipped for
       missing credentials.
-- [ ] The dashboard shows DeepSeek and OpenRouter cards with live data, not
+- [x] The dashboard shows DeepSeek and OpenRouter cards with live data, not
       `unavailable`.
-- [ ] No secret, key, or balance value is recorded in the repository, logs, or
+- [x] No secret, key, or balance value is recorded in the repository, logs, or
       fixtures.
 
 ## Testing
@@ -82,5 +86,4 @@ produce `unavailable` attempts.
 
 ## Open Questions
 
-- Who provisions the two keys, and when? Owner: user — nothing here can proceed
-  without them.
+Resolved: the user provisioned both keys on 2026-09-14.

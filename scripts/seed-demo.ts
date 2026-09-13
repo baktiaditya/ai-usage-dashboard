@@ -7,7 +7,10 @@
  * on DeepSeek, two windows on Codex, and enough history for a 7-day chart plus
  * a pre-period baseline — the combination the browser tests assert on.
  *
- * Writes only to AUD_DATA_DIR, so it can never touch a real collection.
+ * It starts by deleting every collector run in the database it opens, so it
+ * refuses to run unless `AUD_DATA_DIR` is exported explicitly. Without that,
+ * `getConfig()` falls back to the real data directory (or one named in
+ * `collector.env`), and seeding would wipe a real collection.
  */
 import { collectOnce } from '../src/lib/collector/index';
 import { getConfig } from '../src/lib/config';
@@ -18,6 +21,15 @@ import type { CreditSnapshot, Provider, ProviderAdapter, QuotaSnapshot } from '.
 import type { MoneyString } from '../src/lib/money';
 import { CollectionError } from '../src/lib/errors';
 import { safeErrorMessage } from '../src/lib/redact';
+
+// Checked before `getConfig()` merges collector.env, which may itself name the
+// production data directory.
+if (!process.env['AUD_DATA_DIR']?.trim()) {
+  process.stderr.write(
+    'refusing to seed: export AUD_DATA_DIR to a scratch directory first. Seeding deletes every collector run in the database it opens, and the default is your real collection.\n',
+  );
+  process.exit(2);
+}
 
 const config = getConfig();
 

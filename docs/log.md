@@ -2,6 +2,28 @@
 
 ## 2026-09-14
 
+- **Discovery**: the DeepSeek and OpenRouter gates passed live. With both keys
+  in `collector.env`, `npm run test:live` passes all four provider gates with
+  nothing skipped, and scheduled collector runs record `success` for every
+  provider. [M0 Discovery](discovery/M0_DISCOVERY.md), the README, and the
+  indexes now say all four are live-verified.
+  [provision-provider-credentials](backlog/archive/provision-provider-credentials.md)
+  moves to `archive/`.
+
+- **Update**: the browser e2e server blanks `DEEPSEEK_API_KEY` and
+  `OPENROUTER_MANAGEMENT_KEY`. `next start` loads a repository `.env.local`,
+  and @next/env fills only unset variables. With real keys there, a refresh in
+  the suite reached the real upstreams, turned the seeded DeepSeek card healthy,
+  and leaked live values into the database the mobile run reads: 5 of 38 specs
+  failed. An empty string counts as set, so the keys stay blank.
+
+- **Update**: `npm run seed:demo` refuses to run unless `AUD_DATA_DIR` is
+  exported explicitly. The script deletes every collector run in the database
+  it opens. Its header claimed it "can never touch a real collection", yet
+  without the variable it resolved the real data directory, or one named in
+  `collector.env`, and would have wiped the collected history. Playwright
+  already exports the variable, so the e2e lane is unaffected.
+
 - **Proposed**: now that the dashboard runs at boot, two backlog briefs keep
   development from reaching production. Both wait on the user in
   `ready-for-human/`:
@@ -158,6 +180,6 @@
   fixture-tested, [Setup](operations/SETUP.md) for operations. The
   [`okf-sync`](../.agents/skills/okf-sync/SKILL.md) skill and its validator keep
   the bundle coherent. First brief filed:
-  [provision-provider-credentials](backlog/ready-for-human/provision-provider-credentials.md)
+  [provision-provider-credentials](backlog/archive/provision-provider-credentials.md)
   — the two remaining live gates (DeepSeek, OpenRouter) wait on human-provisioned
   keys.

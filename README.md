@@ -109,10 +109,9 @@ so scheduled and manual runs cannot drift apart in behaviour.
 `codex-cli 0.154.0`, Claude against a real status-line event from
 `claude-code 2.1.269` with both the 5-hour and 7-day windows.
 
-**DeepSeek** and **OpenRouter** are implemented and fixture-tested but not yet
-live-verified, because no credential for either exists on this machine. Both
-surface as `unavailable` with a precise setup hint until a key is provisioned;
-the exact remaining action for each is recorded in
+**DeepSeek** and **OpenRouter** are verified live as well, against their balance
+and credits endpoints once a key is in `collector.env`. Without a key, each
+surfaces as `unavailable` with a precise setup hint. Per-gate evidence is in
 **[docs/discovery/M0_DISCOVERY.md](docs/discovery/M0_DISCOVERY.md)**.
 
 Design rationale and scope: [docs/plan/AI_Usage_Dashboard_Implementation_Plan.md](docs/plan/AI_Usage_Dashboard_Implementation_Plan.md).

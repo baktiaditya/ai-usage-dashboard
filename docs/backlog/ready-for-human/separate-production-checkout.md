@@ -36,8 +36,8 @@ database collisions, but not this one.
 
 ## Dependencies and Gates
 
-- PR #1 is merged into `main`, including the web unit and the installer's `--with-web` flag,
-  which are uncommitted at the time of writing. Owner: user.
+- PR #1 is merged into `main`, including the web unit and the installer's `--with-web` flag
+  (committed in `f80c013`). Owner: user.
 - Authorization to reinstall and restart both user units from the new checkout. Owner: user.
 
 ## Scope

@@ -84,4 +84,4 @@ Keep this hierarchy intact:
   build is done — the prompt is a historical record, not an instruction to re-run.
 - DeepSeek and OpenRouter cards render `unavailable` until keys are provisioned; that is
   intended behavior, not a fault. See the
-  `docs/backlog/ready-for-human/provision-provider-credentials.md` brief.
+  `docs/backlog/archive/provision-provider-credentials.md` brief.
