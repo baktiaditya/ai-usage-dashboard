@@ -2,6 +2,26 @@
 
 ## 2026-09-14
 
+- **Update**: `npm run db:restore` checks the whole schema before it replaces
+  the database. It used to require only `schema_migrations` and
+  `collector_runs`. A PR review built a file that recorded every migration
+  but had no other table; restore accepted it, replaced the live database, and
+  the next overview failed with `no such table: provider_snapshots`. Migrations
+  cannot repair such a file, because they skip every version already recorded.
+  The migrated backup is now compared with a fresh database built from this
+  build's migrations: every table, column, index, foreign key and trigger must
+  be present. The comparison reads pragmas rather than stored `CREATE` text,
+  which differs between a fresh and an upgraded database with the same schema.
+  `npm run db:backup` applies the same check to a source already at the latest
+  schema. Procedure: [Setup](operations/SETUP.md) §1.
+
+- **Update**: the web unit carries `AUD_HOST` and `AUD_PORT`. The installer
+  resolved and reported both, but the rendered unit left them out, so a value
+  exported only in the installing shell was lost: the installer announced port
+  `4444` while the service bound `3838`. The units keep the host and port they
+  were rendered with, like the data directory and interval, so the installer
+  must be re-run after either changes ([Setup](operations/SETUP.md) §5).
+
 - **Update**: a quota window no longer vanishes from a card when the source
   stops reporting it at its reset. Claude Code's status line omits
   `five_hour` from the moment the window resets until the first request of the

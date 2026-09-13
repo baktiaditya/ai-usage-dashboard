@@ -13,6 +13,8 @@ const values: UnitValues = {
   DATADIR: '/data/a&b|c',
   ENVFILE: '/home/u/.config/ai-usage-dashboard/collector.env',
   INTERVAL: '5',
+  HOST: '127.0.0.1',
+  PORT: '4444',
 };
 
 describe('systemd unit rendering', () => {
@@ -76,6 +78,13 @@ describe('systemd unit rendering', () => {
     if (unit.endsWith('.service')) {
       expect(out).toContain('Environment="AUD_DATA_DIR=/data/a&b|c"');
       expect(out).toContain('ReadWritePaths=/data/a&b|c');
+    }
+    // Only the web server binds, and it must bind where the installer reported.
+    if (unit === 'ai-usage-dashboard-web.service') {
+      expect(out).toContain('Environment=AUD_HOST=127.0.0.1');
+      expect(out).toContain('Environment=AUD_PORT=4444');
+    } else {
+      expect(out).not.toMatch(/AUD_(HOST|PORT)/);
     }
   });
 });

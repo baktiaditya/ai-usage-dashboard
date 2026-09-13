@@ -33,6 +33,11 @@ Environment=CODEX_HOME=__CODEXHOME__
 Environment="AUD_ENV_FILE=__ENVFILE__"
 Environment="AUD_DATA_DIR=__DATADIR__"
 Environment=AUD_COLLECT_INTERVAL_MINUTES=__INTERVAL__
+# The bind address the installer resolved and reported. Left out, a host or port
+# exported only in the installing shell would be lost here, and the server would
+# fall back to 127.0.0.1:3838 while the installer announced another address.
+Environment=AUD_HOST=__HOST__
+Environment=AUD_PORT=__PORT__
 Environment=NODE_ENV=production
 # Next.js telemetry would try to persist settings under the read-only home.
 Environment=NEXT_TELEMETRY_DISABLED=1

@@ -6,10 +6,11 @@
  *
  * `scripts/install-systemd.sh` calls this with the interpreter paths it
  * resolved (`AUD_UNIT_WORKDIR`, `AUD_UNIT_PATH`, `AUD_UNIT_CODEXHOME`,
- * `AUD_UNIT_NODE`, `AUD_UNIT_TSX`). The data directory, interval and
- * environment file are resolved here through `getConfig()` — shell exports, then
- * `collector.env`, then defaults — so the sandbox's writable path and the timer
- * agree with what the collector will actually use. Values are substituted
+ * `AUD_UNIT_NODE`, `AUD_UNIT_TSX`). The data directory, interval, environment
+ * file, host and port are resolved here through `getConfig()` — shell exports,
+ * then `collector.env`, then defaults — so the sandbox's writable path, the
+ * timer, and the web server's bind address agree with what the installer reports
+ * and the collector will actually use. Values are substituted
  * literally and escaped for systemd (`src/lib/systemd-unit.ts`).
  *
  * On success it prints, one per line, the environment file, the data directory,
@@ -50,6 +51,8 @@ try {
     DATADIR: config.dataDir,
     ENVFILE: envFile,
     INTERVAL: String(config.collectIntervalMinutes),
+    HOST: config.host,
+    PORT: String(config.port),
   };
 
   // Render both before writing either, so a refused value never leaves a

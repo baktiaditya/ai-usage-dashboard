@@ -13,6 +13,9 @@
  *   writing to the file it opened, not to the one restored under its name;
  * - when the backup is not an intact database of this application, or was
  *   written by a newer schema than this build knows;
+ * - when, once migrated, it lacks any table, column, index or trigger this
+ *   build creates. Recorded migrations prove nothing on their own: a file can
+ *   list every version and still be missing the tables they made;
  * - when a non-empty WAL sits beside the backup, since the file alone is
  *   missing the rows in it.
  *
@@ -121,6 +124,119 @@ function inspect(sqlite: Database.Database, label: string): DatabaseSummary {
   return { schemaVersion: version, runs };
 }
 
+/**
+ * The parts of a schema that queries depend on, one line each: every table with
+ * its strictness, columns, indexes and foreign keys, and every trigger and view.
+ *
+ * Built from pragmas rather than the stored `CREATE` text, which differs between
+ * a database created fresh and one upgraded in place (a rebuilt table keeps
+ * the quoted name `ALTER TABLE ... RENAME` wrote) while the schema is the same.
+ * Indexes SQLite creates for `UNIQUE` and `PRIMARY KEY` are described by their
+ * columns, since their `sqlite_autoindex_*` names depend on creation order.
+ */
+function schemaShape(sqlite: Database.Database): Map<string, string> {
+  // Each line maps to the table it belongs to, so a missing table is reported once.
+  const shape = new Map<string, string>();
+  const objects = sqlite
+    .prepare(
+      "SELECT type, name, tbl_name AS tableName FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY type, name",
+    )
+    .all() as { type: string; name: string; tableName: string }[];
+
+  for (const { type, name, tableName } of objects) {
+    if (type === 'index') continue; // described under its table below
+    if (type !== 'table') {
+      shape.set(`${type} ${name} on ${tableName}`, tableName);
+      continue;
+    }
+    const table = sqlite
+      .prepare('SELECT strict, wr FROM pragma_table_list WHERE name = ?')
+      .get(name) as { strict: number; wr: number };
+    shape.set(`table ${name} strict=${table.strict} withoutRowid=${table.wr}`, name);
+
+    const columns = sqlite
+      .prepare('SELECT name, type, "notnull", dflt_value, pk, hidden FROM pragma_table_xinfo(?)')
+      .all(name) as Record<string, unknown>[];
+    for (const c of columns) {
+      shape.set(
+        `column ${name}.${String(c['name'])} ${String(c['type'])} notnull=${String(c['notnull'])} default=${String(c['dflt_value'])} pk=${String(c['pk'])} hidden=${String(c['hidden'])}`,
+        name,
+      );
+    }
+
+    const indexes = sqlite
+      .prepare('SELECT name, "unique", origin, partial FROM pragma_index_list(?)')
+      .all(name) as { name: string; unique: number; origin: string; partial: number }[];
+    for (const index of indexes) {
+      const keys = sqlite
+        .prepare('SELECT name FROM pragma_index_info(?) ORDER BY seqno')
+        .pluck()
+        .all(index.name) as (string | null)[];
+      const label = index.origin === 'c' ? index.name : `(${index.origin})`;
+      shape.set(
+        `index ${label} on ${name}(${keys.join(',')}) unique=${index.unique} partial=${index.partial}`,
+        name,
+      );
+    }
+
+    const foreignKeys = sqlite
+      .prepare(
+        'SELECT "table", "from", "to", on_update, on_delete FROM pragma_foreign_key_list(?) ORDER BY id, seq',
+      )
+      .all(name) as Record<string, unknown>[];
+    for (const fk of foreignKeys) {
+      shape.set(
+        `foreign key ${name}.${String(fk['from'])} -> ${String(fk['table'])}.${String(fk['to'])} update=${String(fk['on_update'])} delete=${String(fk['on_delete'])}`,
+        name,
+      );
+    }
+  }
+  return shape;
+}
+
+let latestShape: ReadonlyMap<string, string> | undefined;
+
+/** The schema a fresh database gets from every migration this build ships. */
+function expectedShape(): ReadonlyMap<string, string> {
+  if (latestShape === undefined) {
+    const reference = new Database(':memory:');
+    try {
+      runMigrations(reference);
+      latestShape = schemaShape(reference);
+    } finally {
+      reference.close();
+    }
+  }
+  return latestShape;
+}
+
+/**
+ * Require everything this build's migrations create. Extra objects are left
+ * alone: nothing reads them, and refusing would only block a restore.
+ */
+function assertLatestSchema(sqlite: Database.Database, label: string): void {
+  const actual = schemaShape(sqlite);
+  const actualTables = new Set(actual.values());
+  const missingTables = new Set<string>();
+  const different: string[] = [];
+  for (const [line, table] of expectedShape()) {
+    if (actual.has(line)) continue;
+    if (actualTables.has(table)) different.push(line);
+    else missingTables.add(table);
+  }
+  if (missingTables.size === 0 && different.length === 0) return;
+
+  const parts: string[] = [];
+  if (missingTables.size > 0) parts.push(`missing tables: ${[...missingTables].join(', ')}`);
+  if (different.length > 0) {
+    const more = different.length > 5 ? ` and ${different.length - 5} more` : '';
+    parts.push(`missing or different: ${different.slice(0, 5).join('; ')}${more}`);
+  }
+  throw new BackupError(
+    `${label} records its migrations but does not have the schema they create. ${parts.join('. ')}`,
+  );
+}
+
 /** Process IDs holding any of `paths` open, read from `/proc`. */
 export function processesHolding(paths: readonly string[]): number[] {
   const wanted = new Set(
@@ -172,7 +288,10 @@ function seal(path: string, label: string): DatabaseSummary {
   const sqlite = new Database(path, { fileMustExist: true });
   try {
     sqlite.pragma('journal_mode = DELETE');
-    return inspect(sqlite, label);
+    const summary = inspect(sqlite, label);
+    // A source not yet migrated is checked in full when it is restored.
+    if (summary.schemaVersion === LATEST_SCHEMA_VERSION) assertLatestSchema(sqlite, label);
+    return summary;
   } finally {
     sqlite.close();
   }
@@ -258,6 +377,7 @@ export function restoreDatabase(source: string, target: string, now = new Date()
       inspect(sqlite, 'the backup');
       migrated = runMigrations(sqlite);
       summary = inspect(sqlite, 'the migrated backup');
+      assertLatestSchema(sqlite, 'the backup');
     } finally {
       sqlite.close();
     }

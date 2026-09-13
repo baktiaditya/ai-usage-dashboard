@@ -78,6 +78,18 @@ describe('backupDatabase', () => {
     }
   });
 
+  it('refuses a source that records every migration but lacks a table', async () => {
+    const source = database('source.db', 1);
+    const sqlite = new Database(source);
+    sqlite.pragma('foreign_keys = OFF');
+    sqlite.exec('DROP TABLE quota_windows');
+    sqlite.close();
+    const backup = join(dir, 'backup.db');
+    await expect(backupDatabase(source, backup)).rejects.toThrow(/missing tables: quota_windows/);
+    expect(existsSync(backup)).toBe(false);
+    expect(leftovers()).toEqual([]);
+  });
+
   it('refuses to overwrite an existing file', async () => {
     const live = database('usage.db', 1);
     const destination = join(dir, 'taken.db');
@@ -216,6 +228,52 @@ describe('restoreDatabase', () => {
         .run(LATEST_SCHEMA_VERSION + 1, '2026-09-14T00:00:00.000Z');
       sqlite.close();
       expectRefused(source, /newer than the \d+ this build knows/);
+    });
+
+    describe('when the backup records every migration but lacks the schema they create', () => {
+      it('with only the two tables a quick check looks for', () => {
+        // Reproduces the review finding: accepted, it replaced the live database
+        // and the next overview failed with "no such table: provider_snapshots".
+        const source = join(dir, 'hollow.db');
+        const sqlite = new Database(source);
+        sqlite.exec(
+          'CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL) STRICT; CREATE TABLE collector_runs (id INTEGER PRIMARY KEY)',
+        );
+        for (const m of MIGRATIONS) {
+          sqlite
+            .prepare('INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)')
+            .run(m.version, '2026-09-14T00:00:00.000Z');
+        }
+        sqlite.close();
+        expectRefused(source, /does not have the schema they create.*provider_snapshots/);
+      });
+
+      it.each([
+        ['a table', 'DROP TABLE credit_balances', /missing tables: credit_balances/],
+        [
+          'a column',
+          'ALTER TABLE provider_snapshots DROP COLUMN limit_reached_code',
+          /limit_reached_code/,
+        ],
+        ['an index', null, /index /],
+      ] as const)('with %s missing', (_what, ddl, message) => {
+        const source = database('damaged.db', 1);
+        const sqlite = new Database(source);
+        sqlite.pragma('foreign_keys = OFF');
+        const statement =
+          ddl ??
+          `DROP INDEX ${
+            sqlite
+              .prepare(
+                "SELECT name FROM sqlite_master WHERE type = 'index' AND name NOT LIKE 'sqlite_%' LIMIT 1",
+              )
+              .pluck()
+              .get() as string
+          }`;
+        sqlite.exec(statement);
+        sqlite.close();
+        expectRefused(source, message);
+      });
     });
 
     it('when the backup is a live database with rows still in its WAL', () => {

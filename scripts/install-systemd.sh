@@ -174,7 +174,7 @@ if [[ $do_enable -eq 1 ]]; then
   echo
   echo "Enabled and started $TIMER (every ${INTERVAL}m)."
   echo "Linger keeps it running after logout: loginctl enable-linger \$USER"
-  echo "Re-run this installer after changing AUD_DATA_DIR or AUD_COLLECT_INTERVAL_MINUTES."
+  echo "Re-run this installer after changing AUD_DATA_DIR, AUD_COLLECT_INTERVAL_MINUTES, AUD_HOST or AUD_PORT."
   systemctl --user list-timers "$TIMER" --no-pager || true
 
   if [[ $do_web -eq 1 ]]; then

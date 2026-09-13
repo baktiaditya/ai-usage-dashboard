@@ -22,6 +22,8 @@ export const UNIT_PLACEHOLDERS = [
   'DATADIR',
   'ENVFILE',
   'INTERVAL',
+  'HOST',
+  'PORT',
 ] as const;
 
 export type UnitPlaceholder = (typeof UNIT_PLACEHOLDERS)[number];

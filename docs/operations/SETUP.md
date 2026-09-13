@@ -77,6 +77,8 @@ The restore refuses, and changes nothing, in any of these cases:
 - a process still holds the database open, including a collector run already in progress or an
   `npm run dev`;
 - the file is not an intact dashboard database;
+- once migrated, it lacks a table, column, index or trigger this build creates, even when it records
+  every migration;
 - it comes from a newer build;
 - it is a live database copied with a non-empty WAL beside it.
 
@@ -263,12 +265,14 @@ path. Re-run the installer after switching Node versions with nvm. The timer use
 is caught up after a reboot rather than leaving the dashboard stale for a full
 interval.
 
-The installer resolves the environment file, `AUD_DATA_DIR`, and
-`AUD_COLLECT_INTERVAL_MINUTES` the way the collector does — shell exports, then
-`collector.env`, then defaults — and bakes them into the unit, so the writable
-path, the timer, and the collector cannot point at different places. An invalid
-value stops the installer before anything is rendered. **Re-run the installer
-after changing either setting**, in the shell or in `collector.env`.
+The installer resolves the environment file, `AUD_DATA_DIR`,
+`AUD_COLLECT_INTERVAL_MINUTES`, `AUD_HOST` and `AUD_PORT` the way the collector
+does — shell exports, then `collector.env`, then defaults — and bakes them into
+the units, so the writable path, the timer, the collector, and the web server's
+bind address cannot point at different places or differ from what the installer
+reports. An invalid value stops the installer before anything is rendered.
+**Re-run the installer after changing any of these settings**, in the shell or in
+`collector.env`: the installed units keep the values they were rendered with.
 
 Values are substituted literally and escaped for systemd, so a path containing
 `&`, `|` or `%` is rendered unchanged. A path the unit cannot carry safely —
