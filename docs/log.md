@@ -2,6 +2,21 @@
 
 ## 2026-09-14
 
+- **Update**: the restore schema check also compares each object's stored
+  `CREATE` text, with comments and layout removed. A re-review showed pragmas
+  miss what only that text holds: the event index narrowed to
+  `WHERE source_event_id IS NULL` kept its name, columns and partial flag,
+  passed backup, and let one Claude event be stored twice. The same gap hid
+  `CHECK` and `DEFAULT` expressions and trigger bodies. The live database,
+  upgraded through 0001, matches a fresh one object for object.
+
+- **Update**: a credit trend chart never draws an amount a double cannot carry.
+  A re-review plotted `100000000000000.01`, which reads back from its nearest
+  double as `.02`, and the axis labelled it so. Each value is used as a chart
+  position only when its number reads back as the same decimal; a currency
+  with any value that does not shows a note instead of a line, and axis ticks
+  are formatted through `decimal.js`. Tooltips already showed the exact string.
+
 - **Decision**: agent skills read their per-repo configuration from
   [Agents](agents/index.md), set up with `/setup-matt-pocock-skills`. Issues live
   in GitHub Issues; a brief that is long, needs separate review, or must outlive

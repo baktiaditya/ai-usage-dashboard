@@ -40,7 +40,9 @@ at all, and inferring it from a falling balance would be a fabricated number.
 
 **Money never touches binary floating point.** Every amount is a canonical
 decimal string, combined only through `decimal.js`, stored in `TEXT` columns and
-never in SQLite `REAL`. The subtle part is JSON: OpenRouter sends
+never in SQLite `REAL`. A chart converts an amount to a number only to position
+it, and draws nothing when that number would not read back as the same decimal.
+The subtle part is JSON: OpenRouter sends
 `{"total_credits": 100.5}` as a JSON _number_, and `response.json()` would round
 it before anything could react. The HTTP layer reads the body as text and uses
 Node 24's JSON source-text access to keep the literal digits from the wire.

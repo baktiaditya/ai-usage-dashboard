@@ -194,7 +194,38 @@ function schemaShape(sqlite: Database.Database): Map<string, string> {
   return shape;
 }
 
+/**
+ * Every object's stored `CREATE` text, keyed `<type> <name>`, with comments and
+ * layout removed.
+ *
+ * Pragmas cannot see an index's `WHERE` predicate, a `CHECK` or `DEFAULT`
+ * expression, or a trigger body, and a wrong one passes every pragma check: an
+ * event index narrowed to `WHERE source_event_id IS NULL` keeps its name,
+ * columns and partial flag, and silently stops deduplicating. The text is the
+ * only place those live. Identifier quotes are dropped because `ALTER TABLE ...
+ * RENAME` writes a quoted name where the migration wrote a bare one.
+ */
+function schemaSql(sqlite: Database.Database): Map<string, string> {
+  const rows = sqlite
+    .prepare(
+      "SELECT type, name, sql FROM sqlite_master WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%'",
+    )
+    .all() as { type: string; name: string; sql: string }[];
+  return new Map(rows.map((r) => [`${r.type} ${r.name}`, normalizeSql(r.sql)]));
+}
+
+function normalizeSql(sql: string): string {
+  return sql
+    .replace(/--[^\n]*/g, ' ')
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .replace(/"(\w+)"/g, '$1')
+    .replace(/\s+/g, ' ')
+    .replace(/\s*([(),;])\s*/g, '$1')
+    .trim();
+}
+
 let latestShape: ReadonlyMap<string, string> | undefined;
+let latestSql: ReadonlyMap<string, string> | undefined;
 
 /** The schema a fresh database gets from every migration this build ships. */
 function expectedShape(): ReadonlyMap<string, string> {
@@ -203,6 +234,7 @@ function expectedShape(): ReadonlyMap<string, string> {
     try {
       runMigrations(reference);
       latestShape = schemaShape(reference);
+      latestSql = schemaSql(reference);
     } finally {
       reference.close();
     }
@@ -210,9 +242,16 @@ function expectedShape(): ReadonlyMap<string, string> {
   return latestShape;
 }
 
+function expectedSql(): ReadonlyMap<string, string> {
+  expectedShape();
+  return latestSql as ReadonlyMap<string, string>;
+}
+
 /**
- * Require everything this build's migrations create. Extra objects are left
- * alone: nothing reads them, and refusing would only block a restore.
+ * Require everything this build's migrations create, defined exactly as they
+ * define it. Extra tables, indexes and triggers are left alone: nothing reads
+ * them, and refusing would only block a restore. An expected object defined
+ * differently, including a table with an extra column, is refused.
  */
 function assertLatestSchema(sqlite: Database.Database, label: string): void {
   const actual = schemaShape(sqlite);
@@ -224,7 +263,14 @@ function assertLatestSchema(sqlite: Database.Database, label: string): void {
     if (actualTables.has(table)) different.push(line);
     else missingTables.add(table);
   }
-  if (missingTables.size === 0 && different.length === 0) return;
+  // An object present under the expected name but defined differently.
+  const actualSql = schemaSql(sqlite);
+  const redefined: string[] = [];
+  for (const [key, sql] of expectedSql()) {
+    const found = actualSql.get(key);
+    if (found !== undefined && found !== sql) redefined.push(key);
+  }
+  if (missingTables.size === 0 && different.length === 0 && redefined.length === 0) return;
 
   const parts: string[] = [];
   if (missingTables.size > 0) parts.push(`missing tables: ${[...missingTables].join(', ')}`);
@@ -232,6 +278,7 @@ function assertLatestSchema(sqlite: Database.Database, label: string): void {
     const more = different.length > 5 ? ` and ${different.length - 5} more` : '';
     parts.push(`missing or different: ${different.slice(0, 5).join('; ')}${more}`);
   }
+  if (redefined.length > 0) parts.push(`different definitions: ${redefined.join(', ')}`);
   throw new BackupError(
     `${label} records its migrations but does not have the schema they create. ${parts.join('. ')}`,
   );

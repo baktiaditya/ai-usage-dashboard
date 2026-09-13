@@ -3,8 +3,10 @@ import {
   addMoney,
   compareMoney,
   formatMoney,
+  formatMoneyTick,
   isMoneyNegative,
   MoneyError,
+  moneyToPlotNumber,
   parseJsonLossless,
   rawToInteger,
   rawToMoney,
@@ -119,5 +121,28 @@ describe('lossless JSON parsing', () => {
     const credits = rawToMoney(raw.data.total_credits);
     const usage = rawToMoney(raw.data.total_usage);
     expect(subtractMoney(credits!, usage!)).toBe('0.2');
+  });
+});
+
+describe('chart positions', () => {
+  it('plots an amount whose number reads back as the same decimal', () => {
+    expect(moneyToPlotNumber(toMoney('15.00'))).toBe(15);
+    expect(moneyToPlotNumber(toMoney('11.45'))).toBe(11.45);
+    expect(moneyToPlotNumber(toMoney('-3.25'))).toBe(-3.25);
+    expect(moneyToPlotNumber(toMoney('0'))).toBe(0);
+  });
+
+  it('refuses an amount a double cannot carry, rather than drawing a neighbour', () => {
+    // The nearest double to .01 at this magnitude reads back as .02.
+    expect(String(Number('100000000000000.01'))).toBe('100000000000000.02');
+    expect(moneyToPlotNumber(toMoney('100000000000000.01'))).toBeNull();
+    expect(moneyToPlotNumber(toMoney('0.10000000000000000001'))).toBeNull();
+  });
+
+  it('labels a tick at a fixed scale, without float noise', () => {
+    expect(formatMoneyTick(0.1 + 0.2)).toBe('0.30');
+    expect(formatMoneyTick(15)).toBe('15.00');
+    expect(formatMoneyTick(-2.5)).toBe('-2.50');
+    expect(formatMoneyTick(Number.NaN)).toBe('');
   });
 });

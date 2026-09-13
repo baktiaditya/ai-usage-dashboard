@@ -78,6 +78,30 @@ export function formatMoney(value: MoneyString, decimalPlaces = 2): string {
 }
 
 /**
+ * The number a chart may use to position `value`, or `null` when it may not.
+ *
+ * A chart scale needs a number, and a number is a binary double. Near 1e14 the
+ * nearest double to `100000000000000.01` reads back as `100000000000000.02`, so
+ * a one-cent rise would be drawn, and labelled, as two. A value is plottable
+ * only when its double reads back as the same decimal; otherwise the caller
+ * draws nothing rather than a wrong line.
+ */
+export function moneyToPlotNumber(value: MoneyString): number | null {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return null;
+  return new Decimal(String(n)).eq(new Decimal(value)) ? n : null;
+}
+
+/**
+ * Label for a money axis tick. A tick is a position the chart picked, not an
+ * observed amount; it is rendered through its shortest decimal form at a fixed
+ * scale, so float noise such as `0.30000000000000004` never reaches the reader.
+ */
+export function formatMoneyTick(tick: number, decimalPlaces = 2): string {
+  return Number.isFinite(tick) ? new Decimal(String(tick)).toFixed(decimalPlaces) : '';
+}
+
+/**
  * `JSON.parse` that preserves the *source text* of every JSON number.
  *
  * Numbers become `{ __rawNumber: "100.50" }` markers so callers must decide

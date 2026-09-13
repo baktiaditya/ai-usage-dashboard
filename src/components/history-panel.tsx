@@ -17,7 +17,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import type { ProviderCard } from '@/lib/queries/overview';
 import type { CreditHistoryResult, HistoryRange, QuotaHistoryResult } from '@/lib/queries/history';
-import { formatMoney } from '@/lib/money';
+import { formatMoney, formatMoneyTick, moneyToPlotNumber } from '@/lib/money';
 import type { MoneyString } from '@/lib/money';
 import { cn } from '@/lib/cn';
 
@@ -372,8 +372,10 @@ function formatPercent(v: unknown): string {
  *
  * Currencies are never drawn on a shared axis: 30 CNY and 15 USD are different
  * magnitudes, and a second y-scale would invite comparing them. Values are
- * converted to numbers only to position the line; every figure a reader sees
- * comes from the exact decimal string.
+ * converted to numbers only to position the line, and only when the number reads
+ * back as the same decimal; a currency with any value that does not is not drawn
+ * at all. Tooltips show the exact decimal string, and axis ticks are formatted
+ * through decimals at a fixed scale.
  */
 function CreditTrend({ result, timezone }: { result: CreditHistoryResult; timezone: string }) {
   const isUsage = result.metric === 'usage_delta';
@@ -389,10 +391,13 @@ function CreditTrend({ result, timezone }: { result: CreditHistoryResult; timezo
   });
 
   const byCurrency = new Map<string, { t: number; value: number; exact: MoneyString }[]>();
+  const unplottable = new Set<string>();
   for (const p of result.series) {
     if (p.value === null) continue;
     const points = byCurrency.get(p.currency) ?? [];
-    points.push({ t: Date.parse(p.observedAt), value: Number(p.value), exact: p.value });
+    const value = moneyToPlotNumber(p.value);
+    if (value === null) unplottable.add(p.currency);
+    else points.push({ t: Date.parse(p.observedAt), value, exact: p.value });
     byCurrency.set(p.currency, points);
   }
   if (byCurrency.size === 0) return null;
@@ -410,53 +415,64 @@ function CreditTrend({ result, timezone }: { result: CreditHistoryResult; timezo
             <figcaption className="text-muted-foreground text-xs">
               {currency} {isUsage ? 'usage since the period began' : 'balance as observed'}
             </figcaption>
-            <div className="h-40 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={points} margin={{ top: 8, right: 12, bottom: 4, left: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                  <XAxis
-                    dataKey="t"
-                    type="number"
-                    scale="time"
-                    domain={['dataMin', 'dataMax']}
-                    tickFormatter={(t: number) => tick.format(t)}
-                    tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }}
-                  />
-                  <YAxis
-                    width={48}
-                    domain={['auto', 'auto']}
-                    tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }}
-                  />
-                  <Tooltip
-                    contentStyle={{
-                      background: 'var(--surface)',
-                      border: '1px solid var(--border)',
-                      borderRadius: 8,
-                      fontSize: 12,
-                      color: 'var(--foreground)',
-                    }}
-                    labelFormatter={(t: unknown) => full.format(Number(t))}
-                    formatter={(_value: unknown, _name: unknown, item: { payload?: unknown }) => [
-                      `${formatMoney((item.payload as { exact: MoneyString }).exact)} ${currency}`,
-                      isUsage ? 'Usage since period start' : 'Balance',
-                    ]}
-                  />
-                  <Line
-                    type="linear"
-                    dataKey="value"
-                    name={currency}
-                    stroke="var(--series-1)"
-                    strokeWidth={2}
-                    dot={
-                      points.length <= 12
-                        ? { r: 4, strokeWidth: 0, fill: 'var(--series-1)' }
-                        : false
-                    }
-                    isAnimationActive={false}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
+            {unplottable.has(currency) ? (
+              <p
+                className="text-muted-foreground bg-surface-muted rounded-lg px-3 py-2 text-xs"
+                data-testid={`history-credit-trend-unplottable-${currency}`}
+              >
+                Not charted: these amounts have more digits than a chart can position exactly. The
+                card shows the exact figures.
+              </p>
+            ) : (
+              <div className="h-40 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={points} margin={{ top: 8, right: 12, bottom: 4, left: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                    <XAxis
+                      dataKey="t"
+                      type="number"
+                      scale="time"
+                      domain={['dataMin', 'dataMax']}
+                      tickFormatter={(t: number) => tick.format(t)}
+                      tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }}
+                    />
+                    <YAxis
+                      width={48}
+                      domain={['auto', 'auto']}
+                      tickFormatter={(v: number) => formatMoneyTick(v)}
+                      tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        background: 'var(--surface)',
+                        border: '1px solid var(--border)',
+                        borderRadius: 8,
+                        fontSize: 12,
+                        color: 'var(--foreground)',
+                      }}
+                      labelFormatter={(t: unknown) => full.format(Number(t))}
+                      formatter={(_value: unknown, _name: unknown, item: { payload?: unknown }) => [
+                        `${formatMoney((item.payload as { exact: MoneyString }).exact)} ${currency}`,
+                        isUsage ? 'Usage since period start' : 'Balance',
+                      ]}
+                    />
+                    <Line
+                      type="linear"
+                      dataKey="value"
+                      name={currency}
+                      stroke="var(--series-1)"
+                      strokeWidth={2}
+                      dot={
+                        points.length <= 12
+                          ? { r: 4, strokeWidth: 0, fill: 'var(--series-1)' }
+                          : false
+                      }
+                      isAnimationActive={false}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            )}
           </figure>
         ))}
     </div>

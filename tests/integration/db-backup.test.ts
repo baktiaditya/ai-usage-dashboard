@@ -41,6 +41,18 @@ function database(name: string, runs: number): string {
   return path;
 }
 
+/** A database whose event dedup index covers `source_event_id IS NULL` instead of `IS NOT NULL`. */
+function narrowedEventIndex(name: string): string {
+  const path = database(name, 1);
+  const sqlite = new Database(path);
+  sqlite.exec(`DROP INDEX uq_provider_snapshots_event;
+    CREATE UNIQUE INDEX uq_provider_snapshots_event
+      ON provider_snapshots (provider, source_event_id)
+      WHERE source_event_id IS NULL`);
+  sqlite.close();
+  return path;
+}
+
 function runCount(path: string): number {
   const sqlite = new Database(path, { readonly: true, fileMustExist: true });
   try {
@@ -86,6 +98,15 @@ describe('backupDatabase', () => {
     sqlite.close();
     const backup = join(dir, 'backup.db');
     await expect(backupDatabase(source, backup)).rejects.toThrow(/missing tables: quota_windows/);
+    expect(existsSync(backup)).toBe(false);
+    expect(leftovers()).toEqual([]);
+  });
+
+  it('refuses a source whose event index predicate was changed', async () => {
+    const backup = join(dir, 'backup.db');
+    await expect(backupDatabase(narrowedEventIndex('source.db'), backup)).rejects.toThrow(
+      /different definitions: index uq_provider_snapshots_event/,
+    );
     expect(existsSync(backup)).toBe(false);
     expect(leftovers()).toEqual([]);
   });
@@ -273,6 +294,31 @@ describe('restoreDatabase', () => {
         sqlite.exec(statement);
         sqlite.close();
         expectRefused(source, message);
+      });
+
+      it('with an index whose partial predicate was changed', () => {
+        // Same name, columns, uniqueness and partial flag: only the predicate
+        // differs, and with it event deduplication stops working.
+        expectRefused(
+          narrowedEventIndex('narrowed.db'),
+          /different definitions: index uq_provider_snapshots_event/,
+        );
+      });
+
+      it('with a table whose CHECK constraint differs', () => {
+        // 0001 is recorded, but quota_windows still carries 0000's range CHECK,
+        // which pragmas cannot see: a source reporting 120% would be rejected.
+        const source = database('unrebuilt.db', 1);
+        const initial = MIGRATIONS.find((m) => m.version === 0)!.sql;
+        const table = /CREATE TABLE quota_windows \([\s\S]*?\) STRICT;/.exec(initial)![0];
+        expect(table).toContain('CHECK (used_percent >= 0.0');
+        const sqlite = new Database(source);
+        sqlite.pragma('foreign_keys = OFF');
+        sqlite.exec(
+          `DROP TABLE quota_windows; ${table} CREATE INDEX idx_quota_windows_snapshot ON quota_windows (snapshot_id);`,
+        );
+        sqlite.close();
+        expectRefused(source, /different definitions: table quota_windows/);
       });
     });
 
