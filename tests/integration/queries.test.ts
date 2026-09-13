@@ -305,6 +305,17 @@ describe('credit history', () => {
     expect(result.availability.available).toBe(true);
     // 10.4 - 10.1 would be 0.30000000000000071 in binary floating point.
     expect(result.deltas[0]?.change).toBe('0.3');
+    // The trend plots the same quantity as the delta, not the raw counter (10.4).
+    expect(result.series.map((p) => p.value)).toEqual(['0.3']);
+  });
+
+  it('plots no usage trend without a baseline, as it reports no delta', () => {
+    writeCredit('openrouter', '2026-09-10T00:00:00.000Z', '100', '20');
+    writeCredit('openrouter', '2026-09-12T00:00:00.000Z', '100', '35');
+
+    const result = buildCreditHistory(t.db, config, 'openrouter', '7d', NOW);
+    expect(result.availability.available).toBe(false);
+    expect(result.series).toEqual([]);
   });
 
   it('treats a decreasing cumulative counter as a discontinuity, not negative usage', () => {
@@ -328,6 +339,8 @@ describe('credit history', () => {
     const result = buildCreditHistory(t.db, config, 'openrouter', '7d', NOW);
     expect(result.deltas[0]?.discontinuity).toBe(true);
     expect(result.deltas[0]?.change).toBeNull();
+    // The trend stops at the reset: +70 before it, nothing measured across it.
+    expect(result.series.map((p) => p.value)).toEqual(['70']);
   });
 
   it('labels DeepSeek movement as balance change, never as usage', () => {
@@ -337,6 +350,8 @@ describe('credit history', () => {
     const result = buildCreditHistory(t.db, config, 'deepseek', '7d', NOW);
     expect(result.metric).toBe('balance_change');
     expect(result.deltas[0]?.change).toBe('-5');
+    // A balance is still plotted as observed.
+    expect(result.series.map((p) => p.value)).toEqual(['45']);
     // A balance can rise on a top-up, so a decrease is not flagged as a reset.
     expect(result.deltas[0]?.discontinuity).toBe(false);
   });

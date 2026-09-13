@@ -179,10 +179,16 @@ export function buildCreditHistory(
   const rows = getCreditHistory(db, provider, sinceIso);
   const baseline = getCreditBaselineBefore(db, provider, sinceIso);
 
+  const pick = (r: { totalUsage: MoneyString | null; totalBalance: MoneyString | null }) =>
+    metric === 'usage_delta' ? r.totalUsage : r.totalBalance;
+
+  // A balance is plotted as observed. A usage counter is plotted as usage since
+  // the period began — the same quantity as the delta — so, like the delta, it
+  // has nothing honest to show without a pre-period baseline.
   const series = rows.map((r) => ({
     observedAt: r.observedAt,
     currency: r.currency,
-    value: (metric === 'usage_delta' ? r.totalUsage : r.totalBalance) as MoneyString | null,
+    value: pick(r),
   }));
 
   if (rows.length === 0) {
@@ -211,12 +217,9 @@ export function buildCreditHistory(
           'Insufficient history: no observation exists from before this period, so a change cannot be computed. Collection needs to run across a full period boundary first.',
       },
       deltas: [],
-      series,
+      series: metric === 'usage_delta' ? [] : series,
     };
   }
-
-  const pick = (r: { totalUsage: MoneyString | null; totalBalance: MoneyString | null }) =>
-    metric === 'usage_delta' ? r.totalUsage : r.totalBalance;
 
   const baseByCurrency = new Map(baseline.map((b) => [b.currency, pick(b)]));
 
@@ -227,6 +230,7 @@ export function buildCreditHistory(
   // climbed back above the baseline (10 → 80 → 5 → 20 reads as "+10").
   const resetByCurrency = new Set<string>();
   const previousByCurrency = new Map(baseByCurrency);
+  const usageSeries: CreditHistoryResult['series'][number][] = [];
   for (const r of rows) {
     const value = pick(r);
     latestByCurrency.set(r.currency, value);
@@ -236,6 +240,17 @@ export function buildCreditHistory(
       resetByCurrency.add(r.currency);
     }
     previousByCurrency.set(r.currency, value);
+
+    // Past a reset the counter measures from an unknown origin, so the line
+    // stops there, exactly as the delta refuses to span it.
+    const from = baseByCurrency.get(r.currency) ?? null;
+    if (from !== null && !resetByCurrency.has(r.currency)) {
+      usageSeries.push({
+        observedAt: r.observedAt,
+        currency: r.currency,
+        value: subtractMoney(value, from),
+      });
+    }
   }
 
   const deltas: CreditDelta[] = [...latestByCurrency.entries()].map(([currency, to]) => {
@@ -254,5 +269,12 @@ export function buildCreditHistory(
     };
   });
 
-  return { metric, provider, range, availability: { available: true }, deltas, series };
+  return {
+    metric,
+    provider,
+    range,
+    availability: { available: true },
+    deltas,
+    series: metric === 'usage_delta' ? usageSeries : series,
+  };
 }

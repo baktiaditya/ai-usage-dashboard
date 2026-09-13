@@ -199,6 +199,29 @@ describe('provider failure isolation', () => {
     expect(attempts.get('openrouter')?.errorCode).toBe('upstream_error');
   });
 
+  it('reports an attempt that could not be persisted as an error, never as success', async () => {
+    t.db.$client.exec(
+      "CREATE TRIGGER reject_attempts BEFORE INSERT ON collector_attempts BEGIN SELECT RAISE(ABORT, 'disk full'); END;",
+    );
+    const summary = await collectOnce({
+      db: t.db,
+      config,
+      trigger: 'scheduled',
+      adapters: [okAdapter('codex'), failingAdapter('deepseek', 'not_configured')],
+    });
+
+    // Nothing reached the database, so neither the adapter's success nor its
+    // "unavailable" may be reported: the run must not look green.
+    expect(summary.success).toBe(0);
+    expect(summary.unavailable).toBe(0);
+    expect(summary.error).toBe(2);
+    expect(summary.attempts).toEqual([
+      { provider: 'codex', outcome: 'error', code: 'io_error' },
+      { provider: 'deepseek', outcome: 'error', code: 'io_error' },
+    ]);
+    expect(getLatestSnapshots(t.db).size).toBe(0);
+  });
+
   it('is not slowed to the sum of its providers', async () => {
     const started = Date.now();
     await collectOnce({

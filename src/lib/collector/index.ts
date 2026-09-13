@@ -10,7 +10,8 @@
  *     reject.
  *   - **One run, one attempt per provider.** Success and failure counts are
  *     derived from the attempt rows, so a partial run is fully auditable and
- *     the summary can never drift from the detail.
+ *     the summary can never drift from the detail. An attempt that could not be
+ *     written is therefore an error, whatever the adapter returned.
  */
 import type { AppConfig } from '../config';
 import type { CollectContext, CollectionResult, Provider, ProviderAdapter } from '../domain';
@@ -169,8 +170,12 @@ export async function collectOnce(options: CollectOptions): Promise<CollectSumma
   let unavailable = 0;
   let error = 0;
   let deduplicated = 0;
+  const attempts: CollectSummary['attempts'][number][] = [];
 
   for (const record of records) {
+    let outcome = record.result.outcome;
+    let code = record.result.outcome === 'success' ? null : record.result.failure.code;
+
     // Each attempt is its own short transaction, so a write failure for one
     // provider cannot roll back another's observation.
     try {
@@ -187,28 +192,33 @@ export async function collectOnce(options: CollectOptions): Promise<CollectSumma
       });
       if (written.deduplicated) deduplicated += 1;
     } catch (err) {
+      // Nothing reached the database, so nothing is auditable: reporting the
+      // adapter's success would make the run, and the unit's exit code, green
+      // over lost data.
       log.error('failed to persist attempt', {
         provider: record.provider,
         error: safeErrorMessage(err),
       });
+      outcome = 'error';
+      code = 'io_error';
     }
+    attempts.push({ provider: record.provider, outcome, code });
 
-    if (record.result.outcome === 'success') {
+    if (outcome === 'success') {
       success += 1;
       log.info('provider collected', { provider: record.provider });
-    } else if (record.result.outcome === 'unavailable') {
+    } else if (outcome === 'unavailable') {
       unavailable += 1;
-      log.info('provider unavailable', {
-        provider: record.provider,
-        code: record.result.failure.code,
-      });
+      log.info('provider unavailable', { provider: record.provider, code });
     } else {
       error += 1;
-      log.warn('provider failed', {
-        provider: record.provider,
-        code: record.result.failure.code,
-        message: record.result.failure.safeMessage,
-      });
+      if (record.result.outcome !== 'success' && code === record.result.failure.code) {
+        log.warn('provider failed', {
+          provider: record.provider,
+          code,
+          message: record.result.failure.safeMessage,
+        });
+      }
     }
   }
 
@@ -242,10 +252,6 @@ export async function collectOnce(options: CollectOptions): Promise<CollectSumma
     error,
     deduplicated,
     prunedSnapshots,
-    attempts: records.map((r) => ({
-      provider: r.provider,
-      outcome: r.result.outcome,
-      code: r.result.outcome === 'success' ? null : r.result.failure.code,
-    })),
+    attempts,
   };
 }

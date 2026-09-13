@@ -220,6 +220,13 @@ path, the timer, and the collector cannot point at different places. An invalid
 value stops the installer before anything is rendered. **Re-run the installer
 after changing either setting**, in the shell or in `collector.env`.
 
+Values are substituted literally and escaped for systemd, so a path containing
+`&`, `|` or `%` is rendered unchanged. A path the unit cannot carry safely —
+one containing whitespace, a quote, a backslash or a control character — is
+refused with an error instead of being rendered into a unit that points
+elsewhere; move the data directory, repository or Node installation to a path
+without them.
+
 **Exit codes:** `0` every provider was success or unavailable; `1` at least one
 provider errored (the run still persisted everything else); `2` the run could
 not start. A provider being unavailable is a normal steady state and never makes

@@ -88,36 +88,29 @@ fi
 SERVICE_PATH="$SERVICE_PATH:/usr/local/bin:/usr/bin:/bin"
 CODEX_HOME_DIR="${CODEX_HOME:-$HOME/.codex}"
 
-# --- resolve collector settings ---------------------------------------------
-# The data directory and interval come from the collector's own configuration
-# (shell exports, then collector.env, then defaults), not from this shell alone.
-# A value set only in collector.env would otherwise leave the sandbox writable
-# at one path while the collector writes to another.
-if ! RESOLVED="$("$NODE_BIN" "$TSX_BIN" "$WORKDIR/scripts/print-collector-config.ts")"; then
-  echo "could not resolve the collector configuration; nothing was rendered" >&2
+# --- render -------------------------------------------------------------------
+# The data directory, interval and environment file come from the collector's
+# own configuration (shell exports, then collector.env, then defaults), not from
+# this shell alone: a value set only in collector.env would otherwise leave the
+# sandbox writable at one path while the collector writes to another. Rendering
+# is a literal substitution escaped for systemd, so a path containing `&`, `|`
+# or `%` reaches the unit unchanged, and one systemd cannot carry is refused.
+mkdir -p "$GEN_DIR"
+if ! RESOLVED="$(
+  AUD_UNIT_WORKDIR="$WORKDIR" \
+  AUD_UNIT_PATH="$SERVICE_PATH" \
+  AUD_UNIT_CODEXHOME="$CODEX_HOME_DIR" \
+  AUD_UNIT_NODE="$NODE_BIN" \
+  AUD_UNIT_TSX="$TSX_BIN" \
+    "$NODE_BIN" "$TSX_BIN" "$WORKDIR/scripts/render-systemd-units.ts" "$GEN_DIR"
+)"; then
+  echo "nothing was installed" >&2
   exit 1
 fi
 { read -r ENV_FILE; read -r DATA_DIR; read -r INTERVAL; } <<<"$RESOLVED"
 
-mkdir -p "$GEN_DIR" "$DATA_DIR"
+mkdir -p "$DATA_DIR"
 chmod 0700 "$DATA_DIR"
-
-render() {
-  sed \
-    -e "s|__WORKDIR__|$WORKDIR|g" \
-    -e "s|__PATH__|$SERVICE_PATH|g" \
-    -e "s|__CODEXHOME__|$CODEX_HOME_DIR|g" \
-    -e "s|__NODE__|$NODE_BIN|g" \
-    -e "s|__TSX__|$TSX_BIN|g" \
-    -e "s|__DATADIR__|$DATA_DIR|g" \
-    -e "s|__ENVFILE__|$ENV_FILE|g" \
-    -e "s|__INTERVAL__|$INTERVAL|g" \
-    "$1"
-}
-
-render "$WORKDIR/systemd/$SERVICE.template" > "$GEN_DIR/$SERVICE"
-render "$WORKDIR/systemd/$TIMER.template"   > "$GEN_DIR/$TIMER"
-chmod 0600 "$GEN_DIR/$SERVICE" "$GEN_DIR/$TIMER"
 
 echo "Rendered units into $GEN_DIR:"
 echo "  $GEN_DIR/$SERVICE"

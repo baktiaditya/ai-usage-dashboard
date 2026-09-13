@@ -2,6 +2,20 @@
 
 ## 2026-09-13
 
+- **Decision**: fixes for the fourth review of PR #1.
+  - An attempt that cannot be written to the database counts as an error with
+    code `io_error`, whatever the adapter returned. A summary that reported
+    success over zero stored rows let `npm run collect` exit `0`.
+  - The OpenRouter trend plots usage since the period began, measured against
+    the same pre-period baseline as the delta. With no baseline the chart is
+    empty, and it stops at a counter reset. The DeepSeek trend still plots the
+    observed balance.
+  - Units are rendered in TypeScript (`src/lib/systemd-unit.ts`) with one literal
+    substitution pass. `%` is escaped as `%%`, and a value containing whitespace,
+    a quote, a backslash, or a control character is refused. The previous `sed`
+    substitution turned a data directory containing `&` into a different path in
+    both `Environment=` and `ReadWritePaths=`.
+
 - **Update**: the third review of PR #1 found two standards gaps, now closed:
   - The status-line installer sets `settings.json` and its backup to `0600`
     even when they already existed. Before this, `writeFileSync`'s `mode`

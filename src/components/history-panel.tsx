@@ -344,7 +344,9 @@ function formatPercent(v: unknown): string {
 }
 
 /**
- * The observations behind the delta, one small chart per currency.
+ * The observations behind the delta, one small chart per currency: usage since
+ * the period began (measured from the same baseline as the delta), or a balance
+ * as observed.
  *
  * Currencies are never drawn on a shared axis: 30 CNY and 15 USD are different
  * magnitudes, and a second y-scale would invite comparing them. Values are
@@ -384,7 +386,7 @@ function CreditTrend({ result, timezone }: { result: CreditHistoryResult; timezo
             data-testid={`history-credit-trend-${currency}`}
           >
             <figcaption className="text-muted-foreground text-xs">
-              {currency} {isUsage ? 'cumulative usage counter' : 'balance'} as observed
+              {currency} {isUsage ? 'usage since the period began' : 'balance as observed'}
             </figcaption>
             <div className="h-40 w-full">
               <ResponsiveContainer width="100%" height="100%">
@@ -414,7 +416,7 @@ function CreditTrend({ result, timezone }: { result: CreditHistoryResult; timezo
                     labelFormatter={(t: unknown) => full.format(Number(t))}
                     formatter={(_value: unknown, _name: unknown, item: { payload?: unknown }) => [
                       `${formatMoney((item.payload as { exact: MoneyString }).exact)} ${currency}`,
-                      isUsage ? 'Usage counter' : 'Balance',
+                      isUsage ? 'Usage since period start' : 'Balance',
                     ]}
                   />
                   <Line
