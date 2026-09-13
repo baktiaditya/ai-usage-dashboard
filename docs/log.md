@@ -2,6 +2,15 @@
 
 ## 2026-09-14
 
+- **Proposed**: reach the dashboard from a phone over Tailscale, in
+  [access-dashboard-over-tailscale](backlog/ready-for-human/access-dashboard-over-tailscale.md).
+  `tailscale serve` proxies tailnet HTTPS to the loopback server, so the
+  application never binds beyond loopback. The same-origin guard refuses the
+  phone's `ts.net` origin, so refresh needs an exact `AUD_ALLOWED_ORIGINS`
+  allowlist. The brief waits on the user: whether tailnet device identity
+  meets the plan's authentication rule, and enabling tailnet HTTPS
+  certificates. It is planned as a pull request separate from PR #1.
+
 - **Discovery**: the DeepSeek and OpenRouter gates passed live. With both keys
   in `collector.env`, `npm run test:live` passes all four provider gates with
   nothing skipped, and scheduled collector runs record `success` for every
