@@ -114,6 +114,19 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/*
+ * Tailwind v4's preflight resets buttons to `cursor: default`. Restore the
+ * pointer for every enabled control; `disabled:cursor-not-allowed` lives in the
+ * utilities layer and still wins for disabled ones.
+ */
+@layer base {
+  button:not(:disabled),
+  [role='button']:not([aria-disabled='true']),
+  summary {
+    cursor: pointer;
+  }
+}
+
 /* Numeric columns must not jitter as values tick over. */
 .tabular {
   font-variant-numeric: tabular-nums;
