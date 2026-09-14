@@ -21,6 +21,7 @@ docs/
   discovery/       — re-probed baseline, gate evidence, fixed decisions
   operations/      — install, credentials, timer, troubleshooting
   backlog/         — triaged work briefs; non-canonical
+  agents/          — per-repo configuration read by agent skills
 ```
 
 Each folder has a plain `index.md` navigation list with no frontmatter. Concept pages carry YAML frontmatter with at least `type`, `title`, `description`.

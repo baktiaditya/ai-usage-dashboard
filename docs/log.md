@@ -15,7 +15,15 @@
   double as `.02`, and the axis labelled it so. Each value is used as a chart
   position only when its number reads back as the same decimal; a currency
   with any value that does not shows a note instead of a line, and axis ticks
-  are formatted through `decimal.js`. Tooltips already showed the exact string.
+  are formatted through `decimal.js`. Tooltips format the stored string, not
+  the plotted number, to two decimal places, as the card does; the note says so
+  rather than promising exact figures.
+
+- **Creation**: [Agents](agents/index.md) joins the bundle with
+  [Issue tracker](agents/issue-tracker.md),
+  [Triage labels](agents/triage-labels.md) and [Domain docs](agents/domain.md).
+  The okf-sync skill trees and its sync map list the folder, and the bundle
+  validator now fails when a top-level `docs/` folder is missing from them.
 
 - **Decision**: agent skills read their per-repo configuration from
   [Agents](agents/index.md), set up with `/setup-matt-pocock-skills`. Issues live

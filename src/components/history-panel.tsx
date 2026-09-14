@@ -374,8 +374,9 @@ function formatPercent(v: unknown): string {
  * magnitudes, and a second y-scale would invite comparing them. Values are
  * converted to numbers only to position the line, and only when the number reads
  * back as the same decimal; a currency with any value that does not is not drawn
- * at all. Tooltips show the exact decimal string, and axis ticks are formatted
- * through decimals at a fixed scale.
+ * at all. Tooltips format the stored decimal string, not the plotted number, to
+ * two decimal places as the card does, and axis ticks are formatted through
+ * decimals at a fixed scale.
  */
 function CreditTrend({ result, timezone }: { result: CreditHistoryResult; timezone: string }) {
   const isUsage = result.metric === 'usage_delta';
@@ -421,7 +422,7 @@ function CreditTrend({ result, timezone }: { result: CreditHistoryResult; timezo
                 data-testid={`history-credit-trend-unplottable-${currency}`}
               >
                 Not charted: these amounts have more digits than a chart can position exactly. The
-                card shows the exact figures.
+                card shows the latest amount rounded to two decimal places.
               </p>
             ) : (
               <div className="h-40 w-full">

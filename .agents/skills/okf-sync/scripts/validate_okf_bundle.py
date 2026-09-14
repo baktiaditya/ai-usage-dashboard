@@ -130,6 +130,32 @@ def backlog_errors() -> list[str]:
     return errors
 
 
+def topology_errors() -> list[str]:
+    """Every top-level bundle folder must appear in the topology the sync skill reads.
+
+    The skill trees and the sync map are hand-written; a folder added to `docs/`
+    without them leaves the skill working from a stale picture of the bundle.
+    """
+    errors: list[str] = []
+    folders = sorted(p.name for p in BUNDLE_DIR.iterdir() if p.is_dir())
+    surfaces = (
+        (ROOT / ".agents/skills/okf-sync/SKILL.md", r"^\s+{}/\s"),
+        (ROOT / ".claude/skills/okf-sync/SKILL.md", r"^\s+{}/\s"),
+        (ROOT / ".agents/skills/okf-sync/references/repo-sync-map.md", r"^###\s+{}/\s*$"),
+    )
+    for surface, pattern in surfaces:
+        if not surface.exists():
+            errors.append(f"{surface.relative_to(ROOT)}: missing required file")
+            continue
+        text = read_text(surface)
+        for folder in folders:
+            if not re.search(pattern.format(re.escape(folder)), text, re.MULTILINE):
+                errors.append(
+                    f"{surface.relative_to(ROOT)}: bundle folder `docs/{folder}/` is not listed"
+                )
+    return errors
+
+
 def validate() -> list[str]:
     if not BUNDLE_DIR.exists():
         return [f"{BUNDLE_DIR.relative_to(ROOT)}: directory not found"]
@@ -151,6 +177,7 @@ def validate() -> list[str]:
         errors.extend(errors_for_file(path))
 
     errors.extend(backlog_errors())
+    errors.extend(topology_errors())
 
     return errors
 

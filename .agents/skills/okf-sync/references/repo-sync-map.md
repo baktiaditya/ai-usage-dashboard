@@ -42,6 +42,13 @@ Keep this hierarchy intact:
 - `docs/backlog/ready-for-human/`
 - `docs/backlog/archive/`
 
+### agents/
+
+- `docs/agents/index.md`
+- `docs/agents/issue-tracker.md` — where issues live and how briefs link to them
+- `docs/agents/triage-labels.md` — triage roles and their backlog folders
+- `docs/agents/domain.md` — single-context layout; decisions stay in `docs/log.md`
+
 ## Change to document map
 
 | Change                                               | Documents to touch                                                                                                                                   |
@@ -52,6 +59,7 @@ Keep this hierarchy intact:
 | New durable knowledge with no home                   | new concept page with frontmatter, linked from `docs/index.md`, plus `log.md`                                                                        |
 | Review output or idea that is not yet a decision     | a brief under `backlog/needs-triage/` — not a canonical document                                                                                     |
 | Brief becomes an accepted contract                   | fold into the canonical document that owns it, `git mv` the file to `backlog/archive/`, plus `log.md`                                                |
+| Agent skill configuration change                     | `agents/` pages, plus the `## Agent skills` block in `AGENTS.md` and `log.md`                                                                        |
 | Repo structure, tooling, or commands change          | `AGENTS.md` and `README.md`; the bundle only if it changes how agents traverse `docs/`                                                               |
 
 ## Update checklist
