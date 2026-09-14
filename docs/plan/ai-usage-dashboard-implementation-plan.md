@@ -137,7 +137,8 @@ The dashboard makes no automatic routing decisions in the MVP. It only presents 
 
 - `npm run start` and both systemd units keep the production `AUD_PORT` and `AUD_DATA_DIR` contract.
 - `npm run dev` defaults to loopback port `3839` and an independent XDG data directory named
-  `ai-usage-dashboard-dev`; neither default is derived from the production data path.
+  `ai-usage-dashboard-dev`; neither default is derived from the production data path, and a
+  development directory that resolves to the production data directory is refused.
 - Development-only settings are parsed at the launcher seam, not by the shared application
   configuration, so an invalid development override cannot stop production or scheduled collection.
 - Development manual refresh is disabled by default before any database or provider side effect.

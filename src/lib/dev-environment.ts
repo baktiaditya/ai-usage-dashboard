@@ -13,6 +13,7 @@
  * so a malformed development value cannot stop `npm run start`, scheduled
  * collection, or either systemd unit.
  */
+import { realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { ConfigError, loadConfig } from './config';
@@ -46,11 +47,20 @@ function parseDevPort(raw: string | undefined): number {
   return port;
 }
 
-/** Only `0` and `1`; blank, like an empty line in `collector.env`, means unset. */
+/** Unset, `0`, or `1` only. A blank value is refused rather than guessed at. */
 function parseLiveRefresh(raw: string | undefined): boolean {
-  if (raw === undefined || raw === '' || raw === '0') return false;
+  if (raw === undefined || raw === '0') return false;
   if (raw === '1') return true;
   throw new ConfigError('AUD_DEV_LIVE_REFRESH must be 0 or 1');
+}
+
+/** Symlinks resolved where the path exists, so an alias cannot pass for another directory. */
+function canonicalDir(path: string): string {
+  try {
+    return realpathSync.native(path);
+  } catch {
+    return path;
+  }
 }
 
 function devDataDir(env: EnvLike): string {
@@ -89,6 +99,12 @@ export function resolveDevEnvironment(sourceEnv: EnvLike = process.env): DevEnvi
   if (port === production.port) {
     throw new ConfigError(
       `AUD_DEV_PORT ${port} is also the production AUD_PORT; choose another port so the development server cannot collide with the production dashboard`,
+    );
+  }
+  // Opening the database applies migrations, so sharing it is never harmless.
+  if (canonicalDir(dataDir) === canonicalDir(production.dataDir)) {
+    throw new ConfigError(
+      `AUD_DEV_DATA_DIR ${JSON.stringify(dataDir)} is also the production data directory; choose another directory so the development server cannot open the production database`,
     );
   }
 

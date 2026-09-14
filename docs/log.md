@@ -8,7 +8,11 @@
   `ai-usage-dashboard-dev` data directory. `src/lib/dev-environment.ts` parses
   `AUD_DEV_PORT`, `AUD_DEV_DATA_DIR` and `AUD_DEV_LIVE_REFRESH` for the launcher
   only, refuses a development port equal to the resolved production `AUD_PORT`
-  with exit code `2`, and hands `next dev` a complete environment. Without the
+  with exit code `2`, and hands `next dev` a complete environment. Beyond the
+  brief, it also refuses an `AUD_DEV_DATA_DIR` that resolves, symlinks included,
+  to the production data directory, since opening that database would migrate
+  it; and a blank `AUD_DEV_LIVE_REFRESH` is rejected rather than read as unset,
+  matching the brief's unset/`0`/`1` rule. Without the
   opt-in, that child gets empty DeepSeek and OpenRouter keys and the internal
   `AUD_REFRESH_ENABLED=0`, so manual refresh answers `409 refresh_disabled`
   before the rate limiter, the database, or any adapter, Codex included.

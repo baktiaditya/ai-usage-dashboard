@@ -146,6 +146,18 @@ describe('seed:dev targets only the development database', () => {
     expect(existsSync(DEV_DB())).toBe(false);
   });
 
+  it('refuses AUD_DEV_DATA_DIR naming the production directory, leaving it byte-for-byte unchanged', () => {
+    const production = productionSentinel();
+    const before = production.snapshot();
+    const envFile = join(home, 'collector.env');
+    writeFileSync(envFile, `AUD_DATA_DIR=${production.dir}\n`, { mode: 0o600 });
+
+    const r = seed(['--dev'], { AUD_ENV_FILE: envFile, AUD_DEV_DATA_DIR: production.dir });
+    expect(r.status).toBe(2);
+    expect(r.stderr).toContain('is also the production data directory');
+    expectUnchanged(before, production.snapshot());
+  });
+
   it('exits 2 on an invalid development setting before opening any database', () => {
     const r = seed(['--dev'], { AUD_DEV_PORT: '3838' });
     expect(r.status).toBe(2);

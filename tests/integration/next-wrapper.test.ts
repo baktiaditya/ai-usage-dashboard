@@ -214,10 +214,22 @@ describe('npm run dev is isolated from production', () => {
     expect(fromFile.spawned).toBeNull();
   });
 
+  it('refuses a development data directory that is the production one before spawning', () => {
+    const production = join(home, 'production');
+    const r = launch('dev', {
+      AUD_ENV_FILE: writeEnvFile(`AUD_DATA_DIR=${production}\n`),
+      AUD_DEV_DATA_DIR: production,
+    });
+    expect(r.status).toBe(2);
+    expect(r.stderr).toContain('is also the production data directory');
+    expect(r.spawned).toBeNull();
+  });
+
   it.each([
     ['AUD_DEV_PORT', 'abc'],
     ['AUD_DEV_DATA_DIR', 'relative/dir'],
     ['AUD_DEV_LIVE_REFRESH', 'yes'],
+    ['AUD_DEV_LIVE_REFRESH', ''],
   ])('exits 2 on an invalid %s without spawning or leaking a credential', (name, value) => {
     const r = launch('dev', { [name]: value, DEEPSEEK_API_KEY: DEEPSEEK });
     expect(r.status).toBe(2);

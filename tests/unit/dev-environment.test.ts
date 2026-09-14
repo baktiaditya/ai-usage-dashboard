@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -208,11 +208,46 @@ describe('validation', () => {
     );
   });
 
-  it('accepts only 0 or 1 for AUD_DEV_LIVE_REFRESH', () => {
+  it('refuses a development data directory that is the production one', () => {
+    const production = join(dir, 'production');
+    const refused = /AUD_DEV_DATA_DIR ".*" is also the production data directory/;
+
+    // Named in the shell, in collector.env, or with a trailing slash.
+    expect(
+      configError(() =>
+        resolveDevEnvironment(base({ AUD_DATA_DIR: production, AUD_DEV_DATA_DIR: production })),
+      ),
+    ).toMatch(refused);
+    const file = writeEnvFile(`AUD_DATA_DIR=${production}\n`);
+    expect(
+      configError(() =>
+        resolveDevEnvironment(base({ AUD_ENV_FILE: file, AUD_DEV_DATA_DIR: `${production}/` })),
+      ),
+    ).toMatch(refused);
+
+    // A symlink to the production directory is the same directory.
+    mkdirSync(production);
+    const alias = join(dir, 'alias');
+    symlinkSync(production, alias);
+    expect(
+      configError(() =>
+        resolveDevEnvironment(base({ AUD_DATA_DIR: production, AUD_DEV_DATA_DIR: alias })),
+      ),
+    ).toMatch(refused);
+
+    // A production directory moved onto the development default collides too.
+    expect(
+      configError(() =>
+        resolveDevEnvironment(base({ AUD_DATA_DIR: join(dir, 'share', 'ai-usage-dashboard-dev') })),
+      ),
+    ).toMatch(refused);
+  });
+
+  it('accepts only 0 or 1 for AUD_DEV_LIVE_REFRESH, and rejects a blank value', () => {
     expect(resolveDevEnvironment(base({ AUD_DEV_LIVE_REFRESH: '0' })).liveRefresh).toBe(false);
     expect(resolveDevEnvironment(base({ AUD_DEV_LIVE_REFRESH: '1' })).liveRefresh).toBe(true);
-    expect(resolveDevEnvironment(base({ AUD_DEV_LIVE_REFRESH: '' })).liveRefresh).toBe(false);
-    for (const value of ['yes', 'true', '2', ' 1', 'on']) {
+    expect(resolveDevEnvironment(base()).liveRefresh).toBe(false);
+    for (const value of ['', 'yes', 'true', '2', ' 1', 'on']) {
       expect(
         configError(() => resolveDevEnvironment(base({ AUD_DEV_LIVE_REFRESH: value }))),
         value,
@@ -232,6 +267,7 @@ describe('validation', () => {
       { AUD_DEV_PORT: 'abc' },
       { AUD_DEV_PORT: '3838' },
       { AUD_DEV_DATA_DIR: 'relative' },
+      { AUD_DATA_DIR: join(dir, 'production'), AUD_DEV_DATA_DIR: join(dir, 'production') },
       { AUD_DEV_LIVE_REFRESH: 'yes' },
       { AUD_THRESHOLDS: '{' },
     ]) {
