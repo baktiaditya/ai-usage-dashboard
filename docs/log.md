@@ -2,6 +2,35 @@
 
 ## 2026-09-14
 
+- **Update**: units installed before the kebab-case rename below keep
+  `Documentation=file://…/docs/operations/SETUP.md`, which no longer exists. The
+  services still run; only the metadata link dangles. Re-render them with
+  `scripts/install-systemd.sh --install` (plus `--with-web` when the web unit is
+  installed), which reloads systemd without restarting anything.
+  [Setup](operations/setup.md) §5 now says to re-run the installer after pulling
+  a template change. Plan §0 and §3.4 also mark development isolation as decided
+  but not yet implemented, so the plan no longer reads as fully delivered.
+
+- **Restructure**: all markdown filenames under `docs/` are lowercase kebab-case.
+  `docs/plan/AI_Usage_Dashboard_Implementation_Plan.md` is now
+  [implementation plan](plan/ai-usage-dashboard-implementation-plan.md),
+  `docs/plan/AI_Usage_Dashboard_Implementation_Prompt.md` is now
+  [implementation prompt](plan/ai-usage-dashboard-implementation-prompt.md),
+  `docs/discovery/M0_DISCOVERY.md` is now [m0 discovery](discovery/m0-discovery.md),
+  and `docs/operations/SETUP.md` is now [setup](operations/setup.md). References
+  updated across `docs/`, `README.md`, `AGENTS.md`, both okf-sync skills, `src/`
+  comments, systemd templates, and `.env.example`; no content changed.
+
+- **Decision**: development-server isolation is fixed and ready for implementation in
+  [isolate-dev-server-from-production](backlog/ready-for-agent/isolate-dev-server-from-production.md).
+  `npm run dev` defaults to loopback port `3839`, an empty XDG data directory named
+  `ai-usage-dashboard-dev`, and side-effect-free disabled manual refresh. Live refresh requires
+  `AUD_DEV_LIVE_REFRESH=1`; the default child receives no DeepSeek/OpenRouter credential values and
+  cannot run the credentialless Codex adapter. Development settings live behind a launcher seam so
+  malformed `AUD_DEV_*` values cannot stop production entry points. `seed:dev` is explicit and may
+  target only the resolved development directory. Plan §3.4 owns the canonical contract; the brief
+  has no remaining question or external credential gate.
+
 - **Update**: the restore schema check also compares each object's stored
   `CREATE` text, with comments and layout removed. A re-review showed pragmas
   miss what only that text holds: the event index narrowed to
@@ -45,14 +74,14 @@
   be present. The comparison reads pragmas rather than stored `CREATE` text,
   which differs between a fresh and an upgraded database with the same schema.
   `npm run db:backup` applies the same check to a source already at the latest
-  schema. Procedure: [Setup](operations/SETUP.md) §1.
+  schema. Procedure: [Setup](operations/setup.md) §1.
 
 - **Update**: the web unit carries `AUD_HOST` and `AUD_PORT`. The installer
   resolved and reported both, but the rendered unit left them out, so a value
   exported only in the installing shell was lost: the installer announced port
   `4444` while the service bound `3838`. The units keep the host and port they
   were rendered with, like the data directory and interval, so the installer
-  must be re-run after either changes ([Setup](operations/SETUP.md) §5).
+  must be re-run after either changes ([Setup](operations/setup.md) §5).
 
 - **Update**: a quota window no longer vanishes from a card when the source
   stops reporting it at its reset. Claude Code's status line omits
@@ -74,7 +103,7 @@
   still used. The dashboard reported `database disk image is malformed` while
   the file on disk passed `integrity_check`. `ensureOwnerOnly` now only creates
   the file and never opens an existing one. A server built before the fix
-  recovers with a rebuild and a restart ([Setup](operations/SETUP.md) §10).
+  recovers with a rebuild and a restart ([Setup](operations/setup.md) §10).
 
 - **Update**: `npm run db:backup` and `npm run db:restore` supply the backup and
   restore tests that plan M6 requires and a PR review found missing.
@@ -88,11 +117,11 @@
     open, so the file opens as the old database and still passes
     `integrity_check`.
 
-  Procedure: [Setup](operations/SETUP.md) §1.
+  Procedure: [Setup](operations/setup.md) §1.
 
 - **Update**: Setup names the minimum supported CLI versions, as plan §4.1
   requires: `codex-cli 0.154.0` and Claude Code 2.1.269, the versions
-  live-verified in [M0 Discovery](discovery/M0_DISCOVERY.md). Older releases
+  live-verified in [M0 Discovery](discovery/m0-discovery.md). Older releases
   are untested rather than known broken.
 
 - **Update**: plan §3.3 now names the optional boot-time web unit, so the plan
@@ -111,7 +140,7 @@
 - **Discovery**: the DeepSeek and OpenRouter gates passed live. With both keys
   in `collector.env`, `npm run test:live` passes all four provider gates with
   nothing skipped, and scheduled collector runs record `success` for every
-  provider. [M0 Discovery](discovery/M0_DISCOVERY.md), the README, and the
+  provider. [M0 Discovery](discovery/m0-discovery.md), the README, and the
   indexes now say all four are live-verified.
   [provision-provider-credentials](backlog/archive/provision-provider-credentials.md)
   moves to `archive/`.
@@ -131,12 +160,9 @@
   already exports the variable, so the e2e lane is unaffected.
 
 - **Proposed**: now that the dashboard runs at boot, two backlog briefs keep
-  development from reaching production. Both wait on the user in
-  `ready-for-human/`:
-  - [isolate-dev-server-from-production](backlog/ready-for-human/isolate-dev-server-from-production.md):
-    `npm run dev` gets its own port and data directory by default. Today it
-    shares port 3838 and the database with the web unit, and migrations apply
-    on open.
+  development from reaching production:
+  - [isolate-dev-server-from-production](backlog/ready-for-agent/isolate-dev-server-from-production.md)
+    began here as a human-gated port/data proposal and is promoted by the decision above.
   - [separate-production-checkout](backlog/ready-for-human/separate-production-checkout.md):
     after PR #1 merges, both units run from a dedicated checkout of `main`, so
     a development build cannot replace what production serves.
@@ -206,7 +232,7 @@
     every other entry point.
 
 - **Update**: fixes for the second review of PR #1 change these facts in
-  [Setup](operations/SETUP.md):
+  [Setup](operations/setup.md):
   - The collector unit has no `EnvironmentFile=`. The installer resolves the
     environment file, data directory, and interval through the collector's own
     configuration and bakes them in as `Environment=` values. The collector reads
@@ -226,7 +252,7 @@
   confirms the boundary on all transition days.
 
 - **Update**: fixes for the fifteen confirmed PR #1 review findings change
-  several operator-facing facts, now in [Setup](operations/SETUP.md):
+  several operator-facing facts, now in [Setup](operations/setup.md):
   - The collector environment file is loaded by every entry point (`npm run collect`, `npm run test:live`, and the dashboard's manual refresh), not only
     by the systemd unit. `AUD_ENV_FILE` overrides the path, and exported shell
     variables take precedence. The provisioning brief's steps therefore work as
@@ -242,7 +268,7 @@
 
 - **Decision**: `quota_windows.used_percent` stores the source value unclamped
   (migration `0001` rebuilds the table without its 0–100 `CHECK`), matching the
-  [plan](plan/AI_Usage_Dashboard_Implementation_Plan.md): only the derived
+  [plan](plan/ai-usage-dashboard-implementation-plan.md): only the derived
   remaining percentage is clamped, at presentation time. "Latest" snapshot and
   attempt are selected by observation and start time, not by row id, so an
   overlapping run that persists last cannot replace newer data.
@@ -258,7 +284,7 @@
   is unsignalled: `search_mode` still reports `semantic` when the nodes an agent
   is looking for were never embedded, so a semantic miss reads as "absent from the
   codebase". The obligation therefore lives in `AGENTS.md`, not in
-  [Setup](operations/SETUP.md): it constrains how an agent may interpret a result,
+  [Setup](operations/setup.md): it constrains how an agent may interpret a result,
   while installing the `embeddings` extra is per-machine state that step 1's
   existing tools-unavailable clause already covers. `README.md` is unchanged —
   the fact is agent-facing and has no bearing on product commands.
@@ -268,7 +294,7 @@
   `"type": "module"`). `pre-commit` runs lint-staged (Prettier), then
   `typecheck` plus related Vitest files in parallel when TS/TSX is staged;
   `commit-msg` enforces Conventional Commits with a 72-character subject cap.
-  [Setup](operations/SETUP.md) documents the hooks.
+  [Setup](operations/setup.md) documents the hooks.
 
 - **Restructure**: the four flat documents move into topic folders — plan
   ([plan/](plan/index.md)), discovery ([discovery/](discovery/index.md)), operations
@@ -281,9 +307,9 @@
   [backlog/](backlog/index.md) with its brief template and four status folders.
   The four existing documents stay flat where they are — the bundle is small and
   needs no subfolders yet. Canonical authority: the
-  [Implementation Plan](plan/AI_Usage_Dashboard_Implementation_Plan.md) for scope and
-  contracts, [M0 Discovery](discovery/M0_DISCOVERY.md) for what is live-verified vs
-  fixture-tested, [Setup](operations/SETUP.md) for operations. The
+  [Implementation Plan](plan/ai-usage-dashboard-implementation-plan.md) for scope and
+  contracts, [M0 Discovery](discovery/m0-discovery.md) for what is live-verified vs
+  fixture-tested, [Setup](operations/setup.md) for operations. The
   [`okf-sync`](../.agents/skills/okf-sync/SKILL.md) skill and its validator keep
   the bundle coherent. First brief filed:
   [provision-provider-credentials](backlog/archive/provision-provider-credentials.md)

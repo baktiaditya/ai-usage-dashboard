@@ -10,11 +10,13 @@ A local dashboard for monitoring Codex and Claude Code quota and DeepSeek and Op
 
 ## 0. Machine validation baseline
 
-> **Implementation status (2026-09-12).** This plan has been implemented.
+> **Implementation status (2026-09-12).** This plan has been implemented, except
+> §3.4 Development isolation, which is decided but not yet implemented; see
+> [isolate-dev-server-from-production](../backlog/ready-for-agent/isolate-dev-server-from-production.md).
 > The baseline below is the initial observation; re-probe results, per-provider
 > gate status, finalized decisions, and adopted deviations are recorded in
-> [`M0_DISCOVERY.md`](../discovery/M0_DISCOVERY.md). Usage guidance is in
-> [`SETUP.md`](../operations/SETUP.md).
+> [`m0-discovery.md`](../discovery/m0-discovery.md). Usage guidance is in
+> [`setup.md`](../operations/setup.md).
 >
 > Drift to be aware of when reading this table:
 >
@@ -26,7 +28,7 @@ A local dashboard for monitoring Codex and Claude Code quota and DeepSeek and Op
 > - Node 24 supports JSON source-text access, which underpins the decimal-safe
 >   strategy for OpenRouter JSON numbers.
 >
-> Main deviations from the plan (full rationale in `M0_DISCOVERY.md` §"Deviations"):
+> Main deviations from the plan (full rationale in `m0-discovery.md` §"Deviations"):
 > `drizzle-kit` is not used (hand-written SQL migrations; Drizzle ORM is still
 > used for queries), migrations are embedded into a generated TypeScript module
 > so they can be bundled, Next.js 16.3.5 is used for a clean `npm audit`, shadcn/ui
@@ -131,6 +133,27 @@ The dashboard makes no automatic routing decisions in the MVP. It only presents 
 - Default retention 90 days. Daily aggregates may be kept longer once their rollup and idempotency rules are tested.
 - Define freshness per source. Initial defaults: a pull source becomes `stale` after three missed intervals; a Claude event also becomes `stale` when the event passes its threshold or `resets_at` has passed.
 - Treat negative counter deltas as data discontinuity/reset, not as negative usage.
+
+### 3.4 Development isolation
+
+> **Status: planned, not yet implemented.** Today `npm run dev` still binds `AUD_PORT` and opens the
+> production data directory, and `seed:dev` does not exist. The contract below is delivered by
+> [isolate-dev-server-from-production](../backlog/ready-for-agent/isolate-dev-server-from-production.md);
+> remove this note and the §0 exception when that brief is accepted.
+
+- `npm run start` and both systemd units keep the production `AUD_PORT` and `AUD_DATA_DIR` contract.
+- `npm run dev` defaults to loopback port `3839` and an independent XDG data directory named
+  `ai-usage-dashboard-dev`; neither default is derived from the production data path.
+- Development-only settings are parsed at the launcher seam, not by the shared application
+  configuration, so an invalid development override cannot stop production or scheduled collection.
+- Development manual refresh is disabled by default before any database or provider side effect.
+  `AUD_DEV_LIVE_REFRESH=1` is the explicit opt-in; the offline child does not inherit the DeepSeek
+  or OpenRouter credential values and also prevents credentialless Codex collection.
+- Development data starts empty. `npm run seed:dev` may replace seeded rows in that directory only;
+  production data is never copied or selected implicitly.
+- A dedicated production checkout remains a separate operational hardening task for build,
+  dependency, restart, and rollback isolation. Next.js 16 already separates `next dev` output under
+  `.next/dev`, so that checkout is not a prerequisite for the development port/data contract.
 
 ## 4. Technical design
 

@@ -40,7 +40,7 @@ export default function Page() {
             npm run db:migrate{'\n'}npm run collect
           </pre>
           <p className="text-muted-foreground mt-2 text-xs">
-            See docs/operations/SETUP.md for the full guide.
+            See docs/operations/setup.md for the full guide.
           </p>
         </div>
       </main>

@@ -137,7 +137,7 @@ application ever labels a DeepSeek number "usage".
 Fixtures are synthetic and marked as such in their `_fixture.note`.
 
 **Gate closed** by provisioning the key in the collector environment file
-(`docs/operations/SETUP.md` §4) and running `npm run test:live`.
+(`docs/operations/setup.md` §4) and running `npm run test:live`.
 
 ### OpenRouter — PASSED (live)
 

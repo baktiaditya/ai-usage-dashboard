@@ -8,8 +8,8 @@ The status above must match the directory that contains this brief. Move the fil
 `git mv` when its readiness changes.
 
 This is a backlog implementation brief, not a canonical product or operations
-contract. It does not override `docs/plan/AI_Usage_Dashboard_Implementation_Plan.md`,
-`docs/discovery/M0_DISCOVERY.md`, `docs/operations/SETUP.md`, or `docs/log.md`.
+contract. It does not override `docs/plan/ai-usage-dashboard-implementation-plan.md`,
+`docs/discovery/m0-discovery.md`, `docs/operations/setup.md`, or `docs/log.md`.
 
 Related issue: none yet
 
@@ -26,12 +26,13 @@ the installer runs in (`scripts/install-systemd.sh`, `scripts/render-systemd-uni
 they point at the development repository.
 
 The web unit serves `.next` from there and never builds on start
-([Setup](../../operations/SETUP.md) §6). Two failures follow:
+([Setup](../../operations/setup.md) §6). Two failures follow:
 
 - `npm run build` on an unfinished branch replaces the running server's build mid-flight.
 - A reboot serves whatever build was last left in `.next`.
 
-[isolate-dev-server-from-production](isolate-dev-server-from-production.md) removes the port and
+[isolate-dev-server-from-production](../ready-for-agent/isolate-dev-server-from-production.md)
+removes the port and
 database collisions, but not this one.
 
 ## Dependencies and Gates
@@ -73,7 +74,7 @@ ai-usage-dashboard-web.service`. The timer picks up new collector code on its ne
 
 | Path                       | Change                               |
 | -------------------------- | ------------------------------------ |
-| `docs/operations/SETUP.md` | §6 deploy and rollback runbook       |
+| `docs/operations/setup.md` | §6 deploy and rollback runbook       |
 | `docs/log.md`              | `Decision` entry naming the checkout |
 
 ## Acceptance Criteria

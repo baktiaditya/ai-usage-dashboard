@@ -4,7 +4,7 @@
 # This unit is NEVER installed or enabled automatically.
 [Unit]
 Description=AI Usage Dashboard collector (one-shot)
-Documentation=file://__WORKDIR__/docs/operations/SETUP.md
+Documentation=file://__WORKDIR__/docs/operations/setup.md
 # Do not fight the network at boot; a failed poll is a normal, recorded outcome.
 After=network-online.target
 Wants=network-online.target

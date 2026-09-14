@@ -5,7 +5,7 @@
 # This unit is NEVER installed or enabled automatically.
 [Unit]
 Description=AI Usage Dashboard web server (loopback only)
-Documentation=file://__WORKDIR__/docs/operations/SETUP.md
+Documentation=file://__WORKDIR__/docs/operations/setup.md
 # A crash loop must not spin forever: five failed starts within five minutes
 # leave the unit failed, and visible in --status, instead of retrying endlessly.
 StartLimitIntervalSec=300

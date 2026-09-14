@@ -8,8 +8,8 @@ The status above must match the directory that contains this brief. Move the fil
 `git mv` when its readiness changes.
 
 This is a backlog implementation brief, not a canonical product or operations
-contract. It does not override `docs/plan/AI_Usage_Dashboard_Implementation_Plan.md`,
-`docs/discovery/M0_DISCOVERY.md`, `docs/operations/SETUP.md`, or `docs/log.md`.
+contract. It does not override `docs/plan/ai-usage-dashboard-implementation-plan.md`,
+`docs/discovery/m0-discovery.md`, `docs/operations/setup.md`, or `docs/log.md`.
 
 Related issue: <link to #NN, or "none yet">
 
@@ -22,7 +22,7 @@ What should be true after this work is done. One paragraph, no implementation de
 Why this exists now — the finding, review, or user answer that triggered it. Link to
 the canonical documents that constrain it. Resolve links from the brief's destination
 directory: a brief inside a status folder normally reaches the plan through
-`../../plan/AI_Usage_Dashboard_Implementation_Plan.md`, not the path that works from this
+`../../plan/ai-usage-dashboard-implementation-plan.md`, not the path that works from this
 template's directory.
 
 ## Dependencies and Gates

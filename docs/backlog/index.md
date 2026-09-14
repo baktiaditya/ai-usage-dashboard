@@ -22,9 +22,9 @@ Move files between folders with `git mv` so history stays readable.
 
 A brief here may carry firm implementation direction, but it **never overrides**:
 
-- `docs/plan/AI_Usage_Dashboard_Implementation_Plan.md` — scope and provider contracts
-- `docs/discovery/M0_DISCOVERY.md` — what is live-verified vs fixture-tested
-- `docs/operations/SETUP.md` — install, credentials, and operations
+- `docs/plan/ai-usage-dashboard-implementation-plan.md` — scope and provider contracts
+- `docs/discovery/m0-discovery.md` — what is live-verified vs fixture-tested
+- `docs/operations/setup.md` — install, credentials, and operations
 - `docs/log.md` — decisions already taken
 
 When a brief conflicts with any of the above, the canonical document wins. Resolve

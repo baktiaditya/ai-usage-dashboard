@@ -145,7 +145,7 @@ export interface AppConfig {
 }
 
 /**
- * Defaults chosen in M0 and documented in docs/operations/SETUP.md.
+ * Defaults chosen in M0 and documented in docs/operations/setup.md.
  *
  * Balance thresholds are per provider *and* per currency because a CNY balance
  * of 20 and a USD balance of 20 are not comparable amounts of runway.

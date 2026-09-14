@@ -1,7 +1,7 @@
 # user-level systemd timer — installed to ~/.config/systemd/user/
 [Unit]
 Description=Run the AI Usage Dashboard collector every __INTERVAL__ minutes
-Documentation=file://__WORKDIR__/docs/operations/SETUP.md
+Documentation=file://__WORKDIR__/docs/operations/setup.md
 
 [Timer]
 OnBootSec=2min
