@@ -150,26 +150,28 @@ of this port/data/refresh change. See
    - README quick start and command table: distinguish `dev` from production `start`.
    - `.env.example`: document the three public `AUD_DEV_*` settings, not
      `AUD_REFRESH_ENABLED`.
+   - Plan §0 and §3.4: remove the "not yet implemented" exception and status note.
    - `docs/log.md`: record the delivered behavior and archive this brief after acceptance.
 
 ## Files Touched
 
-| Path                                                | Required change                                                        |
-| --------------------------------------------------- | ---------------------------------------------------------------------- |
-| `src/lib/dev-environment.ts`                        | Development configuration seam and child-environment construction      |
-| `src/lib/config.ts`                                 | Internal `refreshEnabled` runtime configuration                        |
-| `scripts/next.ts`                                   | Mode-specific launch behavior                                          |
-| `src/app/api/providers/[provider]/refresh/route.ts` | Early, side-effect-free disabled-refresh response                      |
-| `scripts/seed-demo.ts`                              | Safe `--dev` target and strict argument handling                       |
-| `package.json`                                      | `seed:dev` command                                                     |
-| `tests/unit/dev-environment.test.ts`                | Defaults, overrides, precedence, isolation, and validation             |
-| `tests/unit/config-time.test.ts`                    | `AUD_REFRESH_ENABLED` parsing and production default                   |
-| `tests/integration/next-wrapper.test.ts`            | Mode selection, collision refusal, bind flags, and production behavior |
-| `tests/integration/seed-demo.test.ts`               | Development target and production sentinel preservation                |
-| `tests/integration/refresh-route.test.ts`           | `409`, no rate-limit use, no database open, and opt-in path            |
-| `docs/operations/setup.md`                          | Development workflow and corrected web-unit guidance                   |
-| `README.md`, `.env.example`                         | Public development defaults and opt-in                                 |
-| `docs/log.md`                                       | Delivery update and archive link                                       |
+| Path                                                  | Required change                                                        |
+| ----------------------------------------------------- | ---------------------------------------------------------------------- |
+| `src/lib/dev-environment.ts`                          | Development configuration seam and child-environment construction      |
+| `src/lib/config.ts`                                   | Internal `refreshEnabled` runtime configuration                        |
+| `scripts/next.ts`                                     | Mode-specific launch behavior                                          |
+| `src/app/api/providers/[provider]/refresh/route.ts`   | Early, side-effect-free disabled-refresh response                      |
+| `scripts/seed-demo.ts`                                | Safe `--dev` target and strict argument handling                       |
+| `package.json`                                        | `seed:dev` command                                                     |
+| `tests/unit/dev-environment.test.ts`                  | Defaults, overrides, precedence, isolation, and validation             |
+| `tests/unit/config-time.test.ts`                      | `AUD_REFRESH_ENABLED` parsing and production default                   |
+| `tests/integration/next-wrapper.test.ts`              | Mode selection, collision refusal, bind flags, and production behavior |
+| `tests/integration/seed-demo.test.ts`                 | Development target and production sentinel preservation                |
+| `tests/integration/refresh-route.test.ts`             | `409`, no rate-limit use, no database open, and opt-in path            |
+| `docs/operations/setup.md`                            | Development workflow and corrected web-unit guidance                   |
+| `README.md`, `.env.example`                           | Public development defaults and opt-in                                 |
+| `docs/plan/ai-usage-dashboard-implementation-plan.md` | Remove the §0 exception and the §3.4 pending note                      |
+| `docs/log.md`                                         | Delivery update and archive link                                       |
 
 Equivalent test-file placement is acceptable only when it preserves every named assertion and
 keeps the production-regression proof easy to find.

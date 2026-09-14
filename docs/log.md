@@ -2,6 +2,15 @@
 
 ## 2026-09-14
 
+- **Update**: units installed before the kebab-case rename below keep
+  `Documentation=file://…/docs/operations/SETUP.md`, which no longer exists. The
+  services still run; only the metadata link dangles. Re-render them with
+  `scripts/install-systemd.sh --install` (plus `--with-web` when the web unit is
+  installed), which reloads systemd without restarting anything.
+  [Setup](operations/setup.md) §5 now says to re-run the installer after pulling
+  a template change. Plan §0 and §3.4 also mark development isolation as decided
+  but not yet implemented, so the plan no longer reads as fully delivered.
+
 - **Restructure**: all markdown filenames under `docs/` are lowercase kebab-case.
   `docs/plan/AI_Usage_Dashboard_Implementation_Plan.md` is now
   [implementation plan](plan/ai-usage-dashboard-implementation-plan.md),

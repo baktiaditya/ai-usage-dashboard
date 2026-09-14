@@ -272,7 +272,11 @@ the units, so the writable path, the timer, the collector, and the web server's
 bind address cannot point at different places or differ from what the installer
 reports. An invalid value stops the installer before anything is rendered.
 **Re-run the installer after changing any of these settings**, in the shell or in
-`collector.env`: the installed units keep the values they were rendered with.
+`collector.env`, and after pulling a change to `systemd/*.template`: the installed
+units keep the values and text they were rendered with. To re-render without
+restarting anything, run `scripts/install-systemd.sh --install`, adding
+`--with-web` when the web unit is installed; `--install` copies the units and
+reloads systemd but starts and restarts nothing.
 
 Values are substituted literally and escaped for systemd, so a path containing
 `&`, `|` or `%` is rendered unchanged. A path the unit cannot carry safely —
