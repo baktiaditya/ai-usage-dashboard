@@ -2,6 +2,16 @@
 
 ## 2026-09-14
 
+- **Decision**: development-server isolation is fixed and ready for implementation in
+  [isolate-dev-server-from-production](backlog/ready-for-agent/isolate-dev-server-from-production.md).
+  `npm run dev` defaults to loopback port `3839`, an empty XDG data directory named
+  `ai-usage-dashboard-dev`, and side-effect-free disabled manual refresh. Live refresh requires
+  `AUD_DEV_LIVE_REFRESH=1`; the default child receives no DeepSeek/OpenRouter credential values and
+  cannot run the credentialless Codex adapter. Development settings live behind a launcher seam so
+  malformed `AUD_DEV_*` values cannot stop production entry points. `seed:dev` is explicit and may
+  target only the resolved development directory. Plan §3.4 owns the canonical contract; the brief
+  has no remaining question or external credential gate.
+
 - **Update**: the restore schema check also compares each object's stored
   `CREATE` text, with comments and layout removed. A re-review showed pragmas
   miss what only that text holds: the event index narrowed to
@@ -131,12 +141,9 @@
   already exports the variable, so the e2e lane is unaffected.
 
 - **Proposed**: now that the dashboard runs at boot, two backlog briefs keep
-  development from reaching production. Both wait on the user in
-  `ready-for-human/`:
-  - [isolate-dev-server-from-production](backlog/ready-for-human/isolate-dev-server-from-production.md):
-    `npm run dev` gets its own port and data directory by default. Today it
-    shares port 3838 and the database with the web unit, and migrations apply
-    on open.
+  development from reaching production:
+  - [isolate-dev-server-from-production](backlog/ready-for-agent/isolate-dev-server-from-production.md)
+    began here as a human-gated port/data proposal and is promoted by the decision above.
   - [separate-production-checkout](backlog/ready-for-human/separate-production-checkout.md):
     after PR #1 merges, both units run from a dedicated checkout of `main`, so
     a development build cannot replace what production serves.

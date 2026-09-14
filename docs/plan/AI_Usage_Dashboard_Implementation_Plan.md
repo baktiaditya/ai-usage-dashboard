@@ -132,6 +132,22 @@ The dashboard makes no automatic routing decisions in the MVP. It only presents 
 - Define freshness per source. Initial defaults: a pull source becomes `stale` after three missed intervals; a Claude event also becomes `stale` when the event passes its threshold or `resets_at` has passed.
 - Treat negative counter deltas as data discontinuity/reset, not as negative usage.
 
+### 3.4 Development isolation
+
+- `npm run start` and both systemd units keep the production `AUD_PORT` and `AUD_DATA_DIR` contract.
+- `npm run dev` defaults to loopback port `3839` and an independent XDG data directory named
+  `ai-usage-dashboard-dev`; neither default is derived from the production data path.
+- Development-only settings are parsed at the launcher seam, not by the shared application
+  configuration, so an invalid development override cannot stop production or scheduled collection.
+- Development manual refresh is disabled by default before any database or provider side effect.
+  `AUD_DEV_LIVE_REFRESH=1` is the explicit opt-in; the offline child does not inherit the DeepSeek
+  or OpenRouter credential values and also prevents credentialless Codex collection.
+- Development data starts empty. `npm run seed:dev` may replace seeded rows in that directory only;
+  production data is never copied or selected implicitly.
+- A dedicated production checkout remains a separate operational hardening task for build,
+  dependency, restart, and rollback isolation. Next.js 16 already separates `next dev` output under
+  `.next/dev`, so that checkout is not a prerequisite for the development port/data contract.
+
 ## 4. Technical design
 
 ### 4.1 Stack and bootstrap

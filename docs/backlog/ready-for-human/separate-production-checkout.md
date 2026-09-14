@@ -31,7 +31,8 @@ The web unit serves `.next` from there and never builds on start
 - `npm run build` on an unfinished branch replaces the running server's build mid-flight.
 - A reboot serves whatever build was last left in `.next`.
 
-[isolate-dev-server-from-production](isolate-dev-server-from-production.md) removes the port and
+[isolate-dev-server-from-production](../ready-for-agent/isolate-dev-server-from-production.md)
+removes the port and
 database collisions, but not this one.
 
 ## Dependencies and Gates
