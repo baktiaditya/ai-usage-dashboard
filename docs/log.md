@@ -2,6 +2,16 @@
 
 ## 2026-09-14
 
+- **Decision**: production-checkout isolation is fixed and ready for implementation in
+  [separate-production-checkout](backlog/ready-for-agent/separate-production-checkout.md).
+  Production deploys only commits from `origin/main` through the separate clone at
+  `/home/bago/Workspace/ai-usage-dashboard-prod`; no development or hotfix commit originates there.
+  Brief downtime is accepted so the timer, any active collector service, and the web unit can stop
+  before source, dependencies, or `.next` change. Each deploy records its candidate and previous
+  SHA, and rollback restores source, dependencies, build, and rendered units from one known-good
+  commit. The user authorizes creating the clone, reinstalling and restarting both user units, and
+  rehearsing rollback. Setup §6 receives the canonical runbook after the live migration succeeds.
+
 - **Update**: development-server isolation is delivered, and
   [isolate-dev-server-from-production](backlog/archive/isolate-dev-server-from-production.md)
   moves to `archive/`. `npm run dev` binds `127.0.0.1:3839` with its own
@@ -183,9 +193,8 @@
   development from reaching production:
   - [isolate-dev-server-from-production](backlog/archive/isolate-dev-server-from-production.md)
     began here as a human-gated port/data proposal and is promoted by the decision above.
-  - [separate-production-checkout](backlog/ready-for-human/separate-production-checkout.md):
-    after PR #1 merges, both units run from a dedicated checkout of `main`, so
-    a development build cannot replace what production serves.
+  - [separate-production-checkout](backlog/ready-for-agent/separate-production-checkout.md)
+    began here as a human-gated proposal and is promoted by the decision above.
 
 - **Decision**: the dashboard web server can start at boot as a systemd user unit,
   `ai-usage-dashboard-web.service`, installed with `--with-web`. pm2 was rejected

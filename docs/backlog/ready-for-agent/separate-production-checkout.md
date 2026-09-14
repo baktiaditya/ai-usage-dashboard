@@ -2,7 +2,7 @@
 
 ## Status
 
-Ready for human
+Ready for agent
 
 The status above must match the directory that contains this brief. Move the file with
 `git mv` when its readiness changes.
@@ -45,10 +45,11 @@ database collisions, but not this one.
 
 - Resolved: PR #1 is merged into `main` as `a695a09`, including the web unit and the installer's
   `--with-web` flag (introduced in `f80c013`).
-- Authorization to reinstall and restart both user units from the new checkout. Owner: user.
-- A decision on whether brief dashboard and collection downtime during deploy is acceptable. If
-  not, atomic release directories or an equivalent staged-switch mechanism must be designed first.
-  Owner: user.
+- Resolved: the production checkout is a separate clone at
+  `/home/bago/Workspace/ai-usage-dashboard-prod`.
+- Resolved: brief dashboard and collection downtime during deploy and rollback is acceptable.
+- Resolved: the user authorizes creating the production clone, reinstalling and restarting both
+  user units from it, and performing the rollback rehearsal required by this brief.
 
 ## Scope
 
@@ -87,8 +88,6 @@ database collisions, but not this one.
    - **Rollback:** stop the timer, any active collector service, and the web unit; detach at the
      recorded known-good SHA; run `npm ci`, `npm run build`, and reinstall both units; then start and
      verify them. A later deploy repeats the normal fetch-and-detach flow from `origin/main`.
-   - If downtime is not accepted, replace this sequence with a separately reviewed atomic release
-     design; never build into `.next` while the installed web unit is serving that checkout.
 5. Record the decision in `docs/log.md`.
 
 ## Files Touched
@@ -130,8 +129,3 @@ Boot start needs a real reboot; state it explicitly if one is not performed. The
 covers the documentation change.
 
 ## Open Questions
-
-- Is `~/Workspace/ai-usage-dashboard-prod` the production checkout location? Owner: user.
-- A separate clone (recommended) or a `git worktree`? Owner: user.
-- Is brief downtime for both the dashboard and scheduled collection acceptable during deploy and
-  rollback? Owner: user.

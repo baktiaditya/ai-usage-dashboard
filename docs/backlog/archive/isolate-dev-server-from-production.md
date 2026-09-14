@@ -56,7 +56,7 @@ Next.js 16 writes `next dev` output under `.next/dev`, separately from the produ
 locks duplicate development servers in one checkout. The separate production checkout remains
 valuable for branch, dependency, build, restart, and rollback isolation, but it is not a dependency
 of this port/data/refresh change. See
-[separate-production-checkout](../ready-for-human/separate-production-checkout.md).
+[separate-production-checkout](../ready-for-agent/separate-production-checkout.md).
 
 ## Fixed Decisions
 
@@ -109,7 +109,7 @@ of this port/data/refresh change. See
 - Changing `npm run start`, scheduled collection, or the installed systemd units.
 - Copying or restoring production data into development.
 - Moving production to its own checkout; that remains
-  [separate-production-checkout](../ready-for-human/separate-production-checkout.md).
+  [separate-production-checkout](../ready-for-agent/separate-production-checkout.md).
 - Changing the origin policy, loopback-only host policy, provider contracts, or rate limits.
 - UI redesign. The existing refresh-error surface may display the `409` message.
 - Automatic live-provider access in development.
