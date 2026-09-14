@@ -6,7 +6,7 @@ description: Historical record of the agent brief that built the plan end to end
 
 # Agent Prompt — Implement the AI Usage Dashboard
 
-You are the implementation agent for this repository. Build the application described in [`docs/plan/AI_Usage_Dashboard_Implementation_Plan.md`](./AI_Usage_Dashboard_Implementation_Plan.md) into a working, tested localhost-first dashboard.
+You are the implementation agent for this repository. Build the application described in [`docs/plan/ai-usage-dashboard-implementation-plan.md`](./ai-usage-dashboard-implementation-plan.md) into a working, tested localhost-first dashboard.
 
 ## Objective
 

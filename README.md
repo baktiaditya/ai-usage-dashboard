@@ -26,7 +26,7 @@ It works with nothing configured. Providers you have not set up render as
 `unavailable` with a setup hint instead of blocking the page or failing the run.
 
 Full instructions, including the Claude status-line bridge, credentials, and the
-systemd timer: **[docs/operations/SETUP.md](docs/operations/SETUP.md)**.
+systemd timer: **[docs/operations/setup.md](docs/operations/setup.md)**.
 
 ## The three ideas this is built around
 
@@ -115,7 +115,7 @@ so scheduled and manual runs cannot drift apart in behaviour.
 **DeepSeek** and **OpenRouter** are verified live as well, against their balance
 and credits endpoints once a key is in `collector.env`. Without a key, each
 surfaces as `unavailable` with a precise setup hint. Per-gate evidence is in
-**[docs/discovery/M0_DISCOVERY.md](docs/discovery/M0_DISCOVERY.md)**.
+**[docs/discovery/m0-discovery.md](docs/discovery/m0-discovery.md)**.
 
-Design rationale and scope: [docs/plan/AI_Usage_Dashboard_Implementation_Plan.md](docs/plan/AI_Usage_Dashboard_Implementation_Plan.md).
+Design rationale and scope: [docs/plan/ai-usage-dashboard-implementation-plan.md](docs/plan/ai-usage-dashboard-implementation-plan.md).
 Knowledge bundle root: [docs/index.md](docs/index.md).

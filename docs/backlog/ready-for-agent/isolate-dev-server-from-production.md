@@ -8,8 +8,8 @@ The status above must match the directory that contains this brief. Move the fil
 `git mv` when its readiness changes.
 
 This is a backlog implementation brief, not a canonical product or operations
-contract. It does not override `docs/plan/AI_Usage_Dashboard_Implementation_Plan.md`,
-`docs/discovery/M0_DISCOVERY.md`, `docs/operations/SETUP.md`, or `docs/log.md`.
+contract. It does not override `docs/plan/ai-usage-dashboard-implementation-plan.md`,
+`docs/discovery/m0-discovery.md`, `docs/operations/setup.md`, or `docs/log.md`.
 
 Related issue: none yet. Creating an issue is tracking hygiene, not an implementation gate.
 
@@ -26,7 +26,7 @@ deliberate command and can never infer the production database as its target.
 ## Context
 
 The dashboard runs at boot as `ai-usage-dashboard-web.service` on `AUD_PORT` (default `3838`),
-serving the database written by the collector timer ([Setup](../../operations/SETUP.md) §6,
+serving the database written by the collector timer ([Setup](../../operations/setup.md) §6,
 "Start on boot"). `scripts/next.ts` currently binds both `dev` and `start` to
 `AUD_HOST`/`AUD_PORT`, so `npm run dev` collides with the web unit and opens the same database.
 
@@ -167,7 +167,7 @@ of this port/data/refresh change. See
 | `tests/integration/next-wrapper.test.ts`            | Mode selection, collision refusal, bind flags, and production behavior |
 | `tests/integration/seed-demo.test.ts`               | Development target and production sentinel preservation                |
 | `tests/integration/refresh-route.test.ts`           | `409`, no rate-limit use, no database open, and opt-in path            |
-| `docs/operations/SETUP.md`                          | Development workflow and corrected web-unit guidance                   |
+| `docs/operations/setup.md`                          | Development workflow and corrected web-unit guidance                   |
 | `README.md`, `.env.example`                         | Public development defaults and opt-in                                 |
 | `docs/log.md`                                       | Delivery update and archive link                                       |
 

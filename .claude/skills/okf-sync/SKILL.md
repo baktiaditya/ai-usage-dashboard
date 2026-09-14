@@ -45,7 +45,7 @@ Links are relative to the file containing them, never root-relative.
 ## The four rules that get broken most
 
 - **`docs/backlog/` never overrides a canonical document.** If a brief contradicts the
-  plan, `M0_DISCOVERY.md`, `SETUP.md`, or `log.md`, the canonical document wins. Fix it
+  plan, `m0-discovery.md`, `setup.md`, or `log.md`, the canonical document wins. Fix it
   there first, log it, then work the brief.
 - **Only `ready-for-agent/` briefs are implementable.** A brief with anything left in its
   Open Questions section belongs in `needs-triage/` or `ready-for-human/`. Move between

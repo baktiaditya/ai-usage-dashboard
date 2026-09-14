@@ -13,8 +13,8 @@ A local dashboard for monitoring Codex and Claude Code quota and DeepSeek and Op
 > **Implementation status (2026-09-12).** This plan has been implemented.
 > The baseline below is the initial observation; re-probe results, per-provider
 > gate status, finalized decisions, and adopted deviations are recorded in
-> [`M0_DISCOVERY.md`](../discovery/M0_DISCOVERY.md). Usage guidance is in
-> [`SETUP.md`](../operations/SETUP.md).
+> [`m0-discovery.md`](../discovery/m0-discovery.md). Usage guidance is in
+> [`setup.md`](../operations/setup.md).
 >
 > Drift to be aware of when reading this table:
 >
@@ -26,7 +26,7 @@ A local dashboard for monitoring Codex and Claude Code quota and DeepSeek and Op
 > - Node 24 supports JSON source-text access, which underpins the decimal-safe
 >   strategy for OpenRouter JSON numbers.
 >
-> Main deviations from the plan (full rationale in `M0_DISCOVERY.md` §"Deviations"):
+> Main deviations from the plan (full rationale in `m0-discovery.md` §"Deviations"):
 > `drizzle-kit` is not used (hand-written SQL migrations; Drizzle ORM is still
 > used for queries), migrations are embedded into a generated TypeScript module
 > so they can be bundled, Next.js 16.3.5 is used for a clean `npm audit`, shadcn/ui

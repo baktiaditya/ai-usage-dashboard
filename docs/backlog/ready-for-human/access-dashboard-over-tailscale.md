@@ -8,8 +8,8 @@ The status above must match the directory that contains this brief. Move the fil
 `git mv` when its readiness changes.
 
 This is a backlog implementation brief, not a canonical product or operations
-contract. It does not override `docs/plan/AI_Usage_Dashboard_Implementation_Plan.md`,
-`docs/discovery/M0_DISCOVERY.md`, `docs/operations/SETUP.md`, or `docs/log.md`.
+contract. It does not override `docs/plan/ai-usage-dashboard-implementation-plan.md`,
+`docs/discovery/m0-discovery.md`, `docs/operations/setup.md`, or `docs/log.md`.
 
 Related issue: none yet
 
@@ -22,9 +22,9 @@ the tailnet can reach it.
 ## Context
 
 The dashboard runs as `ai-usage-dashboard-web.service` on `127.0.0.1:3838`
-([Setup](../../operations/SETUP.md) §6). `loadConfig` in `src/lib/config.ts` rejects a
+([Setup](../../operations/setup.md) §6). `loadConfig` in `src/lib/config.ts` rejects a
 non-loopback `AUD_HOST`. The last security rule in the
-[plan](../../plan/AI_Usage_Dashboard_Implementation_Plan.md) (§5) sets the bar for phone access:
+[plan](../../plan/ai-usage-dashboard-implementation-plan.md) (§5) sets the bar for phone access:
 "add authentication, TLS, origin policy, and a private network before opening a non-loopback
 listener".
 
@@ -123,9 +123,9 @@ header-based trust, and any local process can send those headers.
 | `src/lib/server/security.ts`                          | `allowedOrigins` appends `extraOrigins`; comment       |
 | `tests/unit/config-time.test.ts`                      | Default, accepted, and rejected origin entries         |
 | `tests/integration/api-security.test.ts`              | Configured origin accepted; near-misses refused        |
-| `docs/operations/SETUP.md`                            | §6 Tailscale subsection and corrected sentence; §7 row |
+| `docs/operations/setup.md`                            | §6 Tailscale subsection and corrected sentence; §7 row |
 | `.env.example`, `README.md`                           | Commented variable; security posture bullet            |
-| `docs/plan/AI_Usage_Dashboard_Implementation_Plan.md` | §5 phone-access rule                                   |
+| `docs/plan/ai-usage-dashboard-implementation-plan.md` | §5 phone-access rule                                   |
 | `docs/log.md`                                         | `Decision` entry                                       |
 
 ## Acceptance Criteria

@@ -20,18 +20,18 @@ Keep this hierarchy intact:
 ### plan/
 
 - `docs/plan/index.md`
-- `docs/plan/AI_Usage_Dashboard_Implementation_Plan.md` — scope, provider contracts, milestones
-- `docs/plan/AI_Usage_Dashboard_Implementation_Prompt.md` — historical agent brief (read-only record)
+- `docs/plan/ai-usage-dashboard-implementation-plan.md` — scope, provider contracts, milestones
+- `docs/plan/ai-usage-dashboard-implementation-prompt.md` — historical agent brief (read-only record)
 
 ### discovery/
 
 - `docs/discovery/index.md`
-- `docs/discovery/M0_DISCOVERY.md` — re-probed baseline, gate evidence, fixed decisions
+- `docs/discovery/m0-discovery.md` — re-probed baseline, gate evidence, fixed decisions
 
 ### operations/
 
 - `docs/operations/index.md`
-- `docs/operations/SETUP.md` — install, credentials, timer, troubleshooting
+- `docs/operations/setup.md` — install, credentials, timer, troubleshooting
 
 ### backlog/
 
@@ -53,9 +53,9 @@ Keep this hierarchy intact:
 
 | Change                                               | Documents to touch                                                                                                                                   |
 | ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Provider gate passes live or regresses               | `discovery/M0_DISCOVERY.md` first, plus `log.md`; plan annotation only if scope is affected                                                          |
-| Scope or contract decision                           | `plan/AI_Usage_Dashboard_Implementation_Plan.md` first, then `discovery/M0_DISCOVERY.md` if a fixed decision or deviation is affected, plus `log.md` |
-| Setup, credentials, timer, or troubleshooting change | `operations/SETUP.md`, plus `log.md` when existing installs are affected                                                                             |
+| Provider gate passes live or regresses               | `discovery/m0-discovery.md` first, plus `log.md`; plan annotation only if scope is affected                                                          |
+| Scope or contract decision                           | `plan/ai-usage-dashboard-implementation-plan.md` first, then `discovery/m0-discovery.md` if a fixed decision or deviation is affected, plus `log.md` |
+| Setup, credentials, timer, or troubleshooting change | `operations/setup.md`, plus `log.md` when existing installs are affected                                                                             |
 | New durable knowledge with no home                   | new concept page with frontmatter, linked from `docs/index.md`, plus `log.md`                                                                        |
 | Review output or idea that is not yet a decision     | a brief under `backlog/needs-triage/` — not a canonical document                                                                                     |
 | Brief becomes an accepted contract                   | fold into the canonical document that owns it, `git mv` the file to `backlog/archive/`, plus `log.md`                                                |
@@ -86,9 +86,9 @@ Keep this hierarchy intact:
 
 ## Known drift risks
 
-- The plan's machine baseline table is a dated observation (2026-09-12); `M0_DISCOVERY.md`
+- The plan's machine baseline table is a dated observation (2026-09-12); `m0-discovery.md`
   is the current truth for versions and gate status.
-- `AI_Usage_Dashboard_Implementation_Prompt.md` describes the build as future work. The
+- `ai-usage-dashboard-implementation-prompt.md` describes the build as future work. The
   build is done — the prompt is a historical record, not an instruction to re-run.
 - DeepSeek and OpenRouter cards render `unavailable` until keys are provisioned; that is
   intended behavior, not a fault. See the

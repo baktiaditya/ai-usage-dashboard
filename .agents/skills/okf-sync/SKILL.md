@@ -44,9 +44,9 @@ Read only what applies to the request:
 - Always read `docs/index.md` and `docs/log.md`.
 - Read `references/repo-sync-map.md` for the current topology and the change-to-document map.
 - Read the documents the change touches. Typical inputs:
-  - `docs/plan/AI_Usage_Dashboard_Implementation_Plan.md` for scope and provider contracts
-  - `docs/discovery/M0_DISCOVERY.md` for what is live-verified vs fixture-tested
-  - `docs/operations/SETUP.md` when install, credentials, or operations change
+  - `docs/plan/ai-usage-dashboard-implementation-plan.md` for scope and provider contracts
+  - `docs/discovery/m0-discovery.md` for what is live-verified vs fixture-tested
+  - `docs/operations/setup.md` when install, credentials, or operations change
   - `docs/backlog/index.md` before filing or moving a brief
   - `AGENTS.md` and `README.md` when the change affects how agents enter the repo
 - Read the existing document before editing it.
@@ -79,19 +79,19 @@ Read only what applies to the request:
 
 ### A provider gate result changes
 
-- Update the gate section in `docs/discovery/M0_DISCOVERY.md` first — it owns live-vs-fixture truth.
+- Update the gate section in `docs/discovery/m0-discovery.md` first — it owns live-vs-fixture truth.
 - Update the plan's annotated status only if the scope implication changed.
 - Add a `Decision` entry to `docs/log.md`.
 
 ### A scope decision changes what gets built
 
-- Update `docs/plan/AI_Usage_Dashboard_Implementation_Plan.md` first — it owns the scope.
-- Update `docs/discovery/M0_DISCOVERY.md` if a fixed decision or deviation is affected.
+- Update `docs/plan/ai-usage-dashboard-implementation-plan.md` first — it owns the scope.
+- Update `docs/discovery/m0-discovery.md` if a fixed decision or deviation is affected.
 - Add a `Decision` entry to `docs/log.md` that names what changed and why.
 
 ### Setup or operations change
 
-- Update `docs/operations/SETUP.md` — it owns install, credentials, and the timer.
+- Update `docs/operations/setup.md` — it owns install, credentials, and the timer.
 - Add an `Update` entry to `docs/log.md` when the change affects existing installs.
 
 ### A new document joins the bundle

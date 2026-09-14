@@ -57,5 +57,5 @@ Issues are the tracking unit; briefs are the specification ([Backlog](../backlog
 - A short brief goes in the issue body. A brief that is long, needs separate review, or must outlive its issue
   becomes a file in `docs/backlog/<status>/`, started from `docs/backlog/template.md`; link the issue and the brief to each other.
 - Keep the brief's folder and `Status` in step with the issue's triage label (see `triage-labels.md`).
-- A brief never overrides the plan, `M0_DISCOVERY.md`, `SETUP.md` or `docs/log.md`, and only a brief in
+- A brief never overrides the plan, `m0-discovery.md`, `setup.md` or `docs/log.md`, and only a brief in
   `ready-for-agent/` may be implemented. Follow the writing rules in `docs/backlog/index.md`.

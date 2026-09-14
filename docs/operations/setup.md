@@ -98,7 +98,7 @@ Authentication stays entirely inside the Codex CLI. This application never reads
 directly. If `codex` is logged in, the card works.
 
 Minimum supported version: **`codex-cli 0.154.0`**, the version the adapter is live-verified against
-([M0 Discovery](../discovery/M0_DISCOVERY.md)). Older releases are untested. Run
+([M0 Discovery](../discovery/m0-discovery.md)). Older releases are untested. Run
 `npm run test:live` again after upgrading the CLI.
 
 Verify:
@@ -167,7 +167,7 @@ exposed no rate_limits"_ — which is a different, and more useful, message than
 "no event yet".
 
 Minimum supported version: **Claude Code 2.1.269**, the version whose status-line `rate_limits` the
-bridge is live-verified against ([M0 Discovery](../discovery/M0_DISCOVERY.md)). Older releases are
+bridge is live-verified against ([M0 Discovery](../discovery/m0-discovery.md)). Older releases are
 untested.
 
 ---
