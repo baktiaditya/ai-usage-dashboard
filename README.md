@@ -19,8 +19,13 @@ Four providers, three kinds of number, deliberately never mixed:
 npm install
 npm run db:migrate
 npm run collect
-npm run dev          # http://127.0.0.1:3838
+npm run build
+npm run start        # http://127.0.0.1:3838
 ```
+
+Working on the dashboard itself? `npm run dev` runs beside production on
+`http://127.0.0.1:3839` with its own empty database (`npm run seed:dev` fills it)
+and manual refresh disabled unless `AUD_DEV_LIVE_REFRESH=1`.
 
 It works with nothing configured. Providers you have not set up render as
 `unavailable` with a setup hint instead of blocking the page or failing the run.
@@ -96,7 +101,9 @@ so scheduled and manual runs cannot drift apart in behaviour.
 
 | Command                                    | Does                                                                                                      |
 | ------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
-| `npm run dev` / `npm run start`            | dashboard on `127.0.0.1:3838` (or `AUD_HOST`/`AUD_PORT`)                                                  |
+| `npm run start`                            | production dashboard on `127.0.0.1:3838` (or `AUD_HOST`/`AUD_PORT`) from an `npm run build`               |
+| `npm run dev`                              | development server on `127.0.0.1:3839` (`AUD_DEV_PORT`), own database, refresh off by default             |
+| `npm run seed:dev`                         | fill the development database with every card state; never the production one                             |
 | `npm run collect`                          | one collection pass (`--manual`, `--provider=codex,deepseek`)                                             |
 | `npm run db:migrate`                       | apply migrations, print schema state                                                                      |
 | `npm run db:backup` / `npm run db:restore` | back up the database while it runs; restore one with the units stopped                                    |

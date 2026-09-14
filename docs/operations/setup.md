@@ -22,10 +22,15 @@ provision all four to get value from one.
 npm install          # some deps build native code; approve when npm asks
 npm run db:migrate   # creates the SQLite database and applies migrations
 npm run collect      # one collection pass
-npm run dev          # http://127.0.0.1:3838
+npm run build
+npm run start        # http://127.0.0.1:3838, serving the database just collected
 ```
 
 `npm run db:migrate` prints where the database lives and which migrations ran.
+
+`npm run dev` is for working on the dashboard itself. It runs beside production on
+`127.0.0.1:3839` with its own empty database and never opens the one above; see
+[Development server](#development-server).
 
 `npm install` also wires the git hooks (`prepare` → Husky). Every commit
 then runs `pre-commit` — Prettier over staged files, plus `typecheck` and the
@@ -75,7 +80,7 @@ systemctl --user start ai-usage-dashboard-collector.timer ai-usage-dashboard-web
 The restore refuses, and changes nothing, in any of these cases:
 
 - a process still holds the database open, including a collector run already in progress or an
-  `npm run dev`;
+  `npm run start`;
 - the file is not an intact dashboard database;
 - once migrated, it lacks a table, column, index or trigger this build creates, even when it records
   every migration;
@@ -306,6 +311,41 @@ authentication, TLS and an origin policy first, and none of those exist yet.
 Manual refresh uses `POST`, requires a same-origin request, and is rate limited
 to 6 refreshes per provider per minute.
 
+### Development server
+
+`npm run dev` is safe to run while the production dashboard is up. With no
+development variables set it:
+
+- binds `127.0.0.1:3839` (still `AUD_HOST`, but never `AUD_PORT`);
+- opens its own database in `~/.local/share/ai-usage-dashboard-dev/`, or
+  `$XDG_DATA_HOME/ai-usage-dashboard-dev` when that is absolute, and never the
+  production `AUD_DATA_DIR`, even when `collector.env` sets it;
+- refuses manual refresh with `409 refresh_disabled` before the rate limiter, the
+  database, or any provider is touched. The card shows that message. Next.js
+  sees empty DeepSeek and OpenRouter keys even when `collector.env`, your shell,
+  or `.env.local` holds real ones.
+
+The development database starts empty, and production data is never copied into
+it. To see every card state:
+
+```bash
+npm run seed:dev     # replaces the seeded runs in the development database only
+```
+
+To let manual refresh collect for real, using the keys your shell and
+`collector.env` resolve and writing only the development database:
+
+```bash
+AUD_DEV_LIVE_REFRESH=1 npm run dev
+```
+
+`AUD_DEV_PORT`, `AUD_DEV_DATA_DIR` and `AUD_DEV_LIVE_REFRESH` (§7) are read only by
+`npm run dev` and `npm run seed:dev`. An invalid value, or an `AUD_DEV_PORT` equal
+to the production `AUD_PORT`, stops them with exit code `2` before Next.js starts
+or a database opens. Neither `npm run start`, `npm run collect`, nor the systemd
+units read them. Pass a different port through `AUD_DEV_PORT`; a `--port` or
+`--hostname` flag is refused.
+
 ### Start on boot (systemd)
 
 To have the dashboard up whenever the machine is, install the web unit next to
@@ -329,9 +369,10 @@ dashboard down — so after pulling changes:
 npm run build && systemctl --user restart ai-usage-dashboard-web.service
 ```
 
-Stop any `npm run dev` or `npm run start` first: the installer refuses to start
-the unit while another process holds the port. `--status` includes the web unit
-once it is installed, and `--disable --with-web` stops it along with the timer.
+Stop any `npm run start` first: the installer refuses to start the unit while
+another process holds the port. A default `npm run dev` on `3839` can keep
+running. `--status` includes the web unit once it is installed, and
+`--disable --with-web` stops it along with the timer.
 Follow its logs with `journalctl --user -u ai-usage-dashboard-web.service -f`.
 
 ---
@@ -340,19 +381,22 @@ Follow its logs with `journalctl --user -u ai-usage-dashboard-web.service -f`.
 
 Every value has a safe default; all are optional.
 
-| Variable                       | Default                                      | Notes                                           |
-| ------------------------------ | -------------------------------------------- | ----------------------------------------------- |
-| `AUD_DATA_DIR`                 | `~/.local/share/ai-usage-dashboard`          | database + spool; absolute or `~/…`             |
-| `AUD_TIMEZONE`                 | `Asia/Jakarta`                               | only affects calendar-day boundaries in history |
-| `AUD_HOST`                     | `127.0.0.1`                                  | loopback only; anything else is rejected        |
-| `AUD_PORT`                     | `3838`                                       | `npm run dev` / `npm run start` bind to it      |
-| `AUD_THRESHOLDS`               | —                                            | JSON advisory overrides; see Thresholds below   |
-| `AUD_RETENTION_DAYS`           | `90`                                         |                                                 |
-| `AUD_COLLECT_INTERVAL_MINUTES` | `5`                                          | also drives the freshness budget                |
-| `AUD_LOG_LEVEL`                | `info`                                       | `debug` \| `info` \| `warn` \| `error`          |
-| `AUD_ENV_FILE`                 | `~/.config/ai-usage-dashboard/collector.env` | credential file, absolute or `~/…`; see §4      |
-| `DEEPSEEK_API_KEY`             | —                                            | absent ⇒ `unavailable`                          |
-| `OPENROUTER_MANAGEMENT_KEY`    | —                                            | absent ⇒ `unavailable`                          |
+| Variable                       | Default                                      | Notes                                              |
+| ------------------------------ | -------------------------------------------- | -------------------------------------------------- |
+| `AUD_DATA_DIR`                 | `~/.local/share/ai-usage-dashboard`          | database + spool; absolute or `~/…`                |
+| `AUD_TIMEZONE`                 | `Asia/Jakarta`                               | only affects calendar-day boundaries in history    |
+| `AUD_HOST`                     | `127.0.0.1`                                  | loopback only; anything else is rejected           |
+| `AUD_PORT`                     | `3838`                                       | `npm run start` and the web unit bind to it        |
+| `AUD_DEV_PORT`                 | `3839`                                       | `npm run dev` only; must differ from `AUD_PORT`    |
+| `AUD_DEV_DATA_DIR`             | `~/.local/share/ai-usage-dashboard-dev`      | `npm run dev` / `seed:dev` only; absolute or `~/…` |
+| `AUD_DEV_LIVE_REFRESH`         | `0`                                          | `1` lets development refresh collect; see §6       |
+| `AUD_THRESHOLDS`               | —                                            | JSON advisory overrides; see Thresholds below      |
+| `AUD_RETENTION_DAYS`           | `90`                                         |                                                    |
+| `AUD_COLLECT_INTERVAL_MINUTES` | `5`                                          | also drives the freshness budget                   |
+| `AUD_LOG_LEVEL`                | `info`                                       | `debug` \| `info` \| `warn` \| `error`             |
+| `AUD_ENV_FILE`                 | `~/.config/ai-usage-dashboard/collector.env` | credential file, absolute or `~/…`; see §4         |
+| `DEEPSEEK_API_KEY`             | —                                            | absent ⇒ `unavailable`                             |
+| `OPENROUTER_MANAGEMENT_KEY`    | —                                            | absent ⇒ `unavailable`                             |
 
 ### Thresholds
 

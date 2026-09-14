@@ -67,6 +67,28 @@ describe('configuration', () => {
     expect(() => loadConfig({ AUD_RETENTION_DAYS: '0' })).toThrow(ConfigError);
   });
 
+  it('enables manual refresh unless the internal AUD_REFRESH_ENABLED turns it off', () => {
+    // Production never sets it, so production refresh stays on.
+    expect(loadConfig({}).refreshEnabled).toBe(true);
+    expect(loadConfig({ AUD_REFRESH_ENABLED: '1' }).refreshEnabled).toBe(true);
+    expect(loadConfig({ AUD_REFRESH_ENABLED: '0' }).refreshEnabled).toBe(false);
+    for (const value of ['', 'true', 'yes', '2', ' 0']) {
+      expect(() => loadConfig({ AUD_REFRESH_ENABLED: value }), value).toThrow(ConfigError);
+    }
+  });
+
+  it('ignores development launcher settings, so a malformed one cannot stop production', () => {
+    const c = loadConfig({
+      AUD_DEV_PORT: 'abc',
+      AUD_DEV_DATA_DIR: 'relative',
+      AUD_DEV_LIVE_REFRESH: 'yes',
+    });
+    expect(c.port).toBe(3838);
+    expect(c.dataDir).toBe(join(homedir(), '.local', 'share', 'ai-usage-dashboard'));
+    expect(c.refreshEnabled).toBe(true);
+    expect(Object.keys(c).filter((key) => /dev/i.test(key))).toEqual([]);
+  });
+
   it('merges AUD_THRESHOLDS over the defaults key by key', () => {
     const c = loadConfig({
       AUD_THRESHOLDS: JSON.stringify({
