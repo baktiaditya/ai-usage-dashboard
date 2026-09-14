@@ -41,6 +41,22 @@ export async function POST(
     );
   }
 
+  // A development server without AUD_DEV_LIVE_REFRESH=1 refuses here, before
+  // the limiter, the database, or any adapter, so a refused refresh spends no
+  // slot and leaves no run or attempt behind.
+  if (!config.refreshEnabled) {
+    return NextResponse.json(
+      {
+        error: {
+          code: 'refresh_disabled',
+          message:
+            'Manual refresh is disabled on this development server. Restart npm run dev with AUD_DEV_LIVE_REFRESH=1 to enable it.',
+        },
+      },
+      { status: 409 },
+    );
+  }
+
   const retryAfter = refreshLimiter.check(provider);
   if (retryAfter !== null) {
     return NextResponse.json(

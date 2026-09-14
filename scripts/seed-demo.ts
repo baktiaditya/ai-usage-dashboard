@@ -8,12 +8,20 @@
  * a pre-period baseline — the combination the browser tests assert on.
  *
  * It starts by deleting every collector run in the database it opens, so it
- * refuses to run unless `AUD_DATA_DIR` is exported explicitly. Without that,
- * `getConfig()` falls back to the real data directory (or one named in
- * `collector.env`), and seeding would wipe a real collection.
+ * never chooses a target by default:
+ *
+ *   npm run seed:dev                              # the development server's directory
+ *   AUD_DATA_DIR=/tmp/aud-demo npm run seed:demo  # an explicit scratch directory
+ *
+ * `--dev` resolves the directory exactly as `npm run dev` does, which is never
+ * the production one. Without it the script refuses to run unless
+ * `AUD_DATA_DIR` is exported explicitly: otherwise `getConfig()` falls back to
+ * the real data directory (or one named in `collector.env`), and seeding would
+ * wipe a real collection.
  */
 import { collectOnce } from '../src/lib/collector/index';
 import { getConfig } from '../src/lib/config';
+import { resolveDevEnvironment } from '../src/lib/dev-environment';
 import { openDb } from '../src/lib/db/client';
 import { recordAttempt, startRun } from '../src/lib/db/repository';
 import type { Db } from '../src/lib/db/client';
@@ -22,9 +30,24 @@ import type { MoneyString } from '../src/lib/money';
 import { CollectionError } from '../src/lib/errors';
 import { safeErrorMessage } from '../src/lib/redact';
 
-// Checked before `getConfig()` merges collector.env, which may itself name the
-// production data directory.
-if (!process.env['AUD_DATA_DIR']?.trim()) {
+const args = process.argv.slice(2);
+const dev = args.length === 1 && args[0] === '--dev';
+if (args.length > 0 && !dev) {
+  process.stderr.write('usage: tsx scripts/seed-demo.ts [--dev]\n');
+  process.exit(2);
+}
+
+// The target is fixed before `getConfig()` merges collector.env, which may
+// itself name the production data directory. An exported AUD_DATA_DIR wins
+// over the file, so the development directory set here cannot be replaced.
+if (dev) {
+  try {
+    process.env['AUD_DATA_DIR'] = resolveDevEnvironment(process.env).dataDir;
+  } catch (err) {
+    process.stderr.write(`configuration error: ${safeErrorMessage(err)}\n`);
+    process.exit(2);
+  }
+} else if (!process.env['AUD_DATA_DIR']?.trim()) {
   process.stderr.write(
     'refusing to seed: export AUD_DATA_DIR to a scratch directory first. Seeding deletes every collector run in the database it opens, and the default is your real collection.\n',
   );

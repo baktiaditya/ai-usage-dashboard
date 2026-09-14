@@ -10,11 +10,10 @@ A local dashboard for monitoring Codex and Claude Code quota and DeepSeek and Op
 
 ## 0. Machine validation baseline
 
-> **Implementation status (2026-09-12).** This plan has been implemented, except
-> §3.4 Development isolation, which is decided but not yet implemented; see
-> [isolate-dev-server-from-production](../backlog/ready-for-agent/isolate-dev-server-from-production.md).
-> The baseline below is the initial observation; re-probe results, per-provider
-> gate status, finalized decisions, and adopted deviations are recorded in
+> **Implementation status (2026-09-14).** This plan has been implemented, including
+> §3.4 Development isolation. The baseline below is the initial observation;
+> re-probe results, per-provider gate status, finalized decisions, and adopted
+> deviations are recorded in
 > [`m0-discovery.md`](../discovery/m0-discovery.md). Usage guidance is in
 > [`setup.md`](../operations/setup.md).
 >
@@ -136,14 +135,10 @@ The dashboard makes no automatic routing decisions in the MVP. It only presents 
 
 ### 3.4 Development isolation
 
-> **Status: planned, not yet implemented.** Today `npm run dev` still binds `AUD_PORT` and opens the
-> production data directory, and `seed:dev` does not exist. The contract below is delivered by
-> [isolate-dev-server-from-production](../backlog/ready-for-agent/isolate-dev-server-from-production.md);
-> remove this note and the §0 exception when that brief is accepted.
-
 - `npm run start` and both systemd units keep the production `AUD_PORT` and `AUD_DATA_DIR` contract.
 - `npm run dev` defaults to loopback port `3839` and an independent XDG data directory named
-  `ai-usage-dashboard-dev`; neither default is derived from the production data path.
+  `ai-usage-dashboard-dev`; neither default is derived from the production data path, and a
+  development directory that resolves to the production data directory is refused.
 - Development-only settings are parsed at the launcher seam, not by the shared application
   configuration, so an invalid development override cannot stop production or scheduled collection.
 - Development manual refresh is disabled by default before any database or provider side effect.

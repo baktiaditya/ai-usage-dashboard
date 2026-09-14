@@ -105,6 +105,8 @@ const envSchema = z.object({
   AUD_COLLECT_INTERVAL_MINUTES: numericEnv(5, 1, 1440),
   AUD_LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).optional(),
   AUD_THRESHOLDS: z.string().optional(),
+  // Internal: set only by the development launcher (src/lib/dev-environment.ts).
+  AUD_REFRESH_ENABLED: z.enum(['0', '1']).optional(),
   DEEPSEEK_API_KEY: z.string().optional(),
   OPENROUTER_MANAGEMENT_KEY: z.string().optional(),
 });
@@ -119,6 +121,12 @@ export interface AppConfig {
   readonly retentionDays: number;
   readonly collectIntervalMinutes: number;
   readonly logLevel: 'debug' | 'info' | 'warn' | 'error';
+  /**
+   * Whether manual refresh may collect. Always on in production; a development
+   * server turns it off unless `AUD_DEV_LIVE_REFRESH=1`, so refresh there
+   * reaches no provider and writes nothing.
+   */
+  readonly refreshEnabled: boolean;
   readonly freshness: {
     /**
      * Polled sources go stale after this many missed intervals. Three is the
@@ -254,6 +262,7 @@ export function loadConfig(env: EnvLike = process.env): AppConfig {
     retentionDays: e.AUD_RETENTION_DAYS,
     collectIntervalMinutes: e.AUD_COLLECT_INTERVAL_MINUTES,
     logLevel: e.AUD_LOG_LEVEL ?? 'info',
+    refreshEnabled: e.AUD_REFRESH_ENABLED !== '0',
     freshness: {
       pullMissedIntervals: 3,
       claudeEventMaxAgeMinutes: 12 * 60,

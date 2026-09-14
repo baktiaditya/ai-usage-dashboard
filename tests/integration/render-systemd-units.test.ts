@@ -74,4 +74,19 @@ describe('render-systemd-units', () => {
     expect(fromShell.reported[4]).toBe('4666');
     expect(fromShell.unit('ai-usage-dashboard-web.service')).toContain('Environment=AUD_PORT=4666');
   });
+
+  it('ignores development launcher settings, however malformed', () => {
+    const r = render({
+      AUD_DEV_PORT: 'abc',
+      AUD_DEV_DATA_DIR: 'relative',
+      AUD_DEV_LIVE_REFRESH: 'yes',
+    });
+    expect(r.stderr).toBe('');
+    expect(r.status).toBe(0);
+    const web = r.unit('ai-usage-dashboard-web.service');
+    expect(web).toContain('Environment=AUD_PORT=3838');
+    for (const unit of [web, r.unit('ai-usage-dashboard-collector.service')]) {
+      expect(unit).not.toMatch(/AUD_DEV_|AUD_REFRESH_ENABLED/);
+    }
+  });
 });

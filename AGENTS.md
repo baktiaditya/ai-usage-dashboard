@@ -49,7 +49,8 @@ finish with `agent-browser close`.
 
 Core loop:
 
-1. `agent-browser open <url>` — the dashboard defaults to `http://127.0.0.1:3838/`.
+1. `agent-browser open <url>` — the production dashboard defaults to `http://127.0.0.1:3838/`;
+   `npm run dev` serves `http://127.0.0.1:3839/` from its own database.
 2. `agent-browser snapshot -i`
 3. `click`, `fill`, or `press` by `@eN` ref.
 4. Re-snapshot after each page change.

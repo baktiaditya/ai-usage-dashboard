@@ -2,6 +2,26 @@
 
 ## 2026-09-14
 
+- **Update**: development-server isolation is delivered, and
+  [isolate-dev-server-from-production](backlog/archive/isolate-dev-server-from-production.md)
+  moves to `archive/`. `npm run dev` binds `127.0.0.1:3839` with its own
+  `ai-usage-dashboard-dev` data directory. `src/lib/dev-environment.ts` parses
+  `AUD_DEV_PORT`, `AUD_DEV_DATA_DIR` and `AUD_DEV_LIVE_REFRESH` for the launcher
+  only, refuses a development port equal to the resolved production `AUD_PORT`
+  with exit code `2`, and hands `next dev` a complete environment. Beyond the
+  brief, it also refuses an `AUD_DEV_DATA_DIR` that resolves to the production
+  data directory, through symlinks and even before either directory exists, or
+  that cannot be resolved at all, since opening that database would migrate it; and a blank `AUD_DEV_LIVE_REFRESH` is rejected rather than read as unset,
+  matching the brief's unset/`0`/`1` rule. Without the
+  opt-in, that child gets empty DeepSeek and OpenRouter keys and the internal
+  `AUD_REFRESH_ENABLED=0`, so manual refresh answers `409 refresh_disabled`
+  before the rate limiter, the database, or any adapter, Codex included.
+  `npm run seed:dev` seeds only that directory; tests keep a production database
+  named in `collector.env` or the shell byte-for-byte unchanged. `npm run start`,
+  collection, and both systemd units keep their defaults, and existing installs
+  need no action. [Setup](operations/setup.md) §1, §6 and §7, `README.md`,
+  `.env.example`, and plan §0 and §3.4 describe the delivered behavior.
+
 - **Update**: units installed before the kebab-case rename below keep
   `Documentation=file://…/docs/operations/SETUP.md`, which no longer exists. The
   services still run; only the metadata link dangles. Re-render them with
@@ -22,7 +42,7 @@
   comments, systemd templates, and `.env.example`; no content changed.
 
 - **Decision**: development-server isolation is fixed and ready for implementation in
-  [isolate-dev-server-from-production](backlog/ready-for-agent/isolate-dev-server-from-production.md).
+  [isolate-dev-server-from-production](backlog/archive/isolate-dev-server-from-production.md).
   `npm run dev` defaults to loopback port `3839`, an empty XDG data directory named
   `ai-usage-dashboard-dev`, and side-effect-free disabled manual refresh. Live refresh requires
   `AUD_DEV_LIVE_REFRESH=1`; the default child receives no DeepSeek/OpenRouter credential values and
@@ -161,7 +181,7 @@
 
 - **Proposed**: now that the dashboard runs at boot, two backlog briefs keep
   development from reaching production:
-  - [isolate-dev-server-from-production](backlog/ready-for-agent/isolate-dev-server-from-production.md)
+  - [isolate-dev-server-from-production](backlog/archive/isolate-dev-server-from-production.md)
     began here as a human-gated port/data proposal and is promoted by the decision above.
   - [separate-production-checkout](backlog/ready-for-human/separate-production-checkout.md):
     after PR #1 merges, both units run from a dedicated checkout of `main`, so
