@@ -2,8 +2,28 @@
 
 ## 2026-09-14
 
+- **Update**: production now runs from its own checkout, and
+  [separate-production-checkout](backlog/archive/separate-production-checkout.md) moves to
+  `archive/`. Both user units were reinstalled from the separate clone at
+  `/home/bago/Workspace/ai-usage-dashboard-prod`, detached at `f6fcb03` from `origin/main`. The
+  data directory, `collector.env`, host, port, 5-minute interval and boot enablement are unchanged,
+  and the rendered units are byte-identical to the installed ones. Before cutover, `npm ci`,
+  `npm run verify` and `npm run build` passed in the clone while the old units kept serving. After
+  cutover the dashboard answered on `127.0.0.1:3838`, and manual refreshes and scheduled runs
+  recorded successful attempts in `collector_runs` and `collector_attempts`. They kept succeeding
+  after an `npm run build` in the development repository, which left the production `BUILD_ID` and
+  web process untouched. A rollback rehearsal and a redeploy each ran the full
+  stop/detach/`npm ci`/build/reinstall sequence and passed the same checks. The recorded pre-migration
+  SHA and the candidate were both `f6fcb03`, so both passes deployed the same revision. Before the
+  migration, the development checkout's `HEAD` was `f6fcb03`, but its web unit served a `.next`
+  built from an unmerged branch at an unrecorded commit — the failure this change removes. Setup §6
+  now holds the deploy, failure and rollback runbook. The installer's closing "After pulling
+  changes" hint still describes an in-place rebuild; the runbook supersedes it in the production
+  checkout, and changing the hint is a code change outside this brief. The boot acceptance check
+  needs a real reboot and was not performed.
+
 - **Decision**: production-checkout isolation is fixed and ready for implementation in
-  [separate-production-checkout](backlog/ready-for-agent/separate-production-checkout.md).
+  [separate-production-checkout](backlog/archive/separate-production-checkout.md).
   Production deploys only commits from `origin/main` through the separate clone at
   `/home/bago/Workspace/ai-usage-dashboard-prod`; no development or hotfix commit originates there.
   Brief downtime is accepted so the timer, any active collector service, and the web unit can stop
@@ -193,7 +213,7 @@
   development from reaching production:
   - [isolate-dev-server-from-production](backlog/archive/isolate-dev-server-from-production.md)
     began here as a human-gated port/data proposal and is promoted by the decision above.
-  - [separate-production-checkout](backlog/ready-for-agent/separate-production-checkout.md)
+  - [separate-production-checkout](backlog/archive/separate-production-checkout.md)
     began here as a human-gated proposal and is promoted by the decision above.
 
 - **Decision**: the dashboard web server can start at boot as a systemd user unit,

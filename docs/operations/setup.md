@@ -232,6 +232,10 @@ fabricated number.
 
 Nothing is installed or enabled without an explicit flag.
 
+The units run from whichever checkout the installer runs in. For the production
+timer and web unit, run every `scripts/install-systemd.sh --install` below from
+the production checkout (§6).
+
 ```bash
 # Render the units so you can read them first (this is the default).
 npm run systemd:install
@@ -352,12 +356,8 @@ units read them. Pass a different port through `AUD_DEV_PORT`; a `--port` or
 ### Start on boot (systemd)
 
 To have the dashboard up whenever the machine is, install the web unit next to
-the collector. It serves an existing production build, so build first:
-
-```bash
-npm run build
-scripts/install-systemd.sh --install --enable --with-web
-```
+the collector. It serves an existing production build, so it is installed from
+the production checkout by the deploy procedure below, which builds first.
 
 The unit runs the same `scripts/next.ts start` path as `npm run start`, with the
 collector's sandbox and resolved settings, so it reads the database the timer
@@ -366,17 +366,134 @@ writes. Manual refresh runs inside it, which is why the data directory and
 minutes, and with linger enabled (§5) it starts at boot without a login.
 
 It never builds by itself — a slow or failing build at boot would leave the
-dashboard down — so after pulling changes:
-
-```bash
-npm run build && systemctl --user restart ai-usage-dashboard-web.service
-```
+dashboard down. At boot it serves whatever `.next` the production checkout holds,
+which is always the build of the deployed commit.
 
 Stop any `npm run start` first: the installer refuses to start the unit while
 another process holds the port. A default `npm run dev` on `3839` can keep
 running. `--status` includes the web unit once it is installed, and
 `--disable --with-web` stops it along with the timer.
 Follow its logs with `journalctl --user -u ai-usage-dashboard-web.service -f`.
+
+### Production checkout: deploy and rollback
+
+Both units run from a dedicated clone at `~/Workspace/ai-usage-dashboard-prod`,
+never from the development repository. The installer renders `WorkingDirectory`,
+`ExecStart` and `ReadWritePaths` from the checkout it runs in, so branch switches,
+`npm install` and `npm run build` in the development repository cannot change what
+production serves or collects with. Always run `scripts/install-systemd.sh` from
+the production checkout: running it from any other checkout repoints both units at
+that checkout. The data directory and `collector.env` live outside both checkouts
+and carry across every deploy and rollback.
+
+The production checkout is a deployment surface, not a branch. It deploys only
+commits reachable from `origin/main`, always as a detached `HEAD` at an exact SHA.
+No commit, merge, hotfix or production-only branch originates there: fix production
+on `main`, then deploy forward or roll back to an earlier known-good commit.
+
+Create it once with a clone rather than a linked `git worktree`, so it shares no
+refs, config or worktree administration with the development repository:
+
+```bash
+git clone git@github.com:baktiaditya/ai-usage-dashboard.git ~/Workspace/ai-usage-dashboard-prod
+```
+
+Then deploy. `npm ci` runs the native build scripts allowlisted in
+`package.json`; if it warns about install scripts, approve them as §10 describes.
+
+#### Deploy
+
+Brief downtime is expected: the timer, any running collector and the web unit stop
+before source, dependencies or `.next` change, so the collector never runs against
+a half-installed tree and the web unit never serves a build being replaced. A
+deploy takes about half a minute plus `npm run verify`.
+
+```bash
+cd ~/Workspace/ai-usage-dashboard-prod
+
+# 1. Preflight: a clean checkout, exact SHAs, and a candidate on origin/main.
+test -z "$(git status --porcelain)" || echo "STOP: the production checkout is dirty"
+git fetch origin
+PREVIOUS=$(git rev-parse HEAD)
+CANDIDATE=$(git rev-parse origin/main)
+git merge-base --is-ancestor "$CANDIDATE" origin/main && echo "previous=$PREVIOUS candidate=$CANDIDATE"
+
+# 2. Stop everything that reads source, dependencies or .next.
+systemctl --user stop ai-usage-dashboard-collector.timer
+until [[ "$(systemctl --user is-active ai-usage-dashboard-collector.service)" =~ ^(inactive|failed)$ ]]; do sleep 1; done
+systemctl --user stop ai-usage-dashboard-web.service
+
+# 3. Stage the candidate.
+git checkout --detach "$CANDIDATE"
+npm ci
+npm run verify
+npm run build
+
+# 4. Reinstall both units from this checkout; this starts the timer and restarts the web unit.
+scripts/install-systemd.sh --install --enable --with-web
+```
+
+Record both SHAs before step 2. Stop at a dirty checkout or a candidate that is not
+reachable from `origin/main`; inspect a dirty checkout instead of discarding it.
+The collector is a one-shot service, so step 2 waits for a run already in progress
+rather than cutting it off; `systemctl --user stop ai-usage-dashboard-collector.service`
+ends one that must not finish. The stopped web unit reads `failed` (Next.js exits
+with status 143 on `SIGTERM`) until step 4 restarts it. Ignore the installer's closing
+"After pulling changes" hint in the production checkout; the procedure above
+replaces it.
+
+Verify the deploy:
+
+```bash
+git status --short                  # empty
+git rev-parse HEAD                  # equals $CANDIDATE
+git merge-base --is-ancestor HEAD origin/main && echo "on origin/main"
+systemctl --user show -p WorkingDirectory ai-usage-dashboard-web.service ai-usage-dashboard-collector.service
+for u in ai-usage-dashboard-collector.service ai-usage-dashboard-collector.timer ai-usage-dashboard-web.service; do
+  cmp systemd/generated/$u ~/.config/systemd/user/$u && echo "$u identical"
+done
+systemctl --user is-active ai-usage-dashboard-web.service ai-usage-dashboard-collector.timer
+curl -fsS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3838/
+```
+
+Both `WorkingDirectory` lines name the production checkout. The web unit and timer
+are `active`; the collector service is normally `inactive` between runs. Then press
+**Refresh** on a card, and after the next timer run check that both collections
+persisted:
+
+```bash
+sqlite3 -readonly ~/.local/share/ai-usage-dashboard/usage.db \
+  "select r.id, r.trigger, a.provider, a.outcome from collector_runs r
+   join collector_attempts a on a.run_id = r.id order by r.id desc limit 8"
+```
+
+#### Failure
+
+If `git checkout`, `npm ci`, `npm run verify`, `npm run build` or the installer fails
+after the units stopped, do not start the timer or the web unit on the partial
+candidate. Roll back to `$PREVIOUS`.
+
+#### Rollback
+
+```bash
+cd ~/Workspace/ai-usage-dashboard-prod
+KNOWN_GOOD=<recorded previous SHA>
+
+systemctl --user stop ai-usage-dashboard-collector.timer
+until [[ "$(systemctl --user is-active ai-usage-dashboard-collector.service)" =~ ^(inactive|failed)$ ]]; do sleep 1; done
+systemctl --user stop ai-usage-dashboard-web.service
+
+git checkout --detach "$KNOWN_GOOD"
+npm ci
+npm run build
+scripts/install-systemd.sh --install --enable --with-web
+```
+
+Source, dependencies, build and rendered units then all come from the same
+known-good commit. Verify it as above, expecting `HEAD` to equal `$KNOWN_GOOD`.
+Rollback skips `npm run verify` because that commit passed it when it was deployed.
+The checkout stays detached; a later deploy repeats the normal fetch-and-detach
+procedure from `origin/main`.
 
 ---
 
@@ -516,12 +633,8 @@ journalctl --user -u ai-usage-dashboard-collector.service -n 50
 **The dashboard says "database disk image is malformed"** — check the file on
 disk first. `npm run db:backup` verifies the copy it writes, so a backup that
 succeeds means the database is intact. Then the web server has lost track of the
-database's WAL, a bug in builds before 2026-09-14. Rebuild and restart it:
-
-```bash
-npm run build
-systemctl --user restart ai-usage-dashboard-web.service
-```
+database's WAL, a bug in builds before 2026-09-14. Redeploy it from the production
+checkout (§6); the procedure rebuilds `.next` and restarts the web unit.
 
 If the backup fails its integrity check, restore an earlier backup (§1).
 
