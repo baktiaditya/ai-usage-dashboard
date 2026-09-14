@@ -6,8 +6,14 @@ Archived
 
 Delivered on 2026-09-14. `npm run dev` binds `127.0.0.1:3839` with its own data directory and
 disabled manual refresh, `npm run seed:dev` targets only that directory, and production entry points
-keep their defaults. The contract lives in plan §3.4 and [Setup](../../operations/setup.md) §6; the
-delivery is recorded in the [log](../../log.md).
+keep their defaults. The contract lives in
+[plan §3.4](../../plan/ai-usage-dashboard-implementation-plan.md) and
+[Setup](../../operations/setup.md) §6; the delivery is recorded in the [log](../../log.md).
+
+Delivery goes one step beyond the Implementation Contract below, by decision during review: a
+development data directory that resolves, symlinks included, to the production data directory is
+refused with exit code `2`, like a colliding port, because opening that database would migrate it.
+Plan §3.4 is the canonical statement of that rule; this brief is not updated further.
 
 The status above must match the directory that contains this brief. Move the file with
 `git mv` when its readiness changes.
