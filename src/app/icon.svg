@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <title>AI Usage Dashboard</title>
+  <rect width="32" height="32" rx="7" fill="#4338ca"/>
+  <rect x="7" y="16" width="4.5" height="9" rx="1.5" fill="#ffffff"/>
+  <rect x="13.75" y="11" width="4.5" height="14" rx="1.5" fill="#ffffff"/>
+  <rect x="20.5" y="7" width="4.5" height="18" rx="1.5" fill="#c7d2fe"/>
+</svg>

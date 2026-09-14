@@ -1,0 +1,49 @@
+# dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# next.js
+.next/
+out/
+next-env.d.ts
+*.tsbuildinfo
+
+# local data — never commit runtime state
+data/
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+spool/
+logs/
+
+# secrets
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+secrets/
+
+# generated systemd units (contain absolute machine paths)
+systemd/generated/
+
+# test + coverage output
+.vitest/
+coverage/
+test-results/
+playwright-report/
+blob-report/
+.playwright/
+
+# os / editor
+.DS_Store
+*.swp
+.idea/
+.vscode/
+.playwright/
+
+# Added by code-review-graph
+.code-review-graph/

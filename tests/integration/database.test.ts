@@ -1,0 +1,666 @@
+import { execFile, execFileSync } from 'node:child_process';
+import { existsSync, mkdtempSync, rmSync, statSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import Database from 'better-sqlite3';
+import { drizzle } from 'drizzle-orm/better-sqlite3';
+import { openDb, runMigrations } from '@/lib/db/client';
+import type { Db } from '@/lib/db/client';
+import { MIGRATIONS } from '@/lib/db/migrations.generated';
+import * as schema from '@/lib/db/schema';
+import {
+  applyRetention,
+  finishRun,
+  getCreditBaselineBefore,
+  getLastSuccessAt,
+  getLatestAttempts,
+  getLatestSnapshots,
+  recordAttempt,
+  startRun,
+} from '@/lib/db/repository';
+import type { CreditSnapshot, QuotaSnapshot } from '@/lib/domain';
+import type { MoneyString } from '@/lib/money';
+import { createTestDb } from '../helpers/db';
+import type { TestDb } from '../helpers/db';
+
+let t: TestDb;
+beforeEach(() => {
+  t = createTestDb();
+});
+afterEach(() => {
+  t.cleanup();
+});
+
+function quota(overrides: Partial<QuotaSnapshot> = {}): QuotaSnapshot {
+  return {
+    kind: 'quota',
+    provider: 'codex',
+    observedAt: '2026-09-12T12:00:00.000Z',
+    collectedAt: '2026-09-12T12:00:01.000Z',
+    sourceVersion: 'codex-cli/0.154.0',
+    schemaVersion: 1,
+    usageAllowed: true,
+    limitReachedCode: null,
+    sourceEventId: null,
+    windows: [
+      {
+        bucketId: 'codex',
+        windowKind: 'primary',
+        usedPercent: 37,
+        windowDurationMinutes: 300,
+        resetsAt: '2026-09-12T17:00:00.000Z',
+      },
+      {
+        bucketId: 'codex',
+        windowKind: 'secondary',
+        usedPercent: 52,
+        windowDurationMinutes: 10080,
+        resetsAt: '2026-09-19T00:00:00.000Z',
+      },
+    ],
+    ...overrides,
+  };
+}
+
+function credit(overrides: Partial<CreditSnapshot> = {}): CreditSnapshot {
+  return {
+    kind: 'credit',
+    provider: 'openrouter',
+    observedAt: '2026-09-12T12:00:00.000Z',
+    collectedAt: '2026-09-12T12:00:01.000Z',
+    sourceVersion: 'openrouter-api/v1-credits',
+    schemaVersion: 1,
+    sourceEventId: null,
+    balances: [
+      {
+        currency: 'USD',
+        totalBalance: null,
+        grantedBalance: null,
+        toppedUpBalance: null,
+        totalCredits: '100.5' as MoneyString,
+        totalUsage: '25.75' as MoneyString,
+        remainingCredit: '74.75' as MoneyString,
+        isAvailable: null,
+      },
+    ],
+    ...overrides,
+  };
+}
+
+function write(snapshot: QuotaSnapshot | CreditSnapshot, runId?: number) {
+  const id = runId ?? startRun(t.db, 'scheduled');
+  return recordAttempt(t.db, {
+    runId: id,
+    provider: snapshot.provider,
+    startedAt: snapshot.collectedAt,
+    finishedAt: snapshot.collectedAt,
+    retryCount: 0,
+    result: { outcome: 'success', snapshot },
+  });
+}
+
+describe('migrations', () => {
+  it('creates every table and is idempotent', () => {
+    const sqlite = t.db.$client;
+    const tables = sqlite
+      .prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name",
+      )
+      .all()
+      .map((r) => (r as { name: string }).name);
+
+    expect(tables).toEqual([
+      'collector_attempts',
+      'collector_runs',
+      'credit_balances',
+      'provider_snapshots',
+      'quota_windows',
+      'schema_migrations',
+    ]);
+
+    // Re-running applies nothing further.
+    expect(runMigrations(sqlite)).toBe(0);
+  });
+
+  it('enables WAL so a reader never blocks the writer', () => {
+    expect(t.db.$client.pragma('journal_mode', { simple: true })).toBe('wal');
+  });
+
+  it('sets a busy timeout so an overlapping writer waits instead of failing', () => {
+    expect(t.db.$client.pragma('busy_timeout', { simple: true })).toBe(5000);
+  });
+
+  it('lets several processes open a fresh database at once without racing the migrations', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'aud-race-'));
+    const path = join(dir, 'usage.db');
+    const tsx = join(process.cwd(), 'node_modules', 'tsx', 'dist', 'cli.mjs');
+    const child = join(process.cwd(), 'tests', 'helpers', 'open-db-child.ts');
+    const startAt = String(Date.now() + 3000);
+    try {
+      const outcomes = await Promise.all(
+        Array.from(
+          { length: 6 },
+          () =>
+            new Promise<string>((resolve) => {
+              execFile(process.execPath, [tsx, child, path, startAt], (_err, stdout) =>
+                resolve(stdout),
+              );
+            }),
+        ),
+      );
+      // Before the fix: "table collector_runs already exists" or "database is locked".
+      expect(outcomes).toEqual(Array(6).fill('ok'));
+
+      const check = new Database(path, { readonly: true });
+      const versions = check.prepare('SELECT version FROM schema_migrations').pluck().all();
+      check.close();
+      expect(versions).toEqual(MIGRATIONS.map((m) => m.version));
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 30_000);
+
+  it('upgrades a 0000 database in place, keeping rows and lifting the 0..100 limit', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'aud-upgrade-'));
+    const raw = new Database(join(dir, 'usage.db'));
+    try {
+      raw.exec(
+        'CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL) STRICT',
+      );
+      raw.exec(MIGRATIONS[0]!.sql);
+      raw.prepare('INSERT INTO schema_migrations VALUES (0, ?)').run('2026-09-12T00:00:00.000Z');
+      const legacy = drizzle(raw, { schema }) as Db;
+      const { snapshotId } = recordAttempt(legacy, {
+        runId: startRun(legacy, 'scheduled'),
+        provider: 'codex',
+        startedAt: '2026-09-12T12:00:01.000Z',
+        finishedAt: '2026-09-12T12:00:01.000Z',
+        retryCount: 0,
+        result: { outcome: 'success', snapshot: quota() },
+      });
+
+      expect(runMigrations(raw)).toBe(MIGRATIONS.length - 1);
+
+      const kept = getLatestSnapshots(legacy).get('codex');
+      expect(kept?.id).toBe(snapshotId);
+      expect(kept?.windows.map((w) => w.usedPercent)).toEqual([37, 52]);
+      // The rebuilt table accepts a source value the old CHECK refused.
+      raw
+        .prepare(
+          'INSERT INTO quota_windows (snapshot_id, bucket_id, window_kind, used_percent) VALUES (?,?,?,?)',
+        )
+        .run(snapshotId, 'codex', 'tertiary', 101);
+    } finally {
+      raw.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('keeps the database and its WAL/SHM sidecars owner-only under a permissive umask', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'aud-perms-'));
+    const path = join(dir, 'usage.db');
+    const previous = process.umask(0o022);
+    try {
+      const db = openDb({ path });
+      startRun(db, 'manual'); // a write, so the WAL and shared-memory files exist
+      for (const file of [path, `${path}-wal`, `${path}-shm`]) {
+        expect((statSync(file).mode & 0o777).toString(8), file).toBe('600');
+      }
+      db.$client.close();
+    } finally {
+      process.umask(previous);
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("never releases an open connection's locks by opening the database again in the same process", () => {
+    // SQLite's POSIX locks belong to the process, and closing any descriptor on
+    // the file drops them. The Next.js server opens the database from more than
+    // one bundle. Before the fix, that second open let the next collector to
+    // close delete the WAL the first connection still used, and the server went
+    // on reading a stale database until it reported it malformed.
+    const dir = mkdtempSync(join(tmpdir(), 'aud-locks-'));
+    const path = join(dir, 'usage.db');
+    const driver = JSON.stringify(join(process.cwd(), 'node_modules', 'better-sqlite3'));
+    const collector = `
+      const db = new (require(${driver}))(process.argv[1]);
+      db.pragma('busy_timeout = 5000');
+      db.prepare("INSERT INTO collector_runs (trigger, started_at) VALUES ('scheduled', ?)")
+        .run(new Date().toISOString());
+      db.close();`;
+    const web = openDb({ path });
+    const runs = () => web.$client.prepare('SELECT COUNT(*) FROM collector_runs').pluck().get();
+    let again: Db | undefined;
+    try {
+      expect(runs()).toBe(0);
+      again = openDb({ path });
+      for (let i = 0; i < 3; i++) execFileSync(process.execPath, ['-e', collector, path]);
+
+      expect(existsSync(`${path}-wal`)).toBe(true);
+      expect(runs()).toBe(3);
+    } finally {
+      again?.$client.close();
+      web.$client.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('uses STRICT tables so a type error is rejected at the database', () => {
+    // STRICT refuses a value it cannot losslessly convert to the declared type.
+    expect(() =>
+      t.db.$client
+        .prepare('INSERT INTO collector_runs (trigger, started_at, duration_ms) VALUES (?,?,?)')
+        .run('scheduled', '2026-09-12T00:00:00.000Z', 'not-a-number'),
+    ).toThrow(/cannot store TEXT value in INTEGER/i);
+  });
+});
+
+describe('constraints', () => {
+  it('rejects an unknown provider', () => {
+    const runId = startRun(t.db, 'scheduled');
+    expect(() =>
+      t.db.$client
+        .prepare(
+          'INSERT INTO collector_attempts (run_id, provider, outcome, started_at, finished_at) VALUES (?,?,?,?,?)',
+        )
+        .run(runId, 'gemini', 'success', 'a', 'b'),
+    ).toThrow();
+  });
+
+  it('requires a failed attempt to carry an error code', () => {
+    const runId = startRun(t.db, 'scheduled');
+    expect(() =>
+      t.db.$client
+        .prepare(
+          'INSERT INTO collector_attempts (run_id, provider, outcome, started_at, finished_at, error_code) VALUES (?,?,?,?,?,?)',
+        )
+        .run(runId, 'codex', 'error', 'a', 'b', null),
+    ).toThrow();
+  });
+
+  it('stores a drifting source percentage verbatim instead of clamping it', () => {
+    // Only the derived remaining percentage is clamped, at presentation time.
+    write(
+      quota({
+        windows: [
+          {
+            bucketId: 'codex',
+            windowKind: 'primary',
+            usedPercent: 120.5,
+            windowDurationMinutes: 300,
+            resetsAt: null,
+          },
+        ],
+      }),
+    );
+    expect(getLatestSnapshots(t.db).get('codex')?.windows[0]?.usedPercent).toBe(120.5);
+  });
+
+  it('forbids two rows for the same currency in one snapshot', () => {
+    const { snapshotId } = write(credit());
+    expect(() =>
+      t.db.$client
+        .prepare(
+          'INSERT INTO credit_balances (snapshot_id, currency, total_credits) VALUES (?,?,?)',
+        )
+        .run(snapshotId, 'USD', '1'),
+    ).toThrow();
+  });
+
+  it('cascades child rows when a snapshot is deleted', () => {
+    const { snapshotId } = write(quota());
+    t.db.$client.prepare('DELETE FROM provider_snapshots WHERE id = ?').run(snapshotId);
+    const remaining = t.db.$client.prepare('SELECT COUNT(*) c FROM quota_windows').get() as {
+      c: number;
+    };
+    expect(remaining.c).toBe(0);
+  });
+});
+
+describe('event deduplication', () => {
+  it('keeps every polled observation as separate history', () => {
+    // Polled sources have a NULL event id and must never collapse.
+    write(quota({ observedAt: '2026-09-12T12:00:00.000Z' }));
+    write(quota({ observedAt: '2026-09-12T12:05:00.000Z' }));
+    const rows = t.db.$client.prepare('SELECT COUNT(*) c FROM provider_snapshots').get() as {
+      c: number;
+    };
+    expect(rows.c).toBe(2);
+  });
+
+  it('collapses a replayed event-driven observation into a no-op', () => {
+    const event = quota({ provider: 'claude', sourceEventId: 'evt-abc-123' });
+    const first = write(event);
+    const second = write(event);
+
+    expect(first.deduplicated).toBe(false);
+    expect(second.deduplicated).toBe(true);
+    expect(second.snapshotId).toBeNull();
+
+    const rows = t.db.$client.prepare('SELECT COUNT(*) c FROM provider_snapshots').get() as {
+      c: number;
+    };
+    expect(rows.c).toBe(1);
+
+    // The attempt is still recorded, so the run remains auditable.
+    const attempts = t.db.$client.prepare('SELECT COUNT(*) c FROM collector_attempts').get() as {
+      c: number;
+    };
+    expect(attempts.c).toBe(2);
+  });
+
+  it('lets two different providers share an event id', () => {
+    write(quota({ provider: 'claude', sourceEventId: 'shared' }));
+    write(quota({ provider: 'codex', sourceEventId: 'shared' }));
+    const rows = t.db.$client.prepare('SELECT COUNT(*) c FROM provider_snapshots').get() as {
+      c: number;
+    };
+    expect(rows.c).toBe(2);
+  });
+});
+
+describe('reads', () => {
+  it('returns the newest snapshot per provider with children hydrated', () => {
+    write(quota({ observedAt: '2026-09-12T11:00:00.000Z' }));
+    write(quota({ observedAt: '2026-09-12T12:00:00.000Z' }));
+    write(credit());
+
+    const latest = getLatestSnapshots(t.db);
+    expect(latest.get('codex')?.sourceObservedAt).toBe('2026-09-12T12:00:00.000Z');
+    expect(latest.get('codex')?.windows).toHaveLength(2);
+    expect(latest.get('openrouter')?.balances[0]?.remainingCredit).toBe('74.75');
+  });
+
+  it('round-trips money as an exact decimal string, never a float', () => {
+    write(
+      credit({
+        balances: [
+          {
+            currency: 'USD',
+            totalBalance: null,
+            grantedBalance: null,
+            toppedUpBalance: null,
+            totalCredits: '123456789.123456789' as MoneyString,
+            totalUsage: '0.000000001' as MoneyString,
+            remainingCredit: '123456789.123456788' as MoneyString,
+            isAvailable: null,
+          },
+        ],
+      }),
+    );
+    const stored = getLatestSnapshots(t.db).get('openrouter')?.balances[0];
+    expect(stored?.totalCredits).toBe('123456789.123456789');
+    expect(stored?.remainingCredit).toBe('123456789.123456788');
+
+    // And the column is declared TEXT, so SQLite cannot coerce it.
+    const type = t.db.$client
+      .prepare('SELECT typeof(total_credits) t FROM credit_balances LIMIT 1')
+      .get() as { t: string };
+    expect(type.t).toBe('text');
+  });
+
+  it('stores multiple currencies from one snapshot', () => {
+    write(
+      credit({
+        provider: 'deepseek',
+        balances: [
+          {
+            currency: 'CNY',
+            totalBalance: '110' as MoneyString,
+            grantedBalance: '10' as MoneyString,
+            toppedUpBalance: '100' as MoneyString,
+            totalCredits: null,
+            totalUsage: null,
+            remainingCredit: null,
+            isAvailable: true,
+          },
+          {
+            currency: 'USD',
+            totalBalance: '15.42' as MoneyString,
+            grantedBalance: null,
+            toppedUpBalance: null,
+            totalCredits: null,
+            totalUsage: null,
+            remainingCredit: null,
+            isAvailable: true,
+          },
+        ],
+      }),
+    );
+    const balances = getLatestSnapshots(t.db).get('deepseek')?.balances ?? [];
+    expect(balances.map((b) => b.currency).sort()).toEqual(['CNY', 'USD']);
+  });
+
+  it('tracks the latest attempt and the last successful collection separately', () => {
+    const runId = startRun(t.db, 'scheduled');
+    write(quota(), runId);
+    recordAttempt(t.db, {
+      runId: startRun(t.db, 'scheduled'),
+      provider: 'codex',
+      startedAt: '2026-09-12T12:10:00.000Z',
+      finishedAt: '2026-09-12T12:10:02.000Z',
+      retryCount: 1,
+      result: {
+        outcome: 'error',
+        failure: {
+          provider: 'codex',
+          attemptedAt: '2026-09-12T12:10:00.000Z',
+          code: 'timeout',
+          safeMessage: 'no response',
+          retryable: true,
+        },
+      },
+    });
+
+    expect(getLatestAttempts(t.db).get('codex')?.outcome).toBe('error');
+    // The successful collection time survives the later failure.
+    expect(getLastSuccessAt(t.db).get('codex')).toBe('2026-09-12T12:00:01.000Z');
+  });
+
+  it("keeps each provider's latest attempt even when another provider is refreshed far more", () => {
+    // Manual refresh is provider-scoped, so one provider can accumulate many
+    // more attempts than the rest. The lookup must still find every provider's
+    // latest attempt rather than losing the quiet ones off the end of a scan.
+    const runId = startRun(t.db, 'scheduled');
+    recordAttempt(t.db, {
+      runId,
+      provider: 'codex',
+      startedAt: '2026-09-12T12:00:00.000Z',
+      finishedAt: '2026-09-12T12:00:01.000Z',
+      retryCount: 0,
+      result: {
+        outcome: 'error',
+        failure: {
+          provider: 'codex',
+          attemptedAt: '2026-09-12T12:00:00.000Z',
+          code: 'timeout',
+          safeMessage: 'codex timed out',
+          retryable: true,
+        },
+      },
+    });
+
+    // Well past any fixed-window slice a scan-based implementation would use.
+    for (let i = 0; i < 250; i += 1) {
+      recordAttempt(t.db, {
+        runId: startRun(t.db, 'manual'),
+        provider: 'deepseek',
+        startedAt: '2026-09-12T12:01:00.000Z',
+        finishedAt: '2026-09-12T12:01:01.000Z',
+        retryCount: 0,
+        result: {
+          outcome: 'unavailable',
+          failure: {
+            provider: 'deepseek',
+            attemptedAt: '2026-09-12T12:01:00.000Z',
+            code: 'not_configured',
+            safeMessage: 'no key',
+            retryable: false,
+          },
+        },
+      });
+    }
+
+    const latest = getLatestAttempts(t.db);
+    // The quiet provider's error state and diagnostics survive.
+    expect(latest.get('codex')?.outcome).toBe('error');
+    expect(latest.get('codex')?.errorCode).toBe('timeout');
+    expect(latest.get('deepseek')?.outcome).toBe('unavailable');
+  });
+
+  it('keeps the newest observation when an overlapping run persists an older one last', () => {
+    write(quota({ observedAt: '2026-09-12T12:00:00.000Z' }));
+    write(quota({ observedAt: '2026-09-12T11:00:00.000Z' }));
+
+    expect(getLatestSnapshots(t.db).get('codex')?.sourceObservedAt).toBe(
+      '2026-09-12T12:00:00.000Z',
+    );
+  });
+
+  it('does not let a slow failed attempt, persisted last, mask a newer success', () => {
+    // A manual refresh starts later and succeeds quickly...
+    recordAttempt(t.db, {
+      runId: startRun(t.db, 'manual'),
+      provider: 'codex',
+      startedAt: '2026-09-12T12:00:05.000Z',
+      finishedAt: '2026-09-12T12:00:06.000Z',
+      retryCount: 0,
+      result: { outcome: 'success', snapshot: quota() },
+    });
+    // ...while a scheduled attempt that began earlier times out afterwards.
+    recordAttempt(t.db, {
+      runId: startRun(t.db, 'scheduled'),
+      provider: 'codex',
+      startedAt: '2026-09-12T12:00:00.000Z',
+      finishedAt: '2026-09-12T12:00:20.000Z',
+      retryCount: 0,
+      result: {
+        outcome: 'error',
+        failure: {
+          provider: 'codex',
+          attemptedAt: '2026-09-12T12:00:00.000Z',
+          code: 'timeout',
+          safeMessage: 'no response',
+          retryable: true,
+        },
+      },
+    });
+
+    expect(getLatestAttempts(t.db).get('codex')?.outcome).toBe('success');
+  });
+
+  it('finds the newest baseline strictly before a cutoff', () => {
+    write(credit({ observedAt: '2026-09-01T00:00:00.000Z' }));
+    write(credit({ observedAt: '2026-09-05T00:00:00.000Z' }));
+    write(credit({ observedAt: '2026-09-12T00:00:00.000Z' }));
+
+    const baseline = getCreditBaselineBefore(t.db, 'openrouter', '2026-09-10T00:00:00.000Z');
+    expect(baseline[0]?.observedAt).toBe('2026-09-05T00:00:00.000Z');
+
+    // No observation before the period means no baseline, never a zero.
+    expect(getCreditBaselineBefore(t.db, 'openrouter', '2026-08-01T00:00:00.000Z')).toHaveLength(0);
+  });
+});
+
+describe('retention', () => {
+  it('prunes observations past the horizon and keeps recent ones', () => {
+    const old = new Date(Date.now() - 120 * 86_400_000).toISOString();
+    const recent = new Date(Date.now() - 1 * 86_400_000).toISOString();
+
+    write(quota({ collectedAt: old, observedAt: old }));
+    write(quota({ collectedAt: recent, observedAt: recent }));
+
+    const pruned = applyRetention(t.db, 90);
+    expect(pruned).toBe(1);
+
+    const rows = t.db.$client.prepare('SELECT COUNT(*) c FROM provider_snapshots').get() as {
+      c: number;
+    };
+    expect(rows.c).toBe(1);
+    // Child rows went with it.
+    const windows = t.db.$client.prepare('SELECT COUNT(*) c FROM quota_windows').get() as {
+      c: number;
+    };
+    expect(windows.c).toBe(2);
+  });
+
+  it('is idempotent', () => {
+    const old = new Date(Date.now() - 120 * 86_400_000).toISOString();
+    write(quota({ collectedAt: old, observedAt: old }));
+    expect(applyRetention(t.db, 90)).toBe(1);
+    expect(applyRetention(t.db, 90)).toBe(0);
+  });
+});
+
+describe('run accounting', () => {
+  it('records a duration when the run finishes', () => {
+    const started = Date.now() - 1200;
+    const runId = startRun(t.db, 'manual');
+    finishRun(t.db, runId, started);
+    const row = t.db.$client
+      .prepare('SELECT duration_ms, finished_at FROM collector_runs WHERE id = ?')
+      .get(runId) as {
+      duration_ms: number;
+      finished_at: string;
+    };
+    expect(row.duration_ms).toBeGreaterThanOrEqual(1200);
+    expect(row.finished_at).toMatch(/Z$/);
+  });
+});
+
+describe('WAL concurrency', () => {
+  it('lets a second connection write while the first is reading', () => {
+    write(quota());
+
+    // A second process, exactly as the collector CLI and the web server relate.
+    const second = openDb({ path: t.path, migrate: false });
+    try {
+      const before = t.db.$client.prepare('SELECT COUNT(*) c FROM provider_snapshots').get() as {
+        c: number;
+      };
+      write(quota({ observedAt: '2026-09-12T13:00:00.000Z' }));
+      const runId = startRun(second, 'manual');
+      recordAttempt(second, {
+        runId,
+        provider: 'deepseek',
+        startedAt: 'a',
+        finishedAt: 'b',
+        retryCount: 0,
+        result: {
+          outcome: 'unavailable',
+          failure: {
+            provider: 'deepseek',
+            attemptedAt: 'a',
+            code: 'not_configured',
+            safeMessage: 'no key',
+            retryable: false,
+          },
+        },
+      });
+
+      const after = second.$client.prepare('SELECT COUNT(*) c FROM provider_snapshots').get() as {
+        c: number;
+      };
+      expect(after.c).toBeGreaterThan(before.c);
+    } finally {
+      second.$client.close();
+    }
+  });
+
+  it('honours busy_timeout instead of throwing SQLITE_BUSY immediately', () => {
+    const other = new Database(t.path);
+    try {
+      other.pragma('busy_timeout = 3000');
+      // Both connections can begin, and the deferred reader still sees data.
+      expect(() => {
+        const tx = other.transaction(() => {
+          other.prepare('SELECT COUNT(*) FROM provider_snapshots').get();
+        });
+        tx();
+      }).not.toThrow();
+    } finally {
+      other.close();
+    }
+  });
+});

@@ -1,0 +1,28 @@
+{
+  "_fixture": {
+    "note": "A future app-server adds fields and a new window bucket. Unknown fields must be ignored, not fatal; the known subset must still parse."
+  },
+  "ordinaryUsageAllowed": true,
+  "someBrandNewTopLevelField": { "nested": [1, 2, 3] },
+  "rateLimits": {
+    "limitId": "codex",
+    "primary": {
+      "usedPercent": 12,
+      "windowDurationMins": 300,
+      "resetsAt": 1773554400,
+      "brandNew": "x"
+    },
+    "secondary": { "usedPercent": 30, "windowDurationMins": 10080, "resetsAt": 1773986400 }
+  },
+  "rateLimitsByLimitId": {
+    "codex": {
+      "limitId": "codex",
+      "primary": { "usedPercent": 12, "windowDurationMins": 300, "resetsAt": 1773554400 },
+      "secondary": { "usedPercent": 30, "windowDurationMins": 10080, "resetsAt": 1773986400 }
+    },
+    "codex-mini": {
+      "limitId": "codex-mini",
+      "primary": { "usedPercent": 4, "windowDurationMins": 1440, "resetsAt": 1773640800 }
+    }
+  }
+}

@@ -1,0 +1,19 @@
+# user-level systemd timer — installed to ~/.config/systemd/user/
+[Unit]
+Description=Run the AI Usage Dashboard collector every __INTERVAL__ minutes
+Documentation=file://__WORKDIR__/docs/operations/SETUP.md
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=__INTERVAL__min
+# Spread the wake-up so a laptop resuming from sleep does not fire every timer
+# in the same instant.
+AccuracySec=30s
+RandomizedDelaySec=30s
+# Catch up on one missed run after a reboot or resume, rather than waiting a
+# full interval for the dashboard to become current again.
+Persistent=true
+Unit=ai-usage-dashboard-collector.service
+
+[Install]
+WantedBy=timers.target

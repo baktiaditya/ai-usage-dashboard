@@ -1,0 +1,4 @@
+interface:
+  display_name: 'OKF Sync'
+  short_description: 'Sync the AI Usage Dashboard knowledge bundle under docs/'
+  default_prompt: 'Use $okf-sync to update the docs/ bundle after a scope decision, gate result, setup change, or backlog brief, and log it in docs/log.md.'

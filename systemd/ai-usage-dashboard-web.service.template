@@ -1,0 +1,71 @@
+# user-level systemd service for the dashboard web server — installed to
+# ~/.config/systemd/user/ by `scripts/install-systemd.sh --with-web`.
+#
+# Placeholders are substituted with absolute paths by scripts/install-systemd.sh.
+# This unit is NEVER installed or enabled automatically.
+[Unit]
+Description=AI Usage Dashboard web server (loopback only)
+Documentation=file://__WORKDIR__/docs/operations/SETUP.md
+# A crash loop must not spin forever: five failed starts within five minutes
+# leave the unit failed, and visible in --status, instead of retrying endlessly.
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+WorkingDirectory=__WORKDIR__
+# scripts/next.ts serves the production build on AUD_HOST/AUD_PORT, read from
+# the same configuration the refresh origin guard uses, and refuses anything
+# but loopback. The build is never run here: a slow or failing build at boot
+# would leave the dashboard down. Run `npm run build` before (re)starting.
+ExecStart=__NODE__ __TSX__ __WORKDIR__/scripts/next.ts start
+Restart=on-failure
+RestartSec=5
+
+# Same PATH and CODEX_HOME as the collector: manual refresh runs the collector
+# in-process, and the Codex adapter spawns `codex` by name.
+Environment=PATH=__PATH__
+Environment=CODEX_HOME=__CODEXHOME__
+
+# The same resolved values as the collector unit, so the server reads the
+# database the timer writes. No `EnvironmentFile=`, for the same reason as the
+# collector: the application loads the credential file itself.
+Environment="AUD_ENV_FILE=__ENVFILE__"
+Environment="AUD_DATA_DIR=__DATADIR__"
+Environment=AUD_COLLECT_INTERVAL_MINUTES=__INTERVAL__
+# The bind address the installer resolved and reported. Left out, a host or port
+# exported only in the installing shell would be lost here, and the server would
+# fall back to 127.0.0.1:3838 while the installer announced another address.
+Environment=AUD_HOST=__HOST__
+Environment=AUD_PORT=__PORT__
+Environment=NODE_ENV=production
+# Next.js telemetry would try to persist settings under the read-only home.
+Environment=NEXT_TELEMETRY_DISABLED=1
+
+# Files this unit creates (database, spool, WAL) stay owner-only.
+UMask=0077
+
+# Manual refresh writes the database and runs `codex app-server`, which needs
+# CODEX_HOME writable. The build under .next is only read, apart from Next's
+# runtime cache. `-` keeps the unit valid where a path does not exist yet.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=__DATADIR__
+ReadWritePaths=-__CODEXHOME__
+ReadWritePaths=-__WORKDIR__/.next/cache
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictSUIDSGID=true
+LockPersonality=true
+# V8's JIT needs writable executable memory.
+MemoryDenyWriteExecute=false
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+
+[Install]
+WantedBy=default.target

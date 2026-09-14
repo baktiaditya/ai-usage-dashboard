@@ -1,0 +1,12 @@
+{
+  "_fixture": { "note": "Values chosen so binary floating point would visibly drift." },
+  "is_available": true,
+  "balance_infos": [
+    {
+      "currency": "USD",
+      "total_balance": "0.30000000000000004",
+      "granted_balance": "0.1",
+      "topped_up_balance": "0.2"
+    }
+  ]
+}

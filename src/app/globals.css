@@ -1,0 +1,137 @@
+@import 'tailwindcss';
+
+/*
+ * Palette.
+ *
+ * Status colour is load-bearing here — it is how a user reads four cards at a
+ * glance — so each state gets a dedicated token pair rather than a Tailwind
+ * shade picked per component. Every state is also given a text label and an
+ * icon in the markup, so the meaning survives for anyone who cannot separate
+ * the hues.
+ */
+:root {
+  --background: #f7f7f8;
+  --surface: #ffffff;
+  --surface-muted: #f1f1f3;
+  --border: #e3e3e7;
+  --foreground: #18181b;
+  --muted-foreground: #64646e;
+
+  --healthy: #15803d;
+  --healthy-bg: #dcfce7;
+  --stale: #b45309;
+  --stale-bg: #fef3c7;
+  --unavailable: #52525b;
+  --unavailable-bg: #e4e4e7;
+  --danger: #b91c1c;
+  --danger-bg: #fee2e2;
+  --accent: #4338ca;
+  --accent-bg: #e0e7ff;
+  /* Provider marks (provider-logo.tsx). OpenRouter's lime has no contrast on a light surface. */
+  --logo-claude: #d97757;
+  --logo-deepseek: #4d6bfe;
+  --logo-openrouter: currentColor;
+
+  /*
+   * Categorical chart series, assigned in fixed order and never cycled.
+   * Validated for the light chart surface (#ffffff): lightness band, chroma
+   * floor, adjacent-pair CVD separation and normal-vision separation all pass.
+   * Slots 3 and 4 sit below 3:1 contrast on white, so the chart carries the
+   * required relief: a legend plus a direct value label on each line's last
+   * point, which means identity is never conveyed by colour alone.
+   */
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --series-4: #eda100;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #09090b;
+    --surface: #141417;
+    --surface-muted: #1c1c20;
+    --border: #2a2a30;
+    --foreground: #f4f4f5;
+    --muted-foreground: #a1a1aa;
+
+    --healthy: #4ade80;
+    --healthy-bg: #052e16;
+    --stale: #fbbf24;
+    --stale-bg: #3a2606;
+    --unavailable: #a1a1aa;
+    --unavailable-bg: #26262b;
+    --danger: #f87171;
+    --danger-bg: #3f1212;
+    --accent: #a5b4fc;
+    --accent-bg: #1e1b4b;
+    --logo-openrouter: #c8ff00;
+
+    /* The same four hues re-stepped for the dark surface (#141417) and
+     * validated as a set — not an automatic flip of the light values. All four
+     * clear 3:1 against the dark surface. */
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --series-3: #199e70;
+    --series-4: #c98500;
+  }
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-muted: var(--surface-muted);
+  --color-border: var(--border);
+  --color-foreground: var(--foreground);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-healthy: var(--healthy);
+  --color-healthy-bg: var(--healthy-bg);
+  --color-stale: var(--stale);
+  --color-stale-bg: var(--stale-bg);
+  --color-unavailable: var(--unavailable);
+  --color-unavailable-bg: var(--unavailable-bg);
+  --color-danger: var(--danger);
+  --color-danger-bg: var(--danger-bg);
+  --color-accent: var(--accent);
+  --color-accent-bg: var(--accent-bg);
+  --color-series-1: var(--series-1);
+  --color-series-2: var(--series-2);
+  --color-series-3: var(--series-3);
+  --color-series-4: var(--series-4);
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', 'Cascadia Code', 'JetBrains Mono', Menlo, monospace;
+}
+
+html,
+body {
+  background: var(--background);
+  color: var(--foreground);
+}
+
+body {
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Numeric columns must not jitter as values tick over. */
+.tabular {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Keyboard focus must stay obvious against both themes. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

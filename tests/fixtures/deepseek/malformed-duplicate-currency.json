@@ -1,0 +1,18 @@
+{
+  "_fixture": { "note": "Two rows for the same currency would violate the unique constraint." },
+  "is_available": true,
+  "balance_infos": [
+    {
+      "currency": "USD",
+      "total_balance": "1.00",
+      "granted_balance": "0",
+      "topped_up_balance": "1.00"
+    },
+    {
+      "currency": "USD",
+      "total_balance": "2.00",
+      "granted_balance": "0",
+      "topped_up_balance": "2.00"
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "_fixture": {
+    "note": "Version drift: the API starts returning decimal strings. Must still parse."
+  },
+  "data": { "total_credits": "100.50", "total_usage": "25.75" }
+}

@@ -1,0 +1,22 @@
+export PATH="$HOME/.nvm/versions/node/$(ls $HOME/.nvm/versions/node 2>/dev/null | tail -1)/bin:$HOME/.local/bin:/usr/local/bin:$PATH"
+
+# Format staged files first (auto-restages).
+npx lint-staged || exit 1
+
+# Skip type/test checks when no TS/TSX is staged (e.g. docs-only commits).
+staged_ts=$(git diff --cached --name-only --diff-filter=ACMR -- '*.ts' '*.tsx')
+if [ -z "$staged_ts" ]; then
+  exit 0
+fi
+
+# Run typecheck (whole project) and affected tests (staged files only) in parallel.
+npm run typecheck &
+typecheck_pid=$!
+npx vitest related --run --passWithNoTests $staged_ts &
+test_pid=$!
+
+status=0
+wait "$typecheck_pid" || status=1
+wait "$test_pid" || status=1
+
+exit "$status"

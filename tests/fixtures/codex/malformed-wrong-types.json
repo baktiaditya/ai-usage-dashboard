@@ -1,0 +1,9 @@
+{
+  "_fixture": {
+    "note": "usedPercent arrives as a string; the adapter must refuse rather than coerce."
+  },
+  "rateLimits": {
+    "limitId": "codex",
+    "primary": { "usedPercent": "high", "windowDurationMins": 300, "resetsAt": 1773554400 }
+  }
+}

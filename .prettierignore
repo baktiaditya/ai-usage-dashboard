@@ -1,0 +1,11 @@
+.next
+node_modules
+coverage
+package-lock.json
+drizzle/*.sql
+test-results
+playwright-report
+
+# Generated from drizzle/*.sql by scripts/build-migrations.ts; reformatting it
+# would break the byte-for-byte sync guard in tests/unit/migrations-sync.test.ts.
+src/lib/db/migrations.generated.ts

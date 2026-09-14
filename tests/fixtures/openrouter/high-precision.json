@@ -1,0 +1,4 @@
+{
+  "_fixture": { "note": "More significant digits than a double can hold exactly." },
+  "data": { "total_credits": 123456789.123456789, "total_usage": 0.000000001 }
+}

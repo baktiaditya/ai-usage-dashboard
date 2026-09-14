@@ -1,0 +1,11 @@
+{
+  "_fixture": {
+    "note": "Older app-server shape: no rateLimitsByLimitId. The adapter must fall back to rateLimits rather than reporting nothing."
+  },
+  "ordinaryUsageAllowed": true,
+  "rateLimits": {
+    "limitId": "codex",
+    "primary": { "usedPercent": 10, "windowDurationMins": 300, "resetsAt": 1773554400 },
+    "secondary": { "usedPercent": 20, "windowDurationMins": 10080, "resetsAt": 1773986400 }
+  }
+}
