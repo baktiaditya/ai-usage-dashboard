@@ -405,40 +405,55 @@ Then deploy. `npm ci` runs the native build scripts allowlisted in
 
 Brief downtime is expected: the timer, any running collector and the web unit stop
 before source, dependencies or `.next` change, so the collector never runs against
-a half-installed tree and the web unit never serves a build being replaced. A
-deploy takes about half a minute plus `npm run verify`.
+a half-installed tree and the web unit never serves a build being replaced. On this
+machine a deploy took about half a minute, `npm run verify` included.
+
+Run the blocks in one shell, in order. Each block after the preflight starts only
+when `CANDIDATE` is set and stops at its first failing command, so pasting the whole
+procedure cannot stop the units after a failed preflight or install units from a
+failed build.
 
 ```bash
 cd ~/Workspace/ai-usage-dashboard-prod
 
 # 1. Preflight: a clean checkout, exact SHAs, and a candidate on origin/main.
-test -z "$(git status --porcelain)" || echo "STOP: the production checkout is dirty"
-git fetch origin
-PREVIOUS=$(git rev-parse HEAD)
-CANDIDATE=$(git rev-parse origin/main)
-git merge-base --is-ancestor "$CANDIDATE" origin/main && echo "previous=$PREVIOUS candidate=$CANDIDATE"
+PREVIOUS= CANDIDATE=
+if [[ -n "$(git status --porcelain)" ]]; then
+  echo "STOP: the production checkout is dirty"
+elif git fetch origin \
+  && PREVIOUS=$(git rev-parse HEAD) \
+  && CANDIDATE=$(git rev-parse origin/main) \
+  && git merge-base --is-ancestor "$CANDIDATE" origin/main; then
+  echo "preflight ok: previous=$PREVIOUS candidate=$CANDIDATE"
+else
+  CANDIDATE=
+  echo "STOP: preflight failed"
+fi
 
 # 2. Stop everything that reads source, dependencies or .next.
-systemctl --user stop ai-usage-dashboard-collector.timer
-until [[ "$(systemctl --user is-active ai-usage-dashboard-collector.service)" =~ ^(inactive|failed)$ ]]; do sleep 1; done
-systemctl --user stop ai-usage-dashboard-web.service
+[[ -n "$CANDIDATE" ]] \
+  && systemctl --user stop ai-usage-dashboard-collector.timer \
+  && until [[ "$(systemctl --user is-active ai-usage-dashboard-collector.service)" =~ ^(inactive|failed)$ ]]; do sleep 1; done \
+  && systemctl --user stop ai-usage-dashboard-web.service \
+  && echo "units stopped"
 
-# 3. Stage the candidate.
-git checkout --detach "$CANDIDATE"
-npm ci
-npm run verify
-npm run build
-
-# 4. Reinstall both units from this checkout; this starts the timer and restarts the web unit.
-scripts/install-systemd.sh --install --enable --with-web
+# 3. Stage the candidate, then reinstall both units from this checkout.
+#    The installer starts the timer and restarts the web unit.
+[[ -n "$CANDIDATE" ]] \
+  && git checkout --detach "$CANDIDATE" \
+  && npm ci \
+  && npm run verify \
+  && npm run build \
+  && scripts/install-systemd.sh --install --enable --with-web \
+  && echo "deployed $(git rev-parse HEAD)"
 ```
 
-Record both SHAs before step 2. Stop at a dirty checkout or a candidate that is not
-reachable from `origin/main`; inspect a dirty checkout instead of discarding it.
+Record both SHAs from the `preflight ok` line. A `STOP` line leaves the units
+running and changes nothing; inspect a dirty checkout instead of discarding it.
 The collector is a one-shot service, so step 2 waits for a run already in progress
 rather than cutting it off; `systemctl --user stop ai-usage-dashboard-collector.service`
 ends one that must not finish. The stopped web unit reads `failed` (Next.js exits
-with status 143 on `SIGTERM`) until step 4 restarts it. Ignore the installer's closing
+with status 143 on `SIGTERM`) until step 3 restarts it. Ignore the installer's closing
 "After pulling changes" hint in the production checkout; the procedure above
 replaces it.
 
@@ -470,23 +485,46 @@ sqlite3 -readonly ~/.local/share/ai-usage-dashboard/usage.db \
 #### Failure
 
 If `git checkout`, `npm ci`, `npm run verify`, `npm run build` or the installer fails
-after the units stopped, do not start the timer or the web unit on the partial
-candidate. Roll back to `$PREVIOUS`.
+in step 3, the chain stops there and the timer and web unit stay stopped instead of
+starting on the partial candidate. Do not start them by hand; roll back to
+`$PREVIOUS` from the same shell.
 
 #### Rollback
 
 ```bash
 cd ~/Workspace/ai-usage-dashboard-prod
-KNOWN_GOOD=<recorded previous SHA>
 
-systemctl --user stop ai-usage-dashboard-collector.timer
-until [[ "$(systemctl --user is-active ai-usage-dashboard-collector.service)" =~ ^(inactive|failed)$ ]]; do sleep 1; done
-systemctl --user stop ai-usage-dashboard-web.service
+# In the shell of a failed deploy this is already the recorded previous SHA.
+# In a new shell, replace "$PREVIOUS" with the recorded known-good SHA in quotes.
+KNOWN_GOOD="$PREVIOUS"
 
-git checkout --detach "$KNOWN_GOOD"
-npm ci
-npm run build
-scripts/install-systemd.sh --install --enable --with-web
+# 1. Preflight: a clean checkout and a known-good commit on origin/main.
+if [[ -z "$KNOWN_GOOD" ]]; then
+  echo "STOP: KNOWN_GOOD is empty"
+elif [[ -n "$(git status --porcelain)" ]]; then
+  KNOWN_GOOD=
+  echo "STOP: the production checkout is dirty"
+elif git fetch origin && git merge-base --is-ancestor "$KNOWN_GOOD" origin/main; then
+  echo "rollback target ok: $KNOWN_GOOD"
+else
+  KNOWN_GOOD=
+  echo "STOP: the rollback target is not on origin/main"
+fi
+
+# 2. Stop everything that reads source, dependencies or .next.
+[[ -n "$KNOWN_GOOD" ]] \
+  && systemctl --user stop ai-usage-dashboard-collector.timer \
+  && until [[ "$(systemctl --user is-active ai-usage-dashboard-collector.service)" =~ ^(inactive|failed)$ ]]; do sleep 1; done \
+  && systemctl --user stop ai-usage-dashboard-web.service \
+  && echo "units stopped"
+
+# 3. Restore the known-good commit and reinstall both units from it.
+[[ -n "$KNOWN_GOOD" ]] \
+  && git checkout --detach "$KNOWN_GOOD" \
+  && npm ci \
+  && npm run build \
+  && scripts/install-systemd.sh --install --enable --with-web \
+  && echo "rolled back to $(git rev-parse HEAD)"
 ```
 
 Source, dependencies, build and rendered units then all come from the same
