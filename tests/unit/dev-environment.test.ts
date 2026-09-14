@@ -243,6 +243,65 @@ describe('validation', () => {
     ).toMatch(refused);
   });
 
+  it('refuses a production directory behind a symlinked parent before either exists', () => {
+    // `mkdir -p` would create both inside the same real parent.
+    mkdirSync(join(dir, 'actual'));
+    symlinkSync(join(dir, 'actual'), join(dir, 'alias'));
+    for (const [production, development] of [
+      [join(dir, 'alias', 'shared'), join(dir, 'actual', 'shared')],
+      [join(dir, 'actual', 'shared'), join(dir, 'alias', 'shared')],
+      [join(dir, 'alias', 'a', 'b'), join(dir, 'actual', 'a', 'b')],
+    ] as const) {
+      expect(
+        configError(() =>
+          resolveDevEnvironment(base({ AUD_DATA_DIR: production, AUD_DEV_DATA_DIR: development })),
+        ),
+        development,
+      ).toMatch(/is also the production data directory/);
+    }
+
+    // Siblings under the same aliased parent are still different directories.
+    const development = join(dir, 'actual', 'dev');
+    expect(
+      resolveDevEnvironment(
+        base({ AUD_DATA_DIR: join(dir, 'alias', 'prod'), AUD_DEV_DATA_DIR: development }),
+      ).dataDir,
+    ).toBe(development);
+  });
+
+  it('follows a dangling symlink to the directory it would create', () => {
+    symlinkSync(join(dir, 'production'), join(dir, 'leaf-link'));
+    expect(
+      configError(() =>
+        resolveDevEnvironment(
+          base({ AUD_DATA_DIR: join(dir, 'production'), AUD_DEV_DATA_DIR: join(dir, 'leaf-link') }),
+        ),
+      ),
+    ).toMatch(/is also the production data directory/);
+
+    symlinkSync(join(dir, 'missing-parent'), join(dir, 'parent-link'));
+    expect(
+      configError(() =>
+        resolveDevEnvironment(
+          base({
+            AUD_DATA_DIR: join(dir, 'missing-parent', 'data'),
+            AUD_DEV_DATA_DIR: join(dir, 'parent-link', 'data'),
+          }),
+        ),
+      ),
+    ).toMatch(/is also the production data directory/);
+  });
+
+  it('refuses when a symlink loop leaves the comparison uncertain', () => {
+    symlinkSync(join(dir, 'loop-b'), join(dir, 'loop-a'));
+    symlinkSync(join(dir, 'loop-a'), join(dir, 'loop-b'));
+    expect(
+      configError(() =>
+        resolveDevEnvironment(base({ AUD_DEV_DATA_DIR: join(dir, 'loop-a', 'data') })),
+      ),
+    ).toMatch(/could not be fully resolved/);
+  });
+
   it('accepts only 0 or 1 for AUD_DEV_LIVE_REFRESH, and rejects a blank value', () => {
     expect(resolveDevEnvironment(base({ AUD_DEV_LIVE_REFRESH: '0' })).liveRefresh).toBe(false);
     expect(resolveDevEnvironment(base({ AUD_DEV_LIVE_REFRESH: '1' })).liveRefresh).toBe(true);

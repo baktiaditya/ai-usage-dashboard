@@ -9,9 +9,9 @@
   `AUD_DEV_PORT`, `AUD_DEV_DATA_DIR` and `AUD_DEV_LIVE_REFRESH` for the launcher
   only, refuses a development port equal to the resolved production `AUD_PORT`
   with exit code `2`, and hands `next dev` a complete environment. Beyond the
-  brief, it also refuses an `AUD_DEV_DATA_DIR` that resolves, symlinks included,
-  to the production data directory, since opening that database would migrate
-  it; and a blank `AUD_DEV_LIVE_REFRESH` is rejected rather than read as unset,
+  brief, it also refuses an `AUD_DEV_DATA_DIR` that resolves to the production
+  data directory, through symlinks and even before either directory exists, or
+  that cannot be resolved at all, since opening that database would migrate it; and a blank `AUD_DEV_LIVE_REFRESH` is rejected rather than read as unset,
   matching the brief's unset/`0`/`1` rule. Without the
   opt-in, that child gets empty DeepSeek and OpenRouter keys and the internal
   `AUD_REFRESH_ENABLED=0`, so manual refresh answers `409 refresh_disabled`

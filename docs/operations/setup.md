@@ -342,7 +342,8 @@ AUD_DEV_LIVE_REFRESH=1 npm run dev
 `AUD_DEV_PORT`, `AUD_DEV_DATA_DIR` and `AUD_DEV_LIVE_REFRESH` (§7) are read only by
 `npm run dev` and `npm run seed:dev`. An invalid value, an `AUD_DEV_PORT` equal
 to the production `AUD_PORT`, or an `AUD_DEV_DATA_DIR` that resolves to the
-production data directory (symlinks included) stops them with exit code `2`
+production data directory (through symlinks, even before either directory
+exists) or cannot be resolved at all (a symlink loop) stops them with exit code `2`
 before Next.js starts or a database opens. `AUD_DEV_LIVE_REFRESH` accepts only
 `0` or `1`; leave it unset rather than blank. Neither `npm run start`, `npm run collect`, nor the systemd
 units read them. Pass a different port through `AUD_DEV_PORT`; a `--port` or

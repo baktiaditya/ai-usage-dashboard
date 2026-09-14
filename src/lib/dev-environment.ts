@@ -13,9 +13,9 @@
  * so a malformed development value cannot stop `npm run start`, scheduled
  * collection, or either systemd unit.
  */
-import { realpathSync } from 'node:fs';
+import { lstatSync, readlinkSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { ConfigError, loadConfig } from './config';
 import type { EnvLike } from './config';
 import { loadCollectorEnvFile } from './env-file';
@@ -54,12 +54,51 @@ function parseLiveRefresh(raw: string | undefined): boolean {
   throw new ConfigError('AUD_DEV_LIVE_REFRESH must be 0 or 1');
 }
 
-/** Symlinks resolved where the path exists, so an alias cannot pass for another directory. */
-function canonicalDir(path: string): string {
+/** Symlink hops followed before giving up, matching the Linux kernel's own limit. */
+const MAX_SYMLINK_HOPS = 40;
+
+function isSymlink(path: string): boolean {
   try {
-    return realpathSync.native(path);
+    return lstatSync(path).isSymbolicLink();
   } catch {
-    return path;
+    return false;
+  }
+}
+
+/**
+ * The directory a path will really be, even before it exists, or `null` when
+ * that cannot be known.
+ *
+ * `mkdir -p` follows every symlinked ancestor, so a missing directory under an
+ * aliased parent is created inside the parent's target. The deepest existing
+ * ancestor is therefore resolved and the missing tail appended, and a dangling
+ * symlink is followed to where it points. A symlink loop or an unreadable
+ * component yields `null`, so the caller refuses rather than guessing.
+ */
+function canonicalDir(path: string, hops = 0): string | null {
+  const missing: string[] = [];
+  let current = resolve(path);
+  for (;;) {
+    try {
+      return join(realpathSync.native(current), ...missing.reverse());
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code !== 'ENOENT' && code !== 'ENOTDIR') return null;
+    }
+    if (isSymlink(current)) {
+      if (hops >= MAX_SYMLINK_HOPS) return null;
+      let target: string;
+      try {
+        target = resolve(dirname(current), readlinkSync(current));
+      } catch {
+        return null;
+      }
+      return canonicalDir(join(target, ...missing.reverse()), hops + 1);
+    }
+    const parent = dirname(current);
+    if (parent === current) return join(current, ...missing.reverse());
+    missing.push(basename(current));
+    current = parent;
   }
 }
 
@@ -102,7 +141,14 @@ export function resolveDevEnvironment(sourceEnv: EnvLike = process.env): DevEnvi
     );
   }
   // Opening the database applies migrations, so sharing it is never harmless.
-  if (canonicalDir(dataDir) === canonicalDir(production.dataDir)) {
+  const devTarget = canonicalDir(dataDir);
+  const productionTarget = canonicalDir(production.dataDir);
+  if (devTarget === null || productionTarget === null) {
+    throw new ConfigError(
+      `AUD_DEV_DATA_DIR ${JSON.stringify(dataDir)} or the production data directory could not be fully resolved (a symlink loop or an unreadable path), so the development server cannot prove they differ`,
+    );
+  }
+  if (devTarget === productionTarget) {
     throw new ConfigError(
       `AUD_DEV_DATA_DIR ${JSON.stringify(dataDir)} is also the production data directory; choose another directory so the development server cannot open the production database`,
     );

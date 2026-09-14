@@ -1,5 +1,14 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -156,6 +165,24 @@ describe('seed:dev targets only the development database', () => {
     expect(r.status).toBe(2);
     expect(r.stderr).toContain('is also the production data directory');
     expectUnchanged(before, production.snapshot());
+  });
+
+  it('refuses a production directory behind a symlinked parent before it exists, creating nothing', () => {
+    // The review reproduction: seeding would have created the production database.
+    mkdirSync(join(home, 'actual-parent'));
+    symlinkSync(join(home, 'actual-parent'), join(home, 'alias-parent'));
+    const envFile = join(home, 'collector.env');
+    writeFileSync(envFile, `AUD_DATA_DIR=${join(home, 'alias-parent', 'shared')}\n`, {
+      mode: 0o600,
+    });
+
+    const r = seed(['--dev'], {
+      AUD_ENV_FILE: envFile,
+      AUD_DEV_DATA_DIR: join(home, 'actual-parent', 'shared'),
+    });
+    expect(r.status).toBe(2);
+    expect(r.stderr).toContain('is also the production data directory');
+    expect(existsSync(join(home, 'actual-parent', 'shared'))).toBe(false);
   });
 
   it('exits 2 on an invalid development setting before opening any database', () => {
