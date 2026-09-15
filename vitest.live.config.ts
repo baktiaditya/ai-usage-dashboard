@@ -2,7 +2,7 @@ import { defineConfig } from 'vitest/config';
 import { resolve } from 'node:path';
 
 /**
- * Live smoke checks only. Kept in a separate config so the default `npm test`
+ * Live smoke checks only. Kept in a separate config so the default `pnpm test`
  * can never reach a real provider endpoint or a real local account.
  */
 export default defineConfig({

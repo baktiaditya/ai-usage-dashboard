@@ -126,7 +126,7 @@ The dashboard makes no automatic routing decisions in the MVP. It only presents 
 
 ### 3.3 Collector and storage
 
-- Provide a one-shot command, e.g. `npm run collect`, as the single orchestration path for scheduled and manual collection.
+- Provide a one-shot command, e.g. `pnpm run collect`, as the single orchestration path for scheduled and manual collection.
 - Run that command every 5 minutes via a user-level `systemd` service + timer. Do not rely on in-process Next.js intervals as the primary scheduler.
 - Optionally serve the dashboard itself at boot as a user-level web unit, installed with `--with-web`. See the 2026-09-14 decision in the [log](../log.md).
 - Pull Codex, DeepSeek, and OpenRouter in parallel with independent timeouts; ingest the Claude spool in the same run.
@@ -137,8 +137,8 @@ The dashboard makes no automatic routing decisions in the MVP. It only presents 
 
 ### 3.4 Development isolation
 
-- `npm run start` and both systemd units keep the production `AUD_PORT` and `AUD_DATA_DIR` contract.
-- `npm run dev` defaults to loopback port `3839` and an independent XDG data directory named
+- `pnpm run start` and both systemd units keep the production `AUD_PORT` and `AUD_DATA_DIR` contract.
+- `pnpm run dev` defaults to loopback port `3839` and an independent XDG data directory named
   `ai-usage-dashboard-dev`; neither default is derived from the production data path, and a
   development directory that resolves to the production data directory is refused.
 - Development-only settings are parsed at the launcher seam, not by the shared application
@@ -147,7 +147,7 @@ The dashboard makes no automatic routing decisions in the MVP. It only presents 
   `AUD_DEV_LIVE_REFRESH=1` is the explicit opt-in. The offline child prevents collection from every
   provider, Codex included. It no longer handles credential variables: keys come only from the
   development server's own database (§3.5).
-- Development data starts empty. `npm run seed:dev` may replace seeded rows in that directory only;
+- Development data starts empty. `pnpm run seed:dev` may replace seeded rows in that directory only;
   production data is never copied or selected implicitly.
 - A dedicated production checkout remains a separate operational hardening task for build,
   dependency, restart, and rollback isolation. Next.js 16 already separates `next dev` output under
@@ -161,7 +161,7 @@ Decided and implemented 2026-09-15 (see the [log](../log.md)); delivered from th
 - The DeepSeek API key and the OpenRouter Management key are entered in a Settings dialog on the
   dashboard and stored in the SQLite database, in plaintext, protected by the database's
   owner-only (`0600`) permissions. Database backups therefore contain them.
-- Every collection path — the systemd timer, `npm run collect`, and manual refresh — reads the
+- Every collection path — the systemd timer, `pnpm run collect`, and manual refresh — reads the
   keys from the database at the start of each run. `DEEPSEEK_API_KEY` and
   `OPENROUTER_MANAGEMENT_KEY` are no longer read from any environment, file, or `.env.local`;
   there is no fallback and no import. An existing install re-enters its keys after upgrading.
@@ -178,7 +178,7 @@ Decided and implemented 2026-09-15 (see the [log](../log.md)); delivered from th
 ### 4.1 Stack and bootstrap
 
 - **Next.js + TypeScript** for UI and Route Handlers; adapters touching SQLite or child processes must use the Node.js runtime, not the Edge runtime.
-- **npm + `package-lock.json`** as the repository-pinned package manager.
+- **pnpm + `pnpm-lock.yaml`** as the repository-pinned package manager, run through corepack at the exact version and sha512 integrity hash that `packageManager` in `package.json` pins, on Node.js `^24.15.0`. Native install scripts run only for the exact versions allowlisted in `pnpm-workspace.yaml`. Decided 2026-09-15, superseding npm (see the [log](../log.md)).
 - **Tailwind CSS + shadcn/ui** for dashboard components.
 - **SQLite + Drizzle ORM** for schema and history queries.
 - **Recharts** for MVP charts; evaluate bundle size during implementation.

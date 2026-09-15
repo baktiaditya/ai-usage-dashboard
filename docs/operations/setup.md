@@ -18,22 +18,29 @@ provision all four to get value from one.
 
 ## 1. Install and initialise
 
+Requires Node.js 24.15 or a later Node 24 release (`engines.node` is `^24.15.0`). Node 25 no
+longer bundles corepack and is not supported. Corepack runs the exact pnpm version that
+`packageManager` in `package.json` pins and checks it against its sha512 hash. The first run
+downloads that version; later runs use corepack's cache.
+
 ```bash
-npm install          # some deps build native code; approve when npm asks
-npm run db:migrate   # creates the SQLite database and applies migrations
-npm run collect      # one collection pass
-npm run build
-npm run start        # http://127.0.0.1:3838, serving the database just collected
+corepack enable pnpm  # once per Node installation: puts corepack's pnpm on PATH
+pnpm install          # builds only the allowlisted native modules; never asks
+pnpm run db:migrate   # creates the SQLite database and applies migrations
+pnpm run collect      # one collection pass
+pnpm run build
+pnpm run start        # http://127.0.0.1:3838, serving the database just collected
 ```
 
-`npm run db:migrate` prints where the database lives and which migrations ran.
+`pnpm run db:migrate` prints where the database lives and which migrations ran.
 
-`npm run dev` is for working on the dashboard itself. It runs beside production on
+`pnpm run dev` is for working on the dashboard itself. It runs beside production on
 `127.0.0.1:3839` with its own empty database and never opens the one above; see
 [Development server](#development-server).
 
-`npm install` also wires the git hooks (`prepare` → Husky). Every commit
-then runs `pre-commit` — Prettier over staged files, plus `typecheck` and the
+`pnpm install` runs install scripts only for the exact package versions listed under
+`allowBuilds` in `pnpm-workspace.yaml` (§10). It also wires the git hooks (`prepare` → Husky).
+Every commit then runs `pre-commit` — Prettier over staged files, plus `typecheck` and the
 tests related to staged files when any `*.ts`/`*.tsx` is staged — and
 `commit-msg`, which enforces [Conventional Commits](https://www.conventionalcommits.org/)
 with a subject of at most 72 characters. Docs-only commits skip the
@@ -62,8 +69,8 @@ Copying `usage.db` by hand can miss the newest rows, which stay in `usage.db-wal
 checkpoints them. Use the scripts instead:
 
 ```bash
-npm run db:backup                      # <data dir>/backups/usage-<UTC timestamp>.db
-npm run db:backup -- ~/usage-copy.db   # or a file of your choosing
+pnpm run db:backup                   # <data dir>/backups/usage-<UTC timestamp>.db
+pnpm run db:backup ~/usage-copy.db   # or a file of your choosing
 ```
 
 A backup runs while the collector and the dashboard keep writing, and produces one verified `0600`
@@ -77,14 +84,14 @@ unit out of both `systemctl` lines if you did not install it.
 
 ```bash
 systemctl --user stop ai-usage-dashboard-collector.timer ai-usage-dashboard-web.service
-npm run db:restore -- ~/usage-copy.db
+pnpm run db:restore ~/usage-copy.db
 systemctl --user start ai-usage-dashboard-collector.timer ai-usage-dashboard-web.service
 ```
 
 The restore refuses, and changes nothing, in any of these cases:
 
-- a process still holds the database open, including a collector run already in progress or an
-  `npm run start`;
+- a process still holds the database open, including a collector run already in progress or a
+  `pnpm run start`;
 - the file is not an intact dashboard database;
 - once migrated, it lacks a table, column, index or trigger this build creates, even when it records
   every migration;
@@ -108,13 +115,13 @@ directly. If `codex` is logged in, the card works.
 
 Minimum supported version: **`codex-cli 0.154.0`**, the version the adapter is live-verified against
 ([M0 Discovery](../discovery/m0-discovery.md)). Older releases are untested. Run
-`npm run test:live` again after upgrading the CLI.
+`pnpm run test:live` again after upgrading the CLI.
 
 Verify:
 
 ```bash
 codex --version
-npm run collect
+pnpm run collect
 ```
 
 ---
@@ -133,22 +140,22 @@ reaches the collector, the database, or the browser.
 ### Install
 
 ```bash
-npm run claude:install-statusline            # dry run: shows exactly what it would write
-npm run claude:install-statusline -- --apply
+pnpm run claude:install-statusline           # dry run: shows exactly what it would write
+pnpm run claude:install-statusline --apply
 ```
 
 Run it from the checkout that serves production: the production checkout (§6) once you have one.
 The installed command runs the bridge by absolute path from the checkout the installer ran in, so an
 installation made from the development repository follows whatever branch is checked out there.
-Re-running `-- --apply` from the right checkout refreshes this project's own status line in place and
-keeps any status line it wraps. Keep the `--`: without it npm consumes `--apply`, and the script only
-prints its dry run.
+Re-running `--apply` from the right checkout refreshes this project's own status line in place and
+keeps any status line it wraps. pnpm hands flags written after the script name straight to the
+script, so no `--` is needed.
 
 Then **start a Claude Code session and send one prompt**. `rate_limits` only
 appears after a session's first API response, so an idle session records nothing.
 
 ```bash
-npm run collect     # ingests the spool
+pnpm run collect     # ingests the spool
 ```
 
 ### If you already have a status line
@@ -157,10 +164,10 @@ The installer **will not overwrite it**. It stops and prints your options:
 
 ```bash
 # Compose: the bridge runs your existing command and prints its output verbatim.
-npm run claude:install-statusline -- --apply --wrap-existing
+pnpm run claude:install-statusline --apply --wrap-existing
 
 # Or configure it yourself:
-npm run claude:install-statusline -- --print
+pnpm run claude:install-statusline --print
 ```
 
 Your previous `settings.json` is copied to `settings.json.backup-<timestamp>`
@@ -169,7 +176,7 @@ before anything is written.
 ### Remove
 
 ```bash
-npm run claude:install-statusline -- --uninstall --apply
+pnpm run claude:install-statusline --uninstall --apply
 ```
 
 This refuses to remove a status line it did not install.
@@ -197,9 +204,9 @@ saved key. Surrounding spaces and a trailing newline are removed; a key with a
 space inside it is refused.
 
 The keys are stored in the dashboard's SQLite database, in plaintext, protected by
-the database's owner-only (`0600`) mode, so `npm run db:backup` files contain them
+the database's owner-only (`0600`) mode, so `pnpm run db:backup` files contain them
 too (§1). Every collection path reads them from there at the start of each run:
-the systemd collector, `npm run collect`, and a card's **Refresh**. A saved key is
+the systemd collector, `pnpm run collect`, and a card's **Refresh**. A saved key is
 used from the next collection, and **Refresh** on a card collects now. Saving does
 not check the key with the provider: a rejected key shows up on the next
 collection as `auth_rejected`, or as `insufficient_scope` for an OpenRouter
@@ -213,7 +220,7 @@ settings API requires a same-origin request, reads included.
 
 The environment variables `DEEPSEEK_API_KEY` and `OPENROUTER_MANAGEMENT_KEY` are
 no longer read from `collector.env`, your shell, or a repository `.env.local`.
-While either is still set, `npm run collect` logs one warning that names the
+While either is still set, `pnpm run collect` logs one warning that names the
 variables and never their values.
 
 ### Upgrading from keys in `collector.env`
@@ -264,7 +271,7 @@ the production checkout (§6).
 
 ```bash
 # Render the units so you can read them first (this is the default).
-npm run systemd:install
+pnpm run systemd:install
 
 # Copy them into ~/.config/systemd/user/
 scripts/install-systemd.sh --install
@@ -330,8 +337,8 @@ the unit look broken.
 ## 6. Running the dashboard
 
 ```bash
-npm run build
-npm run start      # http://127.0.0.1:3838
+pnpm run build
+pnpm run start      # http://127.0.0.1:3838
 ```
 
 The server binds explicitly to `127.0.0.1`. `AUD_HOST` accepts only loopback
@@ -343,7 +350,7 @@ to 6 refreshes per provider per minute.
 
 ### Development server
 
-`npm run dev` is safe to run while the production dashboard is up. With no
+`pnpm run dev` is safe to run while the production dashboard is up. With no
 development variables set it:
 
 - binds `127.0.0.1:3839` (still `AUD_HOST`, but never `AUD_PORT`);
@@ -360,23 +367,23 @@ The development database starts empty, and production data is never copied into
 it. To see every card state:
 
 ```bash
-npm run seed:dev     # replaces the seeded runs in the development database only
+pnpm run seed:dev     # replaces the seeded runs in the development database only
 ```
 
 To let manual refresh collect for real, using the keys saved in the development
 server's Settings and writing only the development database:
 
 ```bash
-AUD_DEV_LIVE_REFRESH=1 npm run dev
+AUD_DEV_LIVE_REFRESH=1 pnpm run dev
 ```
 
 `AUD_DEV_PORT`, `AUD_DEV_DATA_DIR` and `AUD_DEV_LIVE_REFRESH` (§7) are read only by
-`npm run dev` and `npm run seed:dev`. An invalid value, an `AUD_DEV_PORT` equal
+`pnpm run dev` and `pnpm run seed:dev`. An invalid value, an `AUD_DEV_PORT` equal
 to the production `AUD_PORT`, or an `AUD_DEV_DATA_DIR` that resolves to the
 production data directory (through symlinks, even before either directory
 exists) or cannot be resolved at all (a symlink loop) stops them with exit code `2`
 before Next.js starts or a database opens. `AUD_DEV_LIVE_REFRESH` accepts only
-`0` or `1`; leave it unset rather than blank. Neither `npm run start`, `npm run collect`, nor the systemd
+`0` or `1`; leave it unset rather than blank. Neither `pnpm run start`, `pnpm run collect`, nor the systemd
 units read them. Pass a different port through `AUD_DEV_PORT`; a `--port` or
 `--hostname` flag is refused.
 
@@ -386,7 +393,7 @@ To have the dashboard up whenever the machine is, install the web unit next to
 the collector. It serves an existing production build, so it is installed from
 the production checkout by the deploy procedure below, which builds first.
 
-The unit runs the same `scripts/next.ts start` path as `npm run start`, with the
+The unit runs the same `scripts/next.ts start` path as `pnpm run start`, with the
 collector's sandbox and resolved settings, so it reads the database the timer
 writes. Manual refresh runs inside it, which is why the data directory and
 `CODEX_HOME` are writable. It restarts on failure, at most five starts in five
@@ -396,8 +403,8 @@ It never builds by itself — a slow or failing build at boot would leave the
 dashboard down. At boot it serves whatever `.next` the production checkout holds,
 which is always the build of the deployed commit.
 
-Stop any `npm run start` first: the installer refuses to start the unit while
-another process holds the port. A default `npm run dev` on `3839` can keep
+Stop any `pnpm run start` first: the installer refuses to start the unit while
+another process holds the port. A default `pnpm run dev` on `3839` can keep
 running. `--status` includes the web unit once it is installed, and
 `--disable --with-web` stops it along with the timer.
 Follow its logs with `journalctl --user -u ai-usage-dashboard-web.service -f`.
@@ -407,14 +414,14 @@ Follow its logs with `journalctl --user -u ai-usage-dashboard-web.service -f`.
 Both units run from a dedicated clone at `~/Workspace/ai-usage-dashboard-prod`,
 never from the development repository. The installer renders `WorkingDirectory`,
 `ExecStart` and `ReadWritePaths` from the checkout it runs in, so branch switches,
-`npm install` and `npm run build` in the development repository cannot change what
+`pnpm install` and `pnpm run build` in the development repository cannot change what
 production serves or collects with. Always run `scripts/install-systemd.sh` from
 the production checkout: running it from any other checkout repoints both units at
 that checkout. The data directory and `collector.env` live outside both checkouts
 and carry across every deploy and rollback.
 
 The Claude status line (§3) is not a unit, but the same rule applies:
-`npm run claude:install-statusline -- --apply` records the bridge's absolute path in the checkout it
+`pnpm run claude:install-statusline --apply` records the bridge's absolute path in the checkout it
 runs in. Run it from the production checkout. Run from there, it refreshes an installation made from
 any other checkout.
 
@@ -430,15 +437,17 @@ refs, config or worktree administration with the development repository:
 git clone git@github.com:baktiaditya/ai-usage-dashboard.git ~/Workspace/ai-usage-dashboard-prod
 ```
 
-Then deploy. `npm ci` runs the native build scripts allowlisted in
-`package.json`; if it warns about install scripts, approve them as §10 describes.
+Then deploy, from a shell where `corepack enable pnpm` (§1) has put `pnpm` on `PATH`.
+`pnpm install --frozen-lockfile` runs install scripts only for the exact versions listed under
+`allowBuilds` in `pnpm-workspace.yaml`, and fails rather than asking when any other package has one
+(§10).
 
 #### Deploy
 
 Brief downtime is expected: the timer, any running collector and the web unit stop
 before source, dependencies or `.next` change, so the collector never runs against
 a half-installed tree and the web unit never serves a build being replaced. On this
-machine a deploy took about half a minute, `npm run verify` included.
+machine a deploy took about half a minute, `pnpm run verify` included.
 
 Run the blocks in one shell, in order. Each block after the preflight starts only
 when `CANDIDATE` is set and stops at its first failing command, and a unit that does
@@ -449,14 +458,36 @@ running, or start the timer before the new web unit answers.
 ```bash
 cd ~/Workspace/ai-usage-dashboard-prod
 
-# 1. Preflight: a clean checkout, exact SHAs, and a candidate on origin/main.
+# Cache the pnpm a commit pins and check that it runs, from a scratch copy of that
+# commit's package.json, so the checkout does not change. A commit that pins no
+# packageManager, from before the move to pnpm, passes: it installs with npm.
+pnpm_ready() {
+  local dir pinned rc
+  dir=$(mktemp -d) || return 1
+  git show "$1:package.json" > "$dir/package.json" \
+    && pinned=$(cd "$dir" && node -p "require('./package.json').packageManager ?? ''")
+  rc=$?
+  if [[ $rc -eq 0 && -n "$pinned" ]]; then
+    [[ "$pinned" == pnpm@* ]] \
+      && (cd "$dir" && corepack install \
+        && [[ "$(pnpm --version)" == "$(echo "${pinned#pnpm@}" | cut -d+ -f1)" ]])
+    rc=$?
+  fi
+  rm -rf "$dir"
+  return $rc
+}
+
+# 1. Preflight: a clean checkout, exact SHAs, a candidate on origin/main that has
+#    pnpm-lock.yaml, and the pnpm it pins cached and runnable.
 PREVIOUS= CANDIDATE=
 if [[ -n "$(git status --porcelain)" ]]; then
   echo "STOP: the production checkout is dirty"
 elif git fetch origin \
   && PREVIOUS=$(git rev-parse HEAD) \
   && CANDIDATE=$(git rev-parse origin/main) \
-  && git merge-base --is-ancestor "$CANDIDATE" origin/main; then
+  && git merge-base --is-ancestor "$CANDIDATE" origin/main \
+  && git cat-file -e "$CANDIDATE:pnpm-lock.yaml" \
+  && pnpm_ready "$CANDIDATE"; then
   echo "preflight ok: previous=$PREVIOUS candidate=$CANDIDATE"
 else
   CANDIDATE=
@@ -480,9 +511,9 @@ fi
 #    The host and port are read back from the rendered web unit.
 if [[ -n "$CANDIDATE" ]]; then
   if git checkout --detach "$CANDIDATE" \
-    && npm ci \
-    && npm run verify \
-    && npm run build \
+    && pnpm install --frozen-lockfile \
+    && pnpm run verify \
+    && pnpm run build \
     && scripts/install-systemd.sh --install --with-web \
     && WEB_UNIT=systemd/generated/ai-usage-dashboard-web.service \
     && WEB_HOST=$(sed -n 's/^Environment=AUD_HOST=//p' "$WEB_UNIT") \
@@ -507,6 +538,16 @@ discarding it. The collector is a one-shot service, so step 2 waits for a run al
 in progress rather than cutting it off; `systemctl --user stop ai-usage-dashboard-collector.service`
 ends one that must not finish. The stopped web unit reads `failed` (Next.js exits
 with status 143 on `SIGTERM`) until step 3 restarts it.
+
+The preflight caches pnpm before anything stops. It reads the candidate's `package.json` into a
+scratch directory, where `corepack install` caches the pinned pnpm and `pnpm --version` must print
+that version. The first run of a new version also fetches pnpm's platform binary into corepack's
+cache, so step 3 never waits on the registry for pnpm while the units are down. A candidate without
+`pnpm-lock.yaml` or a `pnpm@` pin, a failed download, or a different version clears `CANDIDATE`.
+
+The first deploy after the move from npm meets a `node_modules` that `npm ci` laid out.
+`pnpm install --frozen-lockfile` replaces it without prompting, even with standard input closed, so
+step 3 is the same for that deploy as for any other.
 
 Step 3 runs the installer without `--enable`, so it only renders, installs and
 reloads the units; ignore its closing "Not enabled" hint. The installer's own
@@ -576,17 +617,39 @@ cd ~/Workspace/ai-usage-dashboard-prod
 # In a new shell, replace "$PREVIOUS" with the recorded known-good SHA in quotes.
 KNOWN_GOOD="$PREVIOUS"
 
-# 1. Preflight: a clean checkout and a known-good commit on origin/main.
+# Cache the pnpm a commit pins and check that it runs, from a scratch copy of that
+# commit's package.json, so the checkout does not change. A commit that pins no
+# packageManager, from before the move to pnpm, passes: it installs with npm.
+pnpm_ready() {
+  local dir pinned rc
+  dir=$(mktemp -d) || return 1
+  git show "$1:package.json" > "$dir/package.json" \
+    && pinned=$(cd "$dir" && node -p "require('./package.json').packageManager ?? ''")
+  rc=$?
+  if [[ $rc -eq 0 && -n "$pinned" ]]; then
+    [[ "$pinned" == pnpm@* ]] \
+      && (cd "$dir" && corepack install \
+        && [[ "$(pnpm --version)" == "$(echo "${pinned#pnpm@}" | cut -d+ -f1)" ]])
+    rc=$?
+  fi
+  rm -rf "$dir"
+  return $rc
+}
+
+# 1. Preflight: a clean checkout, a known-good commit on origin/main, and the pnpm
+#    it pins, if any, cached and runnable.
 if [[ -z "$KNOWN_GOOD" ]]; then
   echo "STOP: KNOWN_GOOD is empty"
 elif [[ -n "$(git status --porcelain)" ]]; then
   KNOWN_GOOD=
   echo "STOP: the production checkout is dirty"
-elif git fetch origin && git merge-base --is-ancestor "$KNOWN_GOOD" origin/main; then
+elif git fetch origin \
+  && git merge-base --is-ancestor "$KNOWN_GOOD" origin/main \
+  && pnpm_ready "$KNOWN_GOOD"; then
   echo "rollback target ok: $KNOWN_GOOD"
 else
   KNOWN_GOOD=
-  echo "STOP: the rollback target is not on origin/main"
+  echo "STOP: the rollback target is not on origin/main, or its pnpm is not ready"
 fi
 
 # 2. Stop everything that reads source, dependencies or .next.
@@ -601,12 +664,16 @@ if [[ -n "$KNOWN_GOOD" ]]; then
   fi
 fi
 
-# 3. Restore the known-good commit, reinstall both units from it, then start the
-#    web unit and, once it answers, the timer.
+# 3. Restore the known-good commit, install and build with the package manager its
+#    lockfile belongs to, reinstall both units from it, then start the web unit
+#    and, once it answers, the timer.
 if [[ -n "$KNOWN_GOOD" ]]; then
   if git checkout --detach "$KNOWN_GOOD" \
-    && npm ci \
-    && npm run build \
+    && if [[ -f pnpm-lock.yaml ]]; then
+      pnpm install --frozen-lockfile && pnpm run build
+    else
+      npm ci && npm run build
+    fi \
     && scripts/install-systemd.sh --install --with-web \
     && WEB_UNIT=systemd/generated/ai-usage-dashboard-web.service \
     && WEB_HOST=$(sed -n 's/^Environment=AUD_HOST=//p' "$WEB_UNIT") \
@@ -629,7 +696,12 @@ A rollback `STOP` line follows the same rules as a deploy failure: after step 2,
 nothing changed; after step 3, fix the reported cause and run the rollback again.
 Source, dependencies, build and rendered units then all come from the same
 known-good commit. Verify it as above, expecting `HEAD` to equal `$KNOWN_GOOD`.
-Rollback skips `npm run verify` because that commit passed it when it was deployed.
+Rollback skips the verify step because that commit passed it when it was deployed.
+
+A known-good commit with `pnpm-lock.yaml` installs with `pnpm install --frozen-lockfile`, after the
+preflight has cached the pnpm it pins. A commit from before the move to pnpm has only
+`package-lock.json` and pins no pnpm, so it installs with `npm ci` and builds with `npm run build`,
+both bundled with Node. `npm ci` deletes the pnpm `node_modules` before it installs.
 The checkout stays detached; a later deploy repeats the normal fetch-and-detach
 procedure from `origin/main`.
 
@@ -639,20 +711,20 @@ procedure from `origin/main`.
 
 Every value has a safe default; all are optional.
 
-| Variable                       | Default                                      | Notes                                                                              |
-| ------------------------------ | -------------------------------------------- | ---------------------------------------------------------------------------------- |
-| `AUD_DATA_DIR`                 | `~/.local/share/ai-usage-dashboard`          | database + spool; absolute or `~/…`                                                |
-| `AUD_TIMEZONE`                 | `Asia/Jakarta`                               | only affects calendar-day boundaries in history                                    |
-| `AUD_HOST`                     | `127.0.0.1`                                  | loopback only; anything else is rejected                                           |
-| `AUD_PORT`                     | `3838`                                       | `npm run start` and the web unit bind to it                                        |
-| `AUD_DEV_PORT`                 | `3839`                                       | `npm run dev` only; must differ from `AUD_PORT`                                    |
-| `AUD_DEV_DATA_DIR`             | `~/.local/share/ai-usage-dashboard-dev`      | `npm run dev` / `seed:dev` only; absolute or `~/…`; never the production directory |
-| `AUD_DEV_LIVE_REFRESH`         | `0`                                          | `0` or `1` only; `1` lets development refresh collect; see §6                      |
-| `AUD_THRESHOLDS`               | —                                            | JSON advisory overrides; see Thresholds below                                      |
-| `AUD_RETENTION_DAYS`           | `90`                                         |                                                                                    |
-| `AUD_COLLECT_INTERVAL_MINUTES` | `5`                                          | also drives the freshness budget                                                   |
-| `AUD_LOG_LEVEL`                | `info`                                       | `debug` \| `info` \| `warn` \| `error`                                             |
-| `AUD_ENV_FILE`                 | `~/.config/ai-usage-dashboard/collector.env` | optional `AUD_*` settings file, absolute or `~/…`; never keys (§4)                 |
+| Variable                       | Default                                      | Notes                                                                               |
+| ------------------------------ | -------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `AUD_DATA_DIR`                 | `~/.local/share/ai-usage-dashboard`          | database + spool; absolute or `~/…`                                                 |
+| `AUD_TIMEZONE`                 | `Asia/Jakarta`                               | only affects calendar-day boundaries in history                                     |
+| `AUD_HOST`                     | `127.0.0.1`                                  | loopback only; anything else is rejected                                            |
+| `AUD_PORT`                     | `3838`                                       | `pnpm run start` and the web unit bind to it                                        |
+| `AUD_DEV_PORT`                 | `3839`                                       | `pnpm run dev` only; must differ from `AUD_PORT`                                    |
+| `AUD_DEV_DATA_DIR`             | `~/.local/share/ai-usage-dashboard-dev`      | `pnpm run dev` / `seed:dev` only; absolute or `~/…`; never the production directory |
+| `AUD_DEV_LIVE_REFRESH`         | `0`                                          | `0` or `1` only; `1` lets development refresh collect; see §6                       |
+| `AUD_THRESHOLDS`               | —                                            | JSON advisory overrides; see Thresholds below                                       |
+| `AUD_RETENTION_DAYS`           | `90`                                         |                                                                                     |
+| `AUD_COLLECT_INTERVAL_MINUTES` | `5`                                          | also drives the freshness budget                                                    |
+| `AUD_LOG_LEVEL`                | `info`                                       | `debug` \| `info` \| `warn` \| `error`                                              |
+| `AUD_ENV_FILE`                 | `~/.config/ai-usage-dashboard/collector.env` | optional `AUD_*` settings file, absolute or `~/…`; never keys (§4)                  |
 
 ### Thresholds
 
@@ -724,19 +796,19 @@ negative usage.
 ## 9. Verification
 
 ```bash
-npm run verify          # format + lint + typecheck + unit + integration
-npm run test:e2e        # browser smoke, desktop and mobile
-npm run test:live       # opt-in; skips any gate whose key is not saved
+pnpm run verify          # format + lint + typecheck + unit + integration
+pnpm run test:e2e        # browser smoke, desktop and mobile
+pnpm run test:live       # opt-in; skips any gate whose key is not saved
 ```
 
-`npm run test:live` talks to the real CLI and real endpoints, with the keys saved
+`pnpm run test:live` talks to the real CLI and real endpoints, with the keys saved
 in the database `AUD_DATA_DIR` names, opened read-only. It asserts shape and
 reachability only, prints no observed value or key, and never writes a fixture.
 
 Confirm the listener:
 
 ```bash
-npm run start &
+pnpm run start &
 ss -ltnp | grep 3838      # expect 127.0.0.1:3838 and nothing else
 ```
 
@@ -746,7 +818,7 @@ ss -ltnp | grep 3838      # expect 127.0.0.1:3838 and nothing else
 
 **Claude says "no status-line event has been recorded yet"** — the bridge is not
 installed, or no Claude session has produced an API response since it was.
-Install it, send one prompt in a Claude session, then `npm run collect`.
+Install it, send one prompt in a Claude session, then `pnpm run collect`.
 
 **Claude says "the status line ran but this account exposed no rate_limits"** —
 the bridge is working. This account or plan does not publish quota.
@@ -757,7 +829,7 @@ credits endpoint needs a Management key.
 **DeepSeek or OpenRouter shows `not_configured`** — no key is saved in the
 database this dashboard reads. Save it in **Settings** (§4). A key in
 `collector.env`, your shell, or `.env.local` is ignored, and a key saved on
-`npm run dev` lands only in the development database.
+`pnpm run dev` lands only in the development database.
 
 **The timer runs but nothing updates** — check that the unit's `AUD_DATA_DIR`
 matches its `ReadWritePaths` and the directory the dashboard reads (re-run the
@@ -769,15 +841,19 @@ journalctl --user -u ai-usage-dashboard-collector.service -n 50
 ```
 
 **The dashboard says "database disk image is malformed"** — check the file on
-disk first. `npm run db:backup` verifies the copy it writes, so a backup that
+disk first. `pnpm run db:backup` verifies the copy it writes, so a backup that
 succeeds means the database is intact. Then the web server has lost track of the
 database's WAL, a bug in builds before 2026-09-14. Redeploy it from the production
 checkout (§6); the procedure rebuilds `.next` and restarts the web unit.
 
 If the backup fails its integrity check, restore an earlier backup (§1).
 
-**`npm install` warns about install scripts** — `better-sqlite3` compiles a
-native module. Approve it with `npm approve-scripts better-sqlite3`.
+**`pnpm install` fails with `ERR_PNPM_IGNORED_BUILDS`** — a dependency has an install script and
+its exact version is not under `allowBuilds` in `pnpm-workspace.yaml`, usually because an upgrade
+changed the version of `better-sqlite3`, `/oxide`, `esbuild` or `unrs-resolver`. Review
+that version, then run `pnpm approve-builds`. It writes bare package names, which would let every
+future version run its script unreviewed, so rewrite each entry it adds as `name` and drop
+the entry for the version it replaces. Approvals stay pinned to exact versions.
 
 ---
 

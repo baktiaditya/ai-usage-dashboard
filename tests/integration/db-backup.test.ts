@@ -356,33 +356,50 @@ describe('db:backup and db:restore scripts', () => {
     });
   }
 
-  it('round-trips the configured database through a backup file named relative to INIT_CWD', () => {
-    mkdirSync(join(dir, 'data'));
-    const path = join(dir, 'data', 'usage.db');
-    const db = openDb({ path });
-    startRun(db, 'scheduled');
-    startRun(db, 'scheduled');
-    db.$client.close();
+  // `pnpm run db:backup -- <file>` hands the script `['--', '<file>']`, while
+  // `pnpm run db:backup <file>` and npm's `-- <file>` hand it `['<file>']`.
+  it.each([
+    { form: '<file>', lead: [] },
+    { form: '-- <file>', lead: ['--'] },
+  ])(
+    'round-trips the configured database through a backup file named relative to INIT_CWD, given $form',
+    ({ lead }) => {
+      mkdirSync(join(dir, 'data'));
+      const path = join(dir, 'data', 'usage.db');
+      const db = openDb({ path });
+      startRun(db, 'scheduled');
+      startRun(db, 'scheduled');
+      db.$client.close();
 
-    const backup = run('db-backup.ts', ['snapshot.db']);
-    expect(backup.stderr).toBe('');
-    expect(backup.status).toBe(0);
-    expect(JSON.parse(backup.stdout)).toMatchObject({ backup: '~/snapshot.db', runs: 2 });
+      const backup = run('db-backup.ts', [...lead, 'snapshot.db']);
+      expect(backup.stderr).toBe('');
+      expect(backup.status).toBe(0);
+      expect(JSON.parse(backup.stdout)).toMatchObject({ backup: '~/snapshot.db', runs: 2 });
 
-    const more = openDb({ path });
-    startRun(more, 'manual');
-    more.$client.close();
+      const more = openDb({ path });
+      startRun(more, 'manual');
+      more.$client.close();
 
-    const restore = run('db-restore.ts', ['snapshot.db']);
-    expect(restore.stderr).toBe('');
-    expect(restore.status).toBe(0);
-    expect(JSON.parse(restore.stdout)).toMatchObject({ restored: '~/data/usage.db', runs: 2 });
-    expect(runCount(path)).toBe(2);
-  });
+      const restore = run('db-restore.ts', [...lead, 'snapshot.db']);
+      expect(restore.stderr).toBe('');
+      expect(restore.status).toBe(0);
+      expect(JSON.parse(restore.stdout)).toMatchObject({ restored: '~/data/usage.db', runs: 2 });
+      expect(runCount(path)).toBe(2);
+    },
+  );
 
-  it('exits 2 when db:restore is given no backup file', () => {
-    const r = run('db-restore.ts', []);
+  it.each([[[]], [['--']]])('exits 2 when db:restore is given no backup file: %j', (args) => {
+    const r = run('db-restore.ts', args);
     expect(r.status).toBe(2);
-    expect(r.stderr).toContain('usage: npm run db:restore');
+    expect(r.stderr).toContain('usage: pnpm run db:restore <backup file>');
   });
+
+  it.each([[['--', '--', 'snapshot.db']], [['a.db', 'b.db']], [['--', '-x']]])(
+    'exits 2 when db:backup is given anything but one file: %j',
+    (args) => {
+      const r = run('db-backup.ts', args);
+      expect(r.status).toBe(2);
+      expect(r.stderr).toContain('usage: pnpm run db:backup [<file>]');
+    },
+  );
 });

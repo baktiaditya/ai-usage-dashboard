@@ -1,11 +1,14 @@
 #!/usr/bin/env tsx
 /**
- * Replace the database with a backup taken by `npm run db:backup`.
+ * Replace the database with a backup taken by `pnpm run db:backup`.
  *
- *   npm run db:restore -- <backup file>
+ *   pnpm run db:restore <backup file>
+ *
+ * pnpm passes a `--` through to the script, so `pnpm run db:restore -- <backup file>`,
+ * the form npm needed, is accepted too.
  *
  * Stop everything that has the database open first: the web unit, the collector
- * timer, and any `npm run dev` or `npm run start`. The restore refuses while a
+ * timer, and any `pnpm run dev` or `pnpm run start`. The restore refuses while a
  * process holds it. The database it replaces is kept beside it as
  * `usage.db.pre-restore-<UTC timestamp>`, and a backup from an older build is
  * migrated forward.
@@ -23,9 +26,10 @@ import { safeErrorMessage } from '../src/lib/redact';
 
 function main(): number {
   const args = process.argv.slice(2);
+  if (args[0] === '--') args.shift();
   const [file] = args;
   if (args.length !== 1 || file === undefined || file.startsWith('-')) {
-    process.stderr.write('usage: npm run db:restore -- <backup file>\n');
+    process.stderr.write('usage: pnpm run db:restore <backup file>\n');
     return 2;
   }
 
@@ -37,7 +41,7 @@ function main(): number {
     return 2;
   }
 
-  // npm runs a script from the package root; INIT_CWD is where it was typed.
+  // pnpm runs a script from the package root; INIT_CWD is where it was typed.
   const source = resolve(process.env['INIT_CWD'] ?? process.cwd(), file);
 
   try {

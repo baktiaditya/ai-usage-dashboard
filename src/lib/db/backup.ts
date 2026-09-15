@@ -324,7 +324,7 @@ function assertNotInUse(database: string): void {
   const holders = processesHolding(withSidecars(database));
   if (holders.length > 0) {
     throw new BackupError(
-      `the database is open in process ${holders.join(', ')}. Stop ai-usage-dashboard-web.service, ai-usage-dashboard-collector.timer, and any npm run dev or npm run start, then retry`,
+      `the database is open in process ${holders.join(', ')}. Stop ai-usage-dashboard-web.service, ai-usage-dashboard-collector.timer, and any pnpm run dev or pnpm run start, then retry`,
     );
   }
 }
@@ -400,7 +400,7 @@ export function restoreDatabase(source: string, target: string, now = new Date()
   const wal = `${from}-wal`;
   if (existsSync(wal) && statSync(wal).size > 0) {
     throw new BackupError(
-      `${from} has a non-empty WAL beside it, so the file alone is missing its newest rows. Take backups with npm run db:backup rather than copying the database file`,
+      `${from} has a non-empty WAL beside it, so the file alone is missing its newest rows. Take backups with pnpm run db:backup rather than copying the database file`,
     );
   }
   assertNotInUse(to);

@@ -10,10 +10,10 @@
  * It starts by deleting every collector run in the database it opens, so it
  * never chooses a target by default:
  *
- *   npm run seed:dev                              # the development server's directory
- *   AUD_DATA_DIR=/tmp/aud-demo npm run seed:demo  # an explicit scratch directory
+ *   pnpm run seed:dev                              # the development server's directory
+ *   AUD_DATA_DIR=/tmp/aud-demo pnpm run seed:demo # an explicit scratch directory
  *
- * `--dev` resolves the directory exactly as `npm run dev` does, which is never
+ * `--dev` resolves the directory exactly as `pnpm run dev` does, which is never
  * the production one. Without it the script refuses to run unless
  * `AUD_DATA_DIR` is exported explicitly: otherwise `getConfig()` falls back to
  * the real data directory (or one named in `collector.env`), and seeding would

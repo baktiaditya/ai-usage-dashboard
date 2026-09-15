@@ -2,8 +2,11 @@
 /**
  * Back up the database while the collector and the dashboard keep running.
  *
- *   npm run db:backup              writes <data dir>/backups/usage-<UTC timestamp>.db
- *   npm run db:backup -- <file>    writes <file>, relative to where npm was run
+ *   pnpm run db:backup             writes <data dir>/backups/usage-<UTC timestamp>.db
+ *   pnpm run db:backup <file>      writes <file>, relative to where pnpm was run
+ *
+ * pnpm passes a `--` through to the script, so `pnpm run db:backup -- <file>`,
+ * the form npm needed, is accepted too.
  *
  * A backup inside the data directory guards against a bad restore or a failed
  * migration, not against losing the disk: copy it somewhere else as well.
@@ -21,8 +24,9 @@ import { safeErrorMessage } from '../src/lib/redact';
 
 async function main(): Promise<number> {
   const args = process.argv.slice(2);
+  if (args[0] === '--') args.shift();
   if (args.length > 1 || args.some((arg) => arg.startsWith('-'))) {
-    process.stderr.write('usage: npm run db:backup [-- <file>]\n');
+    process.stderr.write('usage: pnpm run db:backup [<file>]\n');
     return 2;
   }
 
@@ -34,7 +38,7 @@ async function main(): Promise<number> {
     return 2;
   }
 
-  // npm runs a script from the package root; INIT_CWD is where it was typed.
+  // pnpm runs a script from the package root; INIT_CWD is where it was typed.
   const destination = args[0]
     ? resolve(process.env['INIT_CWD'] ?? process.cwd(), args[0])
     : join(config.dataDir, 'backups', `usage-${backupStamp(new Date())}.db`);

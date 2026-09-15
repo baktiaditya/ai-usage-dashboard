@@ -2,8 +2,8 @@
 /**
  * Run Next.js on the host and port the application is configured for.
  *
- *   npm run dev      # tsx scripts/next.ts dev
- *   npm run start    # tsx scripts/next.ts start
+ *   pnpm run dev     # tsx scripts/next.ts dev
+ *   pnpm run start   # tsx scripts/next.ts start
  *
  * The same-origin guard on manual refresh accepts only
  * `http://<loopback>:<AUD_PORT>`. A server bound anywhere else turns every

@@ -1,2 +1,2 @@
 export PATH="$HOME/.nvm/versions/node/$(ls $HOME/.nvm/versions/node 2>/dev/null | tail -1)/bin:$HOME/.local/bin:/usr/local/bin:$PATH"
-npx commitlint --edit "$1"
+pnpm exec commitlint --edit "$1"

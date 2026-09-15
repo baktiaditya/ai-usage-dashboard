@@ -141,12 +141,12 @@ header-based trust, and any local process can send those headers.
       manual row to `collector_runs`.
 - [ ] With Tailscale disconnected on the phone, the address does not connect, and
       `tailscale funnel status` shows no public exposure.
-- [ ] `npm run verify` and the OKF validator pass.
+- [ ] `pnpm run verify` and the OKF validator pass.
 
 ## Testing
 
-- Focused: `npx vitest run tests/unit/config-time.test.ts tests/integration/api-security.test.ts`.
-- `npm run test:e2e` still passes on the loopback path.
+- Focused: `pnpm exec vitest run tests/unit/config-time.test.ts tests/integration/api-security.test.ts`.
+- `pnpm run test:e2e` still passes on the loopback path.
 - Live, done by the user with the phone:
   - `tailscale serve status` and `ss -ltn`;
   - page load and Refresh from the phone;
@@ -155,7 +155,7 @@ header-based trust, and any local process can send those headers.
 
   An agent cannot operate the phone, so report which live checks were actually performed.
 
-- `npm run verify` is the final gate.
+- `pnpm run verify` is the final gate.
 
 ## Open Questions
 

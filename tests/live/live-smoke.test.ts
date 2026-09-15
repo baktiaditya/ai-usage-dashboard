@@ -5,7 +5,7 @@
  * excluded from the default test run (see vitest.config.ts `include`) and each
  * one skips itself when its credential or local account is absent.
  *
- * Run with:  npm run test:live
+ * Run with:  pnpm run test:live
  *
  * They assert *shape and reachability only*. No observed value is printed, and
  * nothing they see is ever written to a fixture — a real quota percentage or
