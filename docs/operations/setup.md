@@ -445,16 +445,22 @@ fi
 
 # 3. Stage the candidate and reinstall both units from this checkout without
 #    enabling them, then start the web unit and, once it answers, the timer.
+#    The host and port are read back from the rendered web unit.
 if [[ -n "$CANDIDATE" ]]; then
   if git checkout --detach "$CANDIDATE" \
     && npm ci \
     && npm run verify \
     && npm run build \
     && scripts/install-systemd.sh --install --with-web \
-    && [[ -z "$(ss -ltnH 'sport = :3838')" ]] \
+    && WEB_UNIT=systemd/generated/ai-usage-dashboard-web.service \
+    && WEB_HOST=$(sed -n 's/^Environment=AUD_HOST=//p' "$WEB_UNIT") \
+    && WEB_PORT=$(sed -n 's/^Environment=AUD_PORT=//p' "$WEB_UNIT") \
+    && [[ -n "$WEB_HOST" && "$WEB_PORT" =~ ^[0-9]+$ ]] \
+    && WEB_URL="http://$([[ "$WEB_HOST" == *:* ]] && echo "[$WEB_HOST]" || echo "$WEB_HOST"):$WEB_PORT/" \
+    && [[ -z "$(ss -ltnH "sport = :$WEB_PORT")" ]] \
     && systemctl --user enable ai-usage-dashboard-web.service \
     && systemctl --user restart ai-usage-dashboard-web.service \
-    && curl -fsS -o /dev/null --retry 30 --retry-delay 1 --retry-connrefused http://127.0.0.1:3838/ \
+    && curl -fsS -o /dev/null --retry 30 --retry-delay 1 --retry-connrefused "$WEB_URL" \
     && systemctl --user enable --now ai-usage-dashboard-collector.timer; then
     echo "deployed $(git rev-parse HEAD)"
   else
@@ -475,11 +481,25 @@ reloads the units; ignore its closing "Not enabled" hint. The installer's own
 `--enable` would start the timer before checking the port and restarting the web
 unit, leaving the timer running when either fails. Step 3 instead refuses a port
 held by another process (the stopped web unit holds none), waits until the new web
-unit answers, and starts the timer last. Replace `3838` if you set `AUD_PORT`.
+unit answers, and starts the timer last.
+
+Step 3 and the verify block below read `AUD_HOST`, `AUD_PORT` and `AUD_DATA_DIR`
+back from the rendered web unit, so a non-default value needs no edits; an IPv6
+host such as `::1` gets brackets in the URL. The renderer refuses values containing
+whitespace, quotes or backslashes and writes `%` as `%%`, so reading the unit back
+is exact.
 
 Verify the deploy:
 
 ```bash
+cd ~/Workspace/ai-usage-dashboard-prod
+
+WEB_UNIT=systemd/generated/ai-usage-dashboard-web.service
+WEB_HOST=$(sed -n 's/^Environment=AUD_HOST=//p' "$WEB_UNIT")
+WEB_PORT=$(sed -n 's/^Environment=AUD_PORT=//p' "$WEB_UNIT")
+WEB_URL="http://$([[ "$WEB_HOST" == *:* ]] && echo "[$WEB_HOST]" || echo "$WEB_HOST"):$WEB_PORT/"
+DATA_DIR=$(sed -n 's/^Environment="AUD_DATA_DIR=\(.*\)"$/\1/p' "$WEB_UNIT" | sed 's/%%/%/g')
+
 git status --short                  # empty
 git rev-parse HEAD                  # equals $CANDIDATE
 git merge-base --is-ancestor HEAD origin/main && echo "on origin/main"
@@ -488,16 +508,17 @@ for u in ai-usage-dashboard-collector.service ai-usage-dashboard-collector.timer
   cmp systemd/generated/$u ~/.config/systemd/user/$u && echo "$u identical"
 done
 systemctl --user is-active ai-usage-dashboard-web.service ai-usage-dashboard-collector.timer
-curl -fsS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3838/
+curl -fsS -o /dev/null -w '%{http_code}\n' "$WEB_URL"
+echo "data directory: $DATA_DIR"
 ```
 
 Both `WorkingDirectory` lines name the production checkout. The web unit and timer
 are `active`; the collector service is normally `inactive` between runs. Then press
-**Refresh** on a card, and after the next timer run check that both collections
-persisted:
+**Refresh** on a card, and after the next timer run check, in the same shell, that
+both collections persisted:
 
 ```bash
-sqlite3 -readonly ~/.local/share/ai-usage-dashboard/usage.db \
+sqlite3 -readonly "$DATA_DIR/usage.db" \
   "select r.id, r.trigger, a.provider, a.outcome from collector_runs r
    join collector_attempts a on a.run_id = r.id order by r.id desc limit 8"
 ```
@@ -555,10 +576,15 @@ if [[ -n "$KNOWN_GOOD" ]]; then
     && npm ci \
     && npm run build \
     && scripts/install-systemd.sh --install --with-web \
-    && [[ -z "$(ss -ltnH 'sport = :3838')" ]] \
+    && WEB_UNIT=systemd/generated/ai-usage-dashboard-web.service \
+    && WEB_HOST=$(sed -n 's/^Environment=AUD_HOST=//p' "$WEB_UNIT") \
+    && WEB_PORT=$(sed -n 's/^Environment=AUD_PORT=//p' "$WEB_UNIT") \
+    && [[ -n "$WEB_HOST" && "$WEB_PORT" =~ ^[0-9]+$ ]] \
+    && WEB_URL="http://$([[ "$WEB_HOST" == *:* ]] && echo "[$WEB_HOST]" || echo "$WEB_HOST"):$WEB_PORT/" \
+    && [[ -z "$(ss -ltnH "sport = :$WEB_PORT")" ]] \
     && systemctl --user enable ai-usage-dashboard-web.service \
     && systemctl --user restart ai-usage-dashboard-web.service \
-    && curl -fsS -o /dev/null --retry 30 --retry-delay 1 --retry-connrefused http://127.0.0.1:3838/ \
+    && curl -fsS -o /dev/null --retry 30 --retry-delay 1 --retry-connrefused "$WEB_URL" \
     && systemctl --user enable --now ai-usage-dashboard-collector.timer; then
     echo "rolled back to $(git rev-parse HEAD)"
   else

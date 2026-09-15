@@ -1,5 +1,23 @@
 # Bundle Update Log
 
+## 2026-09-15
+
+- **Update**: the production deploy and rollback runbook in [setup §6](operations/setup.md) now
+  fails closed and reads its settings from the rendered web unit. A unit that does not stop halts
+  the procedure before the checkout changes. The installer runs without `--enable`, because its
+  own activation starts the timer before the port check and the web restart. The runbook then
+  refuses a port held by another process, restarts the web unit, waits until it answers, and starts
+  the timer last, so a failed web start leaves the collector stopped. Step 3 reads `AUD_HOST` and
+  `AUD_PORT` back from `systemd/generated/ai-usage-dashboard-web.service`, and the verify block
+  also reads `AUD_DATA_DIR` there. A non-default host, port or data directory therefore needs no
+  edits: an IPv6 host such as `::1` is bracketed in the URL, and the database query opens
+  `$DATA_DIR/usage.db`. Reading the unit back is exact because the renderer refuses whitespace,
+  quotes and backslashes and writes `%` as `%%`. The 2026-09-14 migration ran the earlier
+  `--install --enable --with-web` sequence; the new sequence has been exercised in bash and zsh with
+  shimmed `systemctl`, `npm`, `git`, `ss`, `curl` and installer, and has not run against the
+  live units. Making the installer's own activation fail closed remains a code change outside this
+  runbook.
+
 ## 2026-09-14
 
 - **Update**: production now runs from its own checkout, and
