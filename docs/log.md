@@ -2,6 +2,21 @@
 
 ## 2026-09-15
 
+- **Decision**: provider keys move from the environment into the database, entered from a Settings
+  dialog on the dashboard. The canonical contract is
+  [plan §3.5](plan/ai-usage-dashboard-implementation-plan.md), and the implementation brief is
+  [store-provider-keys-in-settings](backlog/ready-for-agent/store-provider-keys-in-settings.md),
+  now in `ready-for-agent/`. The user chose each term. The DeepSeek API key and the OpenRouter
+  Management key are stored in plaintext in the `0600` database, so `npm run db:backup` files
+  contain them. `DEEPSEEK_API_KEY` and `OPENROUTER_MANAGEMENT_KEY` are removed outright, with no
+  environment fallback and no one-time import. After the upgrade, an install shows both cards as
+  `unavailable` until the keys are saved in Settings. The settings API sends the browser only
+  whether a key is saved, its last four characters, and when it was saved. The OpenRouter field
+  is labelled "OpenRouter Management Key" (changed by the user the same day from "OpenRouter API Key"). This supersedes plan §5's
+  environment-file rule, the §4.4 statement that the database stores no API keys, and the
+  unqualified "never send any credential to the browser" rule in Setup §11 and the README. Those
+  documents change on delivery, and until then the environment behavior in Setup §4 is what runs.
+
 - **Update**: the production deploy and rollback runbook in [setup §6](operations/setup.md) now
   fails closed and reads its settings from the rendered web unit. A unit that does not stop halts
   the procedure before the checkout changes. The installer runs without `--enable`, because its
