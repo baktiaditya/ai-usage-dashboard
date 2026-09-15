@@ -145,8 +145,13 @@ afterwards (see Out of scope).
      revealed.
 
    A `CredentialStatus` never carries the secret. Validation lives in one exported zod schema
-   here, `credentialSecretSchema`. It trims the value and requires 1–512 printable ASCII
-   characters with no whitespace (`/^[\x21-\x7E]+$/`). Both the route and the repository apply
+   here, `credentialSecretSchema`. It first removes leading and trailing whitespace, since a
+   pasted key often carries a trailing newline or space, and stores that trimmed value. The
+   trimmed value must be 1–512 printable ASCII characters with no whitespace inside it
+   (`/^[\x21-\x7E]+$/`). `" sk-abc\n"` is saved as `sk-abc`, while `"sk-a bc"` and
+   whitespace-only input are rejected. Implement it as trim-then-validate, for example
+   `z.string().transform((v) => v.trim()).pipe(z.string().min(1).max(512).regex(...))`, so the
+   regex never runs on the untrimmed value. Both the route and the repository apply
    it. `saveProviderCredential` throws on an invalid secret.
 
 5. **Configuration and collection.**
@@ -258,7 +263,10 @@ afterwards (see Out of scope).
       - §7: remove the two variable rows. `AUD_ENV_FILE` now carries `AUD_*` settings only.
       - §11: the application stores DeepSeek and OpenRouter keys only in its database, and never
         sends a full key to the browser.
-    - `README.md`: the security bullet about credentials.
+    - `README.md`: the security bullet about credentials, and the "read-only by construction"
+      bullet, whose "no key management" claim becomes false once Settings saves and removes keys.
+      Reword it to say the application never creates, modifies, or deletes keys at the provider;
+      saving or removing a key in Settings changes only the dashboard's local copy.
     - `.env.example`: remove both key entries, and reword the `AUD_DEV_LIVE_REFRESH` comment.
     - `scripts/install-systemd.sh`: the missing-env-file note says keys are saved in dashboard
       Settings, and the file holds only optional `AUD_*` overrides.
@@ -333,7 +341,8 @@ Only the retired-variable list in `src/lib/config.ts` and its tests may still ma
 - [ ] **Origin guard.** All three handlers answer `403` to a request with a foreign `Origin` or with
       neither `Origin` nor `Sec-Fetch-Site: same-origin`, and write nothing.
 - [ ] **Validation.** `PUT` rejects an unknown or non-credential provider, a non-JSON body, a blank
-      secret, a secret containing whitespace, and one longer than 512 characters, each with `400`
+      or whitespace-only secret, a secret with whitespace inside it after trimming, and one longer
+      than 512 characters after trimming, each with `400`
       and the documented code, and writes nothing.
 - [ ] **Collection source.** `collectOnce` passes the saved keys to the DeepSeek and OpenRouter
       adapters, re-reading them on every run. With no rows, both attempts are `unavailable` /
@@ -373,7 +382,9 @@ What each new suite proves:
   - remove is idempotent;
   - `listCredentialStatus` order, and no `secret` field on any status;
   - the hint at lengths 15 and 16;
-  - the secret schema's trim, whitespace, and length rules;
+  - the secret schema: surrounding whitespace is trimmed and the trimmed value stored,
+    inner whitespace and whitespace-only input are rejected, and 512 vs 513 characters after
+    trimming;
   - the table's `CHECK` rejects `codex`.
 - `tests/integration/settings-route.test.ts`, modelled on `refresh-route.test.ts` (with
   `server-only` mocked and a temp `AUD_DATA_DIR`):

@@ -167,7 +167,9 @@ Decided 2026-09-15 (see the [log](../log.md)); implementation brief:
 - The browser never receives a full key. The settings API returns, per provider, whether a key is
   saved, its last four characters (only for keys of at least 16 characters), and when it was
   saved. Every settings route, reads included, requires a same-origin request.
-- Saving a key does not validate it upstream and does not start a collection.
+- Saving a key does not validate it upstream and does not start a collection. Saving or removing a
+  key changes only the dashboard's local copy; the application still never creates, modifies, or
+  deletes keys at the provider (§10).
 - The development server stores keys only in its own database (§3.4).
 
 ## 4. Technical design
