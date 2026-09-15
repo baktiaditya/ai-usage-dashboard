@@ -87,7 +87,7 @@ The assessment found these gaps:
    - The README credits "Node 24's JSON source-text access", while `engines.node` in
      `package.json` is `>=22.12.0` and there is no `.nvmrc`. The plan and M0 verified only Node
      24.19.0, so whether 22.12 works is unverified.
-   - `.husky/pre-commit` prepends an nvm-specific `PATH`.
+   - `.husky/pre-commit` and `.husky/commit-msg` prepend an nvm-specific `PATH`.
    - The README has no screenshot. `pnpm run seed:demo` can fill a database that shows no real
      account data.
    - Adding a provider means editing hard-coded lists, such as `PROVIDER_PATTERN` in
@@ -138,14 +138,14 @@ effect is hard to reverse once forks, caches, or indexes exist.
   non-affiliation and interface-stability note, a screenshot from demo data, and links to the
   license, contributing guide, and security policy.
 - `CONTRIBUTING.md`: enabling pnpm through corepack, the `pnpm run verify` gate, conventional
-  commits, how to add a provider, and
-  the agent tooling marked optional. `SECURITY.md`: private reporting through GitHub security
-  advisories, and how saved keys are stored, backed up, and exposed. GitHub issue templates.
+  commits, how to add a provider, and the agent tooling marked optional. `SECURITY.md`: private
+  reporting through GitHub security advisories, and how saved keys are stored, backed up, and
+  exposed. GitHub issue templates.
 - A GitHub Actions workflow running `corepack enable pnpm`, `pnpm install --frozen-lockfile`, and
   `pnpm run verify` on pull requests and on pushes to `main`.
 - Moving the production-checkout runbook into `docs/operations/production-checkout.md`, and adding
   the notes to the implementation prompt and the Setup §4 upgrade steps.
-- A portable `PATH` line in `.husky/pre-commit`.
+- A portable `PATH` line in `.husky/pre-commit` and `.husky/commit-msg`.
 - A `CHANGELOG.md` and a first release tag.
 
 ### Out of scope
