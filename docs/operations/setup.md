@@ -232,6 +232,10 @@ fabricated number.
 
 Nothing is installed or enabled without an explicit flag.
 
+The units run from whichever checkout the installer runs in. For the production
+timer and web unit, run every `scripts/install-systemd.sh --install` below from
+the production checkout (§6).
+
 ```bash
 # Render the units so you can read them first (this is the default).
 npm run systemd:install
@@ -352,12 +356,8 @@ units read them. Pass a different port through `AUD_DEV_PORT`; a `--port` or
 ### Start on boot (systemd)
 
 To have the dashboard up whenever the machine is, install the web unit next to
-the collector. It serves an existing production build, so build first:
-
-```bash
-npm run build
-scripts/install-systemd.sh --install --enable --with-web
-```
+the collector. It serves an existing production build, so it is installed from
+the production checkout by the deploy procedure below, which builds first.
 
 The unit runs the same `scripts/next.ts start` path as `npm run start`, with the
 collector's sandbox and resolved settings, so it reads the database the timer
@@ -366,17 +366,240 @@ writes. Manual refresh runs inside it, which is why the data directory and
 minutes, and with linger enabled (§5) it starts at boot without a login.
 
 It never builds by itself — a slow or failing build at boot would leave the
-dashboard down — so after pulling changes:
-
-```bash
-npm run build && systemctl --user restart ai-usage-dashboard-web.service
-```
+dashboard down. At boot it serves whatever `.next` the production checkout holds,
+which is always the build of the deployed commit.
 
 Stop any `npm run start` first: the installer refuses to start the unit while
 another process holds the port. A default `npm run dev` on `3839` can keep
 running. `--status` includes the web unit once it is installed, and
 `--disable --with-web` stops it along with the timer.
 Follow its logs with `journalctl --user -u ai-usage-dashboard-web.service -f`.
+
+### Production checkout: deploy and rollback
+
+Both units run from a dedicated clone at `~/Workspace/ai-usage-dashboard-prod`,
+never from the development repository. The installer renders `WorkingDirectory`,
+`ExecStart` and `ReadWritePaths` from the checkout it runs in, so branch switches,
+`npm install` and `npm run build` in the development repository cannot change what
+production serves or collects with. Always run `scripts/install-systemd.sh` from
+the production checkout: running it from any other checkout repoints both units at
+that checkout. The data directory and `collector.env` live outside both checkouts
+and carry across every deploy and rollback.
+
+The production checkout is a deployment surface, not a branch. It deploys only
+commits reachable from `origin/main`, always as a detached `HEAD` at an exact SHA.
+No commit, merge, hotfix or production-only branch originates there: fix production
+on `main`, then deploy forward or roll back to an earlier known-good commit.
+
+Create it once with a clone rather than a linked `git worktree`, so it shares no
+refs, config or worktree administration with the development repository:
+
+```bash
+git clone git@github.com:baktiaditya/ai-usage-dashboard.git ~/Workspace/ai-usage-dashboard-prod
+```
+
+Then deploy. `npm ci` runs the native build scripts allowlisted in
+`package.json`; if it warns about install scripts, approve them as §10 describes.
+
+#### Deploy
+
+Brief downtime is expected: the timer, any running collector and the web unit stop
+before source, dependencies or `.next` change, so the collector never runs against
+a half-installed tree and the web unit never serves a build being replaced. On this
+machine a deploy took about half a minute, `npm run verify` included.
+
+Run the blocks in one shell, in order. Each block after the preflight starts only
+when `CANDIDATE` is set and stops at its first failing command, and a unit that does
+not stop clears `CANDIDATE`. Pasting the whole procedure therefore cannot stop the
+units after a failed preflight, change the checkout while a unit may still be
+running, or start the timer before the new web unit answers.
+
+```bash
+cd ~/Workspace/ai-usage-dashboard-prod
+
+# 1. Preflight: a clean checkout, exact SHAs, and a candidate on origin/main.
+PREVIOUS= CANDIDATE=
+if [[ -n "$(git status --porcelain)" ]]; then
+  echo "STOP: the production checkout is dirty"
+elif git fetch origin \
+  && PREVIOUS=$(git rev-parse HEAD) \
+  && CANDIDATE=$(git rev-parse origin/main) \
+  && git merge-base --is-ancestor "$CANDIDATE" origin/main; then
+  echo "preflight ok: previous=$PREVIOUS candidate=$CANDIDATE"
+else
+  CANDIDATE=
+  echo "STOP: preflight failed"
+fi
+
+# 2. Stop everything that reads source, dependencies or .next.
+if [[ -n "$CANDIDATE" ]]; then
+  if systemctl --user stop ai-usage-dashboard-collector.timer \
+    && until [[ "$(systemctl --user is-active ai-usage-dashboard-collector.service)" =~ ^(inactive|failed)$ ]]; do sleep 1; done \
+    && systemctl --user stop ai-usage-dashboard-web.service; then
+    echo "units stopped"
+  else
+    CANDIDATE=
+    echo "STOP: a unit did not stop; the checkout is unchanged"
+  fi
+fi
+
+# 3. Stage the candidate and reinstall both units from this checkout without
+#    enabling them, then start the web unit and, once it answers, the timer.
+#    The host and port are read back from the rendered web unit.
+if [[ -n "$CANDIDATE" ]]; then
+  if git checkout --detach "$CANDIDATE" \
+    && npm ci \
+    && npm run verify \
+    && npm run build \
+    && scripts/install-systemd.sh --install --with-web \
+    && WEB_UNIT=systemd/generated/ai-usage-dashboard-web.service \
+    && WEB_HOST=$(sed -n 's/^Environment=AUD_HOST=//p' "$WEB_UNIT") \
+    && WEB_PORT=$(sed -n 's/^Environment=AUD_PORT=//p' "$WEB_UNIT") \
+    && [[ -n "$WEB_HOST" && "$WEB_PORT" =~ ^[0-9]+$ ]] \
+    && WEB_URL="http://$([[ "$WEB_HOST" == *:* ]] && echo "[$WEB_HOST]" || echo "$WEB_HOST"):$WEB_PORT/" \
+    && [[ -z "$(ss -ltnH "sport = :$WEB_PORT")" ]] \
+    && systemctl --user enable ai-usage-dashboard-web.service \
+    && systemctl --user restart ai-usage-dashboard-web.service \
+    && curl -fsS -o /dev/null --retry 30 --retry-delay 1 --retry-connrefused "$WEB_URL" \
+    && systemctl --user enable --now ai-usage-dashboard-collector.timer; then
+    echo "deployed $(git rev-parse HEAD)"
+  else
+    echo "STOP: the deploy failed; roll back to $PREVIOUS"
+  fi
+fi
+```
+
+Record both SHAs from the `preflight ok` line. A `STOP` line from the preflight
+leaves the units running and changes nothing; inspect a dirty checkout instead of
+discarding it. The collector is a one-shot service, so step 2 waits for a run already
+in progress rather than cutting it off; `systemctl --user stop ai-usage-dashboard-collector.service`
+ends one that must not finish. The stopped web unit reads `failed` (Next.js exits
+with status 143 on `SIGTERM`) until step 3 restarts it.
+
+Step 3 runs the installer without `--enable`, so it only renders, installs and
+reloads the units; ignore its closing "Not enabled" hint. The installer's own
+`--enable` would start the timer before checking the port and restarting the web
+unit, leaving the timer running when either fails. Step 3 instead refuses a port
+held by another process (the stopped web unit holds none), waits until the new web
+unit answers, and starts the timer last.
+
+Step 3 and the verify block below read `AUD_HOST`, `AUD_PORT` and `AUD_DATA_DIR`
+back from the rendered web unit, so a non-default value needs no edits; an IPv6
+host such as `::1` gets brackets in the URL. The renderer refuses values containing
+whitespace, quotes or backslashes and writes `%` as `%%`, so reading the unit back
+is exact.
+
+Verify the deploy:
+
+```bash
+cd ~/Workspace/ai-usage-dashboard-prod
+
+WEB_UNIT=systemd/generated/ai-usage-dashboard-web.service
+WEB_HOST=$(sed -n 's/^Environment=AUD_HOST=//p' "$WEB_UNIT")
+WEB_PORT=$(sed -n 's/^Environment=AUD_PORT=//p' "$WEB_UNIT")
+WEB_URL="http://$([[ "$WEB_HOST" == *:* ]] && echo "[$WEB_HOST]" || echo "$WEB_HOST"):$WEB_PORT/"
+DATA_DIR=$(sed -n 's/^Environment="AUD_DATA_DIR=\(.*\)"$/\1/p' "$WEB_UNIT" | sed 's/%%/%/g')
+
+git status --short                  # empty
+git rev-parse HEAD                  # equals $CANDIDATE
+git merge-base --is-ancestor HEAD origin/main && echo "on origin/main"
+systemctl --user show -p WorkingDirectory ai-usage-dashboard-web.service ai-usage-dashboard-collector.service
+for u in ai-usage-dashboard-collector.service ai-usage-dashboard-collector.timer ai-usage-dashboard-web.service; do
+  cmp systemd/generated/$u ~/.config/systemd/user/$u && echo "$u identical"
+done
+systemctl --user is-active ai-usage-dashboard-web.service ai-usage-dashboard-collector.timer
+curl -fsS -o /dev/null -w '%{http_code}\n' "$WEB_URL"
+echo "data directory: $DATA_DIR"
+```
+
+Both `WorkingDirectory` lines name the production checkout. The web unit and timer
+are `active`; the collector service is normally `inactive` between runs. Then press
+**Refresh** on a card, and after the next timer run check, in the same shell, that
+both collections persisted:
+
+```bash
+sqlite3 -readonly "$DATA_DIR/usage.db" \
+  "select r.id, r.trigger, a.provider, a.outcome from collector_runs r
+   join collector_attempts a on a.run_id = r.id order by r.id desc limit 8"
+```
+
+#### Failure
+
+If a unit does not stop in step 2, step 3 does nothing and the checkout still holds
+the previous commit. Find the cause with `scripts/install-systemd.sh --status`, then
+start what was stopped:
+`systemctl --user start ai-usage-dashboard-web.service ai-usage-dashboard-collector.timer`.
+
+If any command in step 3 fails, the chain stops there. The timer stays stopped,
+because starting it is the last command, and the web unit is stopped or serving a
+partial candidate. Do not start units by hand; roll back to `$PREVIOUS` from the
+same shell.
+
+#### Rollback
+
+```bash
+cd ~/Workspace/ai-usage-dashboard-prod
+
+# In the shell of a failed deploy this is already the recorded previous SHA.
+# In a new shell, replace "$PREVIOUS" with the recorded known-good SHA in quotes.
+KNOWN_GOOD="$PREVIOUS"
+
+# 1. Preflight: a clean checkout and a known-good commit on origin/main.
+if [[ -z "$KNOWN_GOOD" ]]; then
+  echo "STOP: KNOWN_GOOD is empty"
+elif [[ -n "$(git status --porcelain)" ]]; then
+  KNOWN_GOOD=
+  echo "STOP: the production checkout is dirty"
+elif git fetch origin && git merge-base --is-ancestor "$KNOWN_GOOD" origin/main; then
+  echo "rollback target ok: $KNOWN_GOOD"
+else
+  KNOWN_GOOD=
+  echo "STOP: the rollback target is not on origin/main"
+fi
+
+# 2. Stop everything that reads source, dependencies or .next.
+if [[ -n "$KNOWN_GOOD" ]]; then
+  if systemctl --user stop ai-usage-dashboard-collector.timer \
+    && until [[ "$(systemctl --user is-active ai-usage-dashboard-collector.service)" =~ ^(inactive|failed)$ ]]; do sleep 1; done \
+    && systemctl --user stop ai-usage-dashboard-web.service; then
+    echo "units stopped"
+  else
+    KNOWN_GOOD=
+    echo "STOP: a unit did not stop; the checkout is unchanged"
+  fi
+fi
+
+# 3. Restore the known-good commit, reinstall both units from it, then start the
+#    web unit and, once it answers, the timer.
+if [[ -n "$KNOWN_GOOD" ]]; then
+  if git checkout --detach "$KNOWN_GOOD" \
+    && npm ci \
+    && npm run build \
+    && scripts/install-systemd.sh --install --with-web \
+    && WEB_UNIT=systemd/generated/ai-usage-dashboard-web.service \
+    && WEB_HOST=$(sed -n 's/^Environment=AUD_HOST=//p' "$WEB_UNIT") \
+    && WEB_PORT=$(sed -n 's/^Environment=AUD_PORT=//p' "$WEB_UNIT") \
+    && [[ -n "$WEB_HOST" && "$WEB_PORT" =~ ^[0-9]+$ ]] \
+    && WEB_URL="http://$([[ "$WEB_HOST" == *:* ]] && echo "[$WEB_HOST]" || echo "$WEB_HOST"):$WEB_PORT/" \
+    && [[ -z "$(ss -ltnH "sport = :$WEB_PORT")" ]] \
+    && systemctl --user enable ai-usage-dashboard-web.service \
+    && systemctl --user restart ai-usage-dashboard-web.service \
+    && curl -fsS -o /dev/null --retry 30 --retry-delay 1 --retry-connrefused "$WEB_URL" \
+    && systemctl --user enable --now ai-usage-dashboard-collector.timer; then
+    echo "rolled back to $(git rev-parse HEAD)"
+  else
+    echo "STOP: the rollback failed; the timer stays stopped"
+  fi
+fi
+```
+
+A rollback `STOP` line follows the same rules as a deploy failure: after step 2,
+nothing changed; after step 3, fix the reported cause and run the rollback again.
+Source, dependencies, build and rendered units then all come from the same
+known-good commit. Verify it as above, expecting `HEAD` to equal `$KNOWN_GOOD`.
+Rollback skips `npm run verify` because that commit passed it when it was deployed.
+The checkout stays detached; a later deploy repeats the normal fetch-and-detach
+procedure from `origin/main`.
 
 ---
 
@@ -516,12 +739,8 @@ journalctl --user -u ai-usage-dashboard-collector.service -n 50
 **The dashboard says "database disk image is malformed"** — check the file on
 disk first. `npm run db:backup` verifies the copy it writes, so a backup that
 succeeds means the database is intact. Then the web server has lost track of the
-database's WAL, a bug in builds before 2026-09-14. Rebuild and restart it:
-
-```bash
-npm run build
-systemctl --user restart ai-usage-dashboard-web.service
-```
+database's WAL, a bug in builds before 2026-09-14. Redeploy it from the production
+checkout (§6); the procedure rebuilds `.next` and restarts the web unit.
 
 If the backup fails its integrity check, restore an earlier backup (§1).
 

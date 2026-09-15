@@ -1,9 +1,47 @@
 # Bundle Update Log
 
+## 2026-09-15
+
+- **Update**: the production deploy and rollback runbook in [setup §6](operations/setup.md) now
+  fails closed and reads its settings from the rendered web unit. A unit that does not stop halts
+  the procedure before the checkout changes. The installer runs without `--enable`, because its
+  own activation starts the timer before the port check and the web restart. The runbook then
+  refuses a port held by another process, restarts the web unit, waits until it answers, and starts
+  the timer last, so a failed web start leaves the collector stopped. Step 3 reads `AUD_HOST` and
+  `AUD_PORT` back from `systemd/generated/ai-usage-dashboard-web.service`, and the verify block
+  also reads `AUD_DATA_DIR` there. A non-default host, port or data directory therefore needs no
+  edits: an IPv6 host such as `::1` is bracketed in the URL, and the database query opens
+  `$DATA_DIR/usage.db`. Reading the unit back is exact because the renderer refuses whitespace,
+  quotes and backslashes and writes `%` as `%%`. The 2026-09-14 migration ran the earlier
+  `--install --enable --with-web` sequence; the new sequence has been exercised in bash and zsh with
+  shimmed `systemctl`, `npm`, `git`, `ss`, `curl` and installer, and has not run against the
+  live units. Making the installer's own activation fail closed remains a code change outside this
+  runbook.
+
 ## 2026-09-14
 
+- **Update**: production now runs from its own checkout, and
+  [separate-production-checkout](backlog/archive/separate-production-checkout.md) moves to
+  `archive/`. Both user units were reinstalled from the separate clone at
+  `/home/bago/Workspace/ai-usage-dashboard-prod`, detached at `f6fcb03` from `origin/main`. The
+  data directory, `collector.env`, host, port, 5-minute interval and boot enablement are unchanged,
+  and the rendered units are byte-identical to the installed ones. Before cutover, `npm ci`,
+  `npm run verify` and `npm run build` passed in the clone while the old units kept serving. After
+  cutover the dashboard answered on `127.0.0.1:3838`, and manual refreshes and scheduled runs
+  recorded successful attempts in `collector_runs` and `collector_attempts`. They kept succeeding
+  after an `npm run build` in the development repository, which left the production `BUILD_ID` and
+  web process untouched. A rollback rehearsal and a redeploy each ran the full
+  stop/detach/`npm ci`/build/reinstall sequence and passed the same checks. The recorded pre-migration
+  SHA and the candidate were both `f6fcb03`, so both passes deployed the same revision. Before the
+  migration, the development checkout's `HEAD` was `f6fcb03`, but its web unit served a `.next`
+  built from an unmerged branch at an unrecorded commit — the failure this change removes. Setup §6
+  now holds the deploy, failure and rollback runbook. The installer's closing "After pulling
+  changes" hint still describes an in-place rebuild; the runbook supersedes it in the production
+  checkout, and changing the hint is a code change outside this brief. The boot acceptance check
+  needs a real reboot and was not performed.
+
 - **Decision**: production-checkout isolation is fixed and ready for implementation in
-  [separate-production-checkout](backlog/ready-for-agent/separate-production-checkout.md).
+  [separate-production-checkout](backlog/archive/separate-production-checkout.md).
   Production deploys only commits from `origin/main` through the separate clone at
   `/home/bago/Workspace/ai-usage-dashboard-prod`; no development or hotfix commit originates there.
   Brief downtime is accepted so the timer, any active collector service, and the web unit can stop
@@ -193,7 +231,7 @@
   development from reaching production:
   - [isolate-dev-server-from-production](backlog/archive/isolate-dev-server-from-production.md)
     began here as a human-gated port/data proposal and is promoted by the decision above.
-  - [separate-production-checkout](backlog/ready-for-agent/separate-production-checkout.md)
+  - [separate-production-checkout](backlog/archive/separate-production-checkout.md)
     began here as a human-gated proposal and is promoted by the decision above.
 
 - **Decision**: the dashboard web server can start at boot as a systemd user unit,

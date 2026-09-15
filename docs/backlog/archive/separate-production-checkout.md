@@ -2,7 +2,7 @@
 
 ## Status
 
-Ready for agent
+Archived
 
 The status above must match the directory that contains this brief. Move the file with
 `git mv` when its readiness changes.
