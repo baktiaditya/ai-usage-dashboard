@@ -137,6 +137,13 @@ npm run claude:install-statusline            # dry run: shows exactly what it wo
 npm run claude:install-statusline -- --apply
 ```
 
+Run it from the checkout that serves production: the production checkout (§6) once you have one.
+The installed command runs the bridge by absolute path from the checkout the installer ran in, so an
+installation made from the development repository follows whatever branch is checked out there.
+Re-running `-- --apply` from the right checkout refreshes this project's own status line in place and
+keeps any status line it wraps. Keep the `--`: without it npm consumes `--apply`, and the script only
+prints its dry run.
+
 Then **start a Claude Code session and send one prompt**. `rate_limits` only
 appears after a session's first API response, so an idle session records nothing.
 
@@ -405,6 +412,11 @@ production serves or collects with. Always run `scripts/install-systemd.sh` from
 the production checkout: running it from any other checkout repoints both units at
 that checkout. The data directory and `collector.env` live outside both checkouts
 and carry across every deploy and rollback.
+
+The Claude status line (§3) is not a unit, but the same rule applies:
+`npm run claude:install-statusline -- --apply` records the bridge's absolute path in the checkout it
+runs in. Run it from the production checkout. Run from there, it refreshes an installation made from
+any other checkout.
 
 The production checkout is a deployment surface, not a branch. It deploys only
 commits reachable from `origin/main`, always as a detached `HEAD` at an exact SHA.

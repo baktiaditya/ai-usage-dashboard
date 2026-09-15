@@ -2,6 +2,16 @@
 
 ## 2026-09-15
 
+- **Update**: the Claude status line now runs its bridge from the production checkout. It was
+  installed on 2026-09-12 from the development repository, and the 2026-09-14 move to a
+  [separate production checkout](backlog/archive/separate-production-checkout.md) did not repoint
+  it, so the production spool depended on the branch checked out for development. Re-running
+  `npm run claude:install-statusline -- --apply` from the production checkout refreshed the
+  installation in place: only the bridge path changed, `settings.json` stayed `0600` with a backup,
+  and the spool was next written through the new path 12 seconds later.
+  [Setup](operations/setup.md) §3 and §6 now say to install from the production checkout and to
+  keep the `--`, without which npm consumes `--apply` and only a dry run happens.
+
 - **Update**: provider keys are saved from the dashboard's Settings dialog, and
   [store-provider-keys-in-settings](backlog/archive/store-provider-keys-in-settings.md) moves to
   `archive/`. Migration `0002` adds `provider_credentials`. Every collection path — the systemd
