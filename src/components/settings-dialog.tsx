@@ -350,22 +350,33 @@ function SettingsForm({
         </p>
       ) : null}
 
-      <div className="flex items-center gap-2">
+      {/* shadcn/ui's dialog footer: below `sm` the buttons stack full width with
+          Save on top, under the loading note; from `sm` they sit right-aligned in
+          one row beside it. */}
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
         {loading ? (
           <p className="text-muted-foreground text-xs" data-testid="settings-loading">
             Loading saved keys…
           </p>
         ) : null}
 
-        <div className="ml-auto flex gap-2">
-          <button type="button" onClick={onClose} data-testid="settings-close" className={BUTTON}>
+        <div className="flex flex-col-reverse gap-2 sm:ml-auto sm:flex-row">
+          <button
+            type="button"
+            onClick={onClose}
+            data-testid="settings-close"
+            className={cn(BUTTON, 'justify-center')}
+          >
             Cancel
           </button>
           <button
             type="submit"
             disabled={pending || filled.length === 0}
             data-testid="settings-save"
-            className={cn(BUTTON, 'bg-foreground text-background hover:bg-foreground/90')}
+            className={cn(
+              BUTTON,
+              'bg-foreground text-background hover:bg-foreground/90 justify-center',
+            )}
           >
             Save
           </button>
