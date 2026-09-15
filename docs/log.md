@@ -2,11 +2,12 @@
 
 ## 2026-09-15
 
-- **Update**: the move to pnpm is implemented and rehearsed on the branch
-  `feat/migrate-to-pnpm` at `840c905`, but not merged or deployed, so production still runs npm at
-  `e2d553c`. The user stopped before the production deploy, which Setup §6 allows only from
-  `origin/main`. [migrate-from-npm-to-pnpm](backlog/ready-for-agent/migrate-from-npm-to-pnpm.md)
-  therefore stays in `ready-for-agent/`. On the branch:
+- **Update**: the move to pnpm is implemented and rehearsed in
+  [PR #11](https://github.com/baktiaditya/ai-usage-dashboard/pull/11), but not merged or deployed,
+  so production still runs npm at `e2d553c`. The user stopped before the production deploy, which
+  Setup §6 allows only from `origin/main`.
+  [migrate-from-npm-to-pnpm](backlog/ready-for-agent/migrate-from-npm-to-pnpm.md) therefore stays in
+  `ready-for-agent/`. In that PR:
   - `pnpm import` kept all 739 resolved versions.
   - `allowBuilds` names exactly `@tailwindcss/oxide@4.1.13`, `better-sqlite3@12.4.1`,
     `esbuild@0.25.12` and `unrs-resolver@1.12.2`. Dropping one entry makes
@@ -17,10 +18,11 @@
     later Node 24 release.
   - `db:backup` and `db:restore` accept both `<file>` and `-- <file>`.
   - [Setup](operations/setup.md) §6 caches the candidate's pinned pnpm before any unit stops, and
-    rolls back with `npm ci` to a commit that has only `package-lock.json`. Its preflight also
-    requires the deploy candidate to have `pnpm-lock.yaml`.
+    rolls back with `npm ci` to a commit that has only `package-lock.json`. Its deploy preflight
+    also requires `pnpm-lock.yaml` and a `pnpm@` pin. In a rehearsal, a candidate with the lockfile
+    but no pin stopped at the preflight, and no unit was stopped.
 
-  Plan §4.1, §3.3, §3.4 and §3.5, Setup, the README and `AGENTS.md` describe pnpm on that branch. In
+  Plan §4.1, §3.3, §3.4 and §3.5, Setup, the README and `AGENTS.md` describe pnpm in that PR. In
   throwaway clones, with an empty `COREPACK_HOME` and standard input closed, the Setup §6 blocks ran
   verbatim in zsh and bash against shimmed units. Each pass:
   1. cached pnpm and its platform binary during the preflight;
