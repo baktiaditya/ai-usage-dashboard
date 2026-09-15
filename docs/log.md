@@ -2,6 +2,16 @@
 
 ## 2026-09-15
 
+- **Proposed**: migrating the package manager from npm to pnpm, filed as
+  [migrate-from-npm-to-pnpm](backlog/ready-for-human/migrate-from-npm-to-pnpm.md). A trial at
+  `e2d553c` in a throwaway clone, with pnpm 12.4.2, found no blocker: `pnpm import` kept every
+  resolved version, and `verify`, `build`, `test:e2e`, and `pnpm audit` passed once the native build
+  allowlist moved to `allowBuilds` in `pnpm-workspace.yaml` and `pnpm-lock.yaml` joined
+  `.prettierignore`. It also found that pnpm forwards a literal `--` to scripts, which would break
+  the documented `db:backup -- <file>` and `db:restore -- <file>` forms. The brief waits on the
+  user to order it against the open-source release and to choose how pnpm is installed.
+  Plan §4.1 still pins npm, and [Setup](operations/setup.md) still describes it.
+
 - **Update**: the Claude status line now runs its bridge from the production checkout. It was
   installed on 2026-09-12 from the development repository, and the 2026-09-14 move to a
   [separate production checkout](backlog/archive/separate-production-checkout.md) did not repoint
