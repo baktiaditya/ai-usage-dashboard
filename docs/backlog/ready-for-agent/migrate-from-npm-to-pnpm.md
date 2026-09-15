@@ -83,8 +83,10 @@ strict `node_modules`. Most of the cost is text, plus the deploy and rollback pr
 
 The [open-source release brief](https://github.com/baktiaditya/ai-usage-dashboard/pull/7), open in
 PR #7 and not yet on `main`, rewrites the README, moves the Setup §6 runbook into
-`docs/operations/production-checkout.md`, and adds `CONTRIBUTING.md` and a CI workflow that runs
-`npm run verify`. Both changes touch the same commands and files.
+`docs/operations/production-checkout.md`, and adds `CONTRIBUTING.md` and a CI workflow. It already
+names pnpm: its CI installs through corepack and runs `pnpm run verify`, and it treats this
+migration as a preceding change that must land first. Both briefs touch the same commands and
+files.
 
 ## Dependencies and Gates
 
@@ -131,13 +133,14 @@ The user closed every gate on 2026-09-15, recorded as a `Decision` in [log](../.
 1. On a branch from `main`, run `pnpm import`, delete `package-lock.json`, and create
    `pnpm-workspace.yaml` with `allowBuilds` for `@tailwindcss/oxide`, `better-sqlite3`, `esbuild`,
    and `unrs-resolver`. Remove `allowScripts` from `package.json` and add
-   `"packageManager": "pnpm@12.4.2"`. In `.prettierignore`, replace
-   `package-lock.json` with `pnpm-lock.yaml`.
+   `"packageManager": "pnpm@12.4.2"`. In `.prettierignore`, replace `package-lock.json` with
+   `pnpm-lock.yaml`.
 2. `package.json`: each `npm run` in `verify` becomes `pnpm run`. `playwright.config.ts`:
    `webServer.command` becomes `pnpm run build && pnpm run seed:demo && pnpm run start`.
 3. `.husky/pre-commit` and `.husky/commit-msg`: `npx` becomes `pnpm exec`, and `npm run` becomes
-   `pnpm run`. Keep the nvm `PATH` line: corepack's `pnpm` shim lives in the
-   nvm Node `bin` directory it adds.
+   `pnpm run`. Keep the nvm `PATH` line: corepack's `pnpm` shim lives in the nvm Node `bin`
+   directory it adds. The open-source release later replaces that line with a portable one that
+   still finds the shim.
 4. `scripts/db-backup.ts` and `scripts/db-restore.ts`: drop one leading `--` from the arguments
    before validating them, and change the usage lines to `pnpm run db:backup [<file>]` and
    `pnpm run db:restore <backup file>`. Cover both forms in `tests/integration/db-backup.test.ts`,
@@ -154,8 +157,10 @@ The user closed every gate on 2026-09-15, recorded as a `Decision` in [log](../.
      and "npm single-package repo".
    - Setup §1: `corepack enable pnpm`, preceded by `npm install -g corepack` on Node 25 and later,
      then `pnpm install` and its approval text.
-   - Setup §3 `claude:install-statusline` without `--`, §10's install-script entry for
-     `pnpm approve-builds`, and §6's deploy with `pnpm install --frozen-lockfile`.
+   - Setup §3 and §6: every `claude:install-statusline` command without `--`, including the §3
+     "Re-running `-- --apply`" sentence, and no advice to keep the `--`.
+   - Setup §10's install-script entry for `pnpm approve-builds`, and §6's deploy with
+     `pnpm install --frozen-lockfile`.
    - Setup §6 rollback: check out the target, then run `pnpm install --frozen-lockfile` when it has
      `pnpm-lock.yaml`, or `npm ci` when it has only `package-lock.json`. If step 7 shows that pnpm
      refuses an npm-built `node_modules` without a terminal, remove `node_modules` before installing.
