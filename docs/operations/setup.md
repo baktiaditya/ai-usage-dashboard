@@ -42,7 +42,10 @@ pnpm run start                  # http://127.0.0.1:3838, serving the database ju
 [Development server](#development-server).
 
 `pnpm install` runs install scripts only for the exact package versions listed under
-`allowBuilds` in `pnpm-workspace.yaml` (§10). It also wires the git hooks (`prepare` → Husky).
+`allowBuilds` in `pnpm-workspace.yaml` (§10). That file also sets `pmOnFail: ignore`, so pnpm does
+not record its own version in `pnpm-lock.yaml`. The lockfile then stays a single YAML document,
+which GitHub's dependency graph can read. Corepack alone enforces the pinned version: a pnpm started
+outside corepack ignores `packageManager`. `pnpm install` also wires the git hooks (`prepare` → Husky).
 Every commit then runs `pre-commit` — Prettier over staged files, plus `typecheck` and the
 tests related to staged files when any `*.ts`/`*.tsx` is staged — and
 `commit-msg`, which enforces [Conventional Commits](https://www.conventionalcommits.org/)

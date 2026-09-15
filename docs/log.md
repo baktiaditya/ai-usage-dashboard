@@ -17,6 +17,14 @@
   - Existing installs run `corepack enable pnpm` once per Node installation, on Node 24.15 or a
     later Node 24 release.
   - `db:backup` and `db:restore` accept both `<file>` and `-- <file>`.
+  - `pnpm-workspace.yaml` sets `pmOnFail: ignore`, so `pnpm-lock.yaml` is one YAML document with
+    the same resolved versions. Otherwise pnpm 12 writes an environment document first, which
+    GitHub's dependency graph reads as zero dependencies
+    ([dependabot-core#15904](https://github.com/dependabot/dependabot-core/issues/15904), open).
+    Dependabot alerts are off for this repository, so no alert was hidden. Corepack alone enforces
+    the pin; a pnpm run outside corepack ignores `packageManager` instead of switching to it. With
+    this lockfile the Setup §6 deploy and rollback passed in zsh and bash, and
+    `pnpm install --frozen-lockfile` left the checkout clean.
   - [Setup](operations/setup.md) §6 caches the candidate's pinned pnpm before any unit stops, and
     rolls back with `npm ci` to a commit that has only `package-lock.json`. Its deploy preflight
     also requires `pnpm-lock.yaml` and a `pnpm@<version>+sha512.<hash>` pin, and its rollback
