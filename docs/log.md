@@ -4,8 +4,10 @@
 
 - **Proposed**: prepare the repository for an open-source release, in
   [prepare-open-source-release](backlog/ready-for-human/prepare-open-source-release.md). A readiness
-  assessment at `e1d6923` found the code ready: `npm run verify` passes, `npm audit` is clean, a
-  fresh clone installs, collects, and builds, and the git history holds no real key. The gaps are
+  assessment at `e1d6923`, re-run against `e2d553c` after provider keys moved into the database,
+  found the code ready: `npm run verify` passes, `npm audit` is clean, a fresh clone installs,
+  collects, and builds, and the git history holds no real key. The re-run added the second
+  archived brief carrying a maintainer path and the plaintext key storage to the brief. The gaps are
   packaging: no license, maintainer paths in tracked docs, an unstated platform scope and provider
   affiliation, maintainer-only agent tooling, and no CI or contributor policy. Publishing the source
   leaves the plan's "Public or multi-user access" non-goal intact. The brief waits on the user: the

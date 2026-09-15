@@ -23,15 +23,20 @@ posture do not change, apart from the timezone default if the user decides to ch
 
 ## Context
 
-An open-source readiness assessment on 2026-09-15, at `e1d6923`, found the code itself ready:
+An open-source readiness assessment on 2026-09-15, at `e1d6923`, found the code itself ready. It
+was re-run the same day against `e2d553c`, after provider keys moved into the database (#9), and
+the findings below reflect that head:
 
-- `npm run verify` passes (29 test files, 432 tests), and `npm audit` reports 0 vulnerabilities.
+- `npm run verify` passes (34 test files, 495 tests), and `npm audit` reports 0 vulnerabilities.
 - A fresh clone with an empty `HOME` and data directory completes `npm ci`, `npm run db:migrate`,
-  `npm run collect`, and `next build`. Unconfigured providers are recorded as `unavailable` or as
-  a provider error, and the run does not fail.
+  `npm run collect`, and `next build`. Every provider is recorded: DeepSeek and OpenRouter as
+  `unavailable` (`not_configured`, since no key is saved in Settings), Claude as `unavailable`
+  (`no_event_yet`), and an unauthenticated Codex as a provider error. The run completes, and
+  `npm run collect` exits `1` by design whenever any provider records an error.
 - A scan of the full git history for key shapes (`sk-`, `sk-or-v1-`, `AKIA`, `ghp_`, private-key
-  blocks) matched only fake values in tests. No environment, database, or credential file was
-  ever tracked, and `tests/fixtures/` holds no email, UUID, or home path.
+  blocks) matched only fake values in tests, including those added with #9. No environment,
+  database, or credential file was ever tracked, and `tests/fixtures/` holds no email, UUID, or
+  home path.
 
 Publishing the source does not touch the plan's non-goal "Public or multi-user access"
 ([plan](../../plan/ai-usage-dashboard-implementation-plan.md) §10). The dashboard stays a
@@ -45,8 +50,9 @@ The assessment found these gaps:
    MIT requires its notice to ship with copies, and today it lives only in a code comment.
 2. **Maintainer-specific detail in tracked files.**
    - The maintainer's absolute home path to the production checkout appears in two 2026-09-14
-     entries of [log](../../log.md) and in
-     [separate-production-checkout](../archive/separate-production-checkout.md).
+     entries of [log](../../log.md) and in the archived briefs
+     [separate-production-checkout](../archive/separate-production-checkout.md) and
+     [store-provider-keys-in-settings](../archive/store-provider-keys-in-settings.md).
    - [Setup](../../operations/setup.md) §6 clones over SSH, which needs a GitHub SSH key that
      outside users will not have for this repository.
    - `loadConfig` in `src/lib/config.ts` defaults `AUD_TIMEZONE` to `Asia/Jakarta`. The plan's
@@ -63,11 +69,15 @@ The assessment found these gaps:
    - `docs/log.md`, [the implementation prompt](../../plan/ai-usage-dashboard-implementation-prompt.md),
      and [access-dashboard-over-tailscale](access-dashboard-over-tailscale.md);
    - the production-checkout deploy and rollback runbook in Setup §6;
+   - the Setup §4 "Upgrading from keys in `collector.env`" steps, which only an install that predates
+     the Settings dialog needs;
    - `AGENTS.md`, which assumes code-review-graph, `agent-browser`, and a machine-specific sysctl
      file, together with `.mcp.json`, `.claude/`, and `.agents/`.
 5. **No contributor surface.** There is no `.github/` (no CI workflow, no issue templates), no
    `CONTRIBUTING.md`, no `SECURITY.md`, no changelog, and no release tag. A security policy
-   matters here because the application handles an OpenRouter Management key.
+   matters here because the application stores the DeepSeek API key and the OpenRouter Management
+   key in plaintext in its owner-only (`0600`) SQLite database, `npm run db:backup` files contain
+   them, and same-origin settings routes save and remove them.
 6. **Platform scope is undocumented.** Scheduling relies on user systemd, and the restore guard in
    `src/lib/db/backup.ts` relies on `/proc`. Neither the README nor Setup says the project
    supports Linux only.
@@ -110,7 +120,7 @@ The assessment found these gaps:
   license, contributing guide, and security policy.
 - `CONTRIBUTING.md`: the `npm run verify` gate, conventional commits, how to add a provider, and
   the agent tooling marked optional. `SECURITY.md`: private reporting through GitHub security
-  advisories. GitHub issue templates.
+  advisories, and how saved keys are stored, backed up, and exposed. GitHub issue templates.
 - A GitHub Actions workflow running `npm ci` and `npm run verify` on pull requests and on pushes
   to `main`.
 - Separating the user-facing setup from the maintainer runbook, as far as the Context 4 decision
@@ -136,7 +146,7 @@ Provisional until the gates close.
 2. Legal: add `LICENSE` and `THIRD_PARTY_NOTICES.md`, and set `license`, `repository`, `bugs`, and
    `homepage` in `package.json`.
 3. Hygiene:
-   - replace maintainer paths in `docs/log.md` and the archived brief with a placeholder such as
+   - replace maintainer paths in `docs/log.md` and the two archived briefs with a placeholder such as
      `~/Workspace/ai-usage-dashboard-prod`, logged as a redaction rather than a decision change;
    - switch the Setup §6 clone URL to HTTPS;
    - change the timezone default in `src/lib/config.ts` and its tests if decided.
@@ -154,21 +164,22 @@ Provisional until the gates close.
 
 Provisional; the Context 4 decision may add or remove entries.
 
-| Path                                                   | Change                                               |
-| ------------------------------------------------------ | ---------------------------------------------------- |
-| `LICENSE`, `THIRD_PARTY_NOTICES.md`                    | New                                                  |
-| `package.json`, `.nvmrc`                               | License and repository metadata; Node version        |
-| `README.md`                                            | Platform, Node, disclaimer, screenshot, policy links |
-| `CONTRIBUTING.md`, `SECURITY.md`, `CHANGELOG.md`       | New                                                  |
-| `.github/workflows/ci.yml`, `.github/ISSUE_TEMPLATE/`  | New                                                  |
-| `.husky/pre-commit`                                    | Portable `PATH`                                      |
-| `src/lib/config.ts`, `tests/unit/config-time.test.ts`  | Timezone default, if decided                         |
-| `.env.example`                                         | Timezone comment, if decided                         |
-| `docs/plan/ai-usage-dashboard-implementation-plan.md`  | "Today" boundary rule, if decided                    |
-| `docs/operations/setup.md`                             | HTTPS clone URL; §7 timezone row; runbook split      |
-| `docs/log.md`                                          | Path redaction; gate decisions                       |
-| `docs/backlog/archive/separate-production-checkout.md` | Path redaction                                       |
-| `AGENTS.md`, `.mcp.json`, `.claude/`, `.agents/`       | Per the Context 4 decision                           |
+| Path                                                      | Change                                               |
+| --------------------------------------------------------- | ---------------------------------------------------- |
+| `LICENSE`, `THIRD_PARTY_NOTICES.md`                       | New                                                  |
+| `package.json`, `.nvmrc`                                  | License and repository metadata; Node version        |
+| `README.md`                                               | Platform, Node, disclaimer, screenshot, policy links |
+| `CONTRIBUTING.md`, `SECURITY.md`, `CHANGELOG.md`          | New                                                  |
+| `.github/workflows/ci.yml`, `.github/ISSUE_TEMPLATE/`     | New                                                  |
+| `.husky/pre-commit`                                       | Portable `PATH`                                      |
+| `src/lib/config.ts`, `tests/unit/config-time.test.ts`     | Timezone default, if decided                         |
+| `.env.example`                                            | Timezone comment, if decided                         |
+| `docs/plan/ai-usage-dashboard-implementation-plan.md`     | "Today" boundary rule, if decided                    |
+| `docs/operations/setup.md`                                | HTTPS clone URL; §7 timezone row; runbook split      |
+| `docs/log.md`                                             | Path redaction; gate decisions                       |
+| `docs/backlog/archive/separate-production-checkout.md`    | Path redaction                                       |
+| `docs/backlog/archive/store-provider-keys-in-settings.md` | Path redaction                                       |
+| `AGENTS.md`, `.mcp.json`, `.claude/`, `.agents/`          | Per the Context 4 decision                           |
 
 ## Acceptance Criteria
 
