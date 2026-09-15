@@ -2,6 +2,16 @@
 
 ## 2026-09-15
 
+- **Decision**: the open-source release adopts pnpm.
+  [prepare-open-source-release](backlog/ready-for-agent/prepare-open-source-release.md) now depends
+  on the [npm to pnpm migration](https://github.com/baktiaditya/ai-usage-dashboard/pull/10), which
+  lands first. The user ordered the migration before the release so that the first public README,
+  contributing guide, and CI already use pnpm. CI runs `pnpm run verify` only, installing with
+  `pnpm install --frozen-lockfile` through corepack; this supersedes "CI runs `npm run verify`" in
+  the entry below. The brief's Testing and Acceptance Criteria name pnpm commands, and the portable
+  hook `PATH` must still find corepack's `pnpm` shim. The readiness evidence, gathered with npm,
+  stays as recorded.
+
 - **Decision**: the open-source release gates are closed, and
   [prepare-open-source-release](backlog/ready-for-agent/prepare-open-source-release.md) moves to
   `ready-for-agent/`. The user chose each term. The license is MIT. The timezone default follows the

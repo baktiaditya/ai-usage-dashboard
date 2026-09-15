@@ -33,6 +33,8 @@ the findings below reflect that head:
   `unavailable` (`not_configured`, since no key is saved in Settings), Claude as `unavailable`
   (`no_event_yet`), and an unauthenticated Codex as a provider error. The run completes, and
   `npm run collect` exits `1` by design whenever any provider records an error.
+- These checks ran with npm. The pnpm migration lands before this brief is worked (see Dependencies
+  and Gates), so the checks under Testing run with pnpm.
 - A scan of the full git history for key shapes (`sk-`, `sk-or-v1-`, `AKIA`, `ghp_`, private-key
   blocks) matched only fake values in tests, including those added with #9. No environment,
   database, or credential file was ever tracked, and `tests/fixtures/` holds no email, UUID, or
@@ -76,7 +78,7 @@ The assessment found these gaps:
 5. **No contributor surface.** There is no `.github/` (no CI workflow, no issue templates), no
    `CONTRIBUTING.md`, no `SECURITY.md`, no changelog, and no release tag. A security policy
    matters here because the application stores the DeepSeek API key and the OpenRouter Management
-   key in plaintext in its owner-only (`0600`) SQLite database, `npm run db:backup` files contain
+   key in plaintext in its owner-only (`0600`) SQLite database, `pnpm run db:backup` files contain
    them, and same-origin settings routes save and remove them.
 6. **Platform scope is undocumented.** Scheduling relies on user systemd, and the restore guard in
    `src/lib/db/backup.ts` relies on `/proc`. Neither the README nor Setup says the project
@@ -86,7 +88,7 @@ The assessment found these gaps:
      `package.json` is `>=22.12.0` and there is no `.nvmrc`. The plan and M0 verified only Node
      24.19.0, so whether 22.12 works is unverified.
    - `.husky/pre-commit` prepends an nvm-specific `PATH`.
-   - The README has no screenshot. `npm run seed:demo` can fill a database that shows no real
+   - The README has no screenshot. `pnpm run seed:demo` can fill a database that shows no real
      account data.
    - Adding a provider means editing hard-coded lists, such as `PROVIDER_PATTERN` in
      `src/lib/config.ts`, and no guide describes the path.
@@ -113,7 +115,12 @@ The user closed every gate on 2026-09-15, recorded as a `Decision` in [log](../.
   - `AGENTS.md`, `.mcp.json`, `.claude/`, and `.agents/` stay; `CONTRIBUTING.md` marks them
     optional.
 - **Commit author email:** kept. History is not rewritten.
-- **CI:** `npm run verify` only; `npm run test:e2e` stays a local check.
+- **CI:** `pnpm run verify` only; `pnpm run test:e2e` stays a local check.
+- **Package manager:** pnpm, provided through corepack, as the
+  [npm to pnpm migration brief](https://github.com/baktiaditya/ai-usage-dashboard/pull/10) decides.
+  That migration is a preceding change and lands first. Before starting, confirm that `main` has
+  `pnpm-lock.yaml` and no `package-lock.json`; otherwise stop and report that the migration has not
+  landed.
 
 After delivery, outside agent scope: the user changes the repository's visibility to public. The
 effect is hard to reverse once forks, caches, or indexes exist.
@@ -130,11 +137,12 @@ effect is hard to reverse once forks, caches, or indexes exist.
 - README additions: supported platform, a Node version consistent with `engines` and `.nvmrc`, a
   non-affiliation and interface-stability note, a screenshot from demo data, and links to the
   license, contributing guide, and security policy.
-- `CONTRIBUTING.md`: the `npm run verify` gate, conventional commits, how to add a provider, and
+- `CONTRIBUTING.md`: enabling pnpm through corepack, the `pnpm run verify` gate, conventional
+  commits, how to add a provider, and
   the agent tooling marked optional. `SECURITY.md`: private reporting through GitHub security
   advisories, and how saved keys are stored, backed up, and exposed. GitHub issue templates.
-- A GitHub Actions workflow running `npm ci` and `npm run verify` on pull requests and on pushes
-  to `main`.
+- A GitHub Actions workflow running `corepack enable pnpm`, `pnpm install --frozen-lockfile`, and
+  `pnpm run verify` on pull requests and on pushes to `main`.
 - Moving the production-checkout runbook into `docs/operations/production-checkout.md`, and adding
   the notes to the implementation prompt and the Setup §4 upgrade steps.
 - A portable `PATH` line in `.husky/pre-commit`.
@@ -147,7 +155,8 @@ effect is hard to reverse once forks, caches, or indexes exist.
 - Any change to the bind policy, authentication, or public or multi-user access, which the plan
   excludes.
 - Rewriting git history or changing the commit author email.
-- Running `npm run test:e2e` in CI.
+- Running `pnpm run test:e2e` in CI.
+- The npm to pnpm migration itself, which lands before this brief.
 - Removing the Setup §4 upgrade steps.
 - The Tailscale brief itself.
 - Changing the repository's visibility.
@@ -174,9 +183,11 @@ effect is hard to reverse once forks, caches, or indexes exist.
 4. Node version: run the suite under Node 22.12. If it passes, add both versions to the CI matrix.
    Otherwise raise `engines.node` to `>=24`. Then add `.nvmrc` and correct the README sentence.
 5. README: platform line, non-affiliation and interface-stability note, and a screenshot captured
-   from `npm run seed:demo` data.
+   from `pnpm run seed:demo` data.
 6. Contributor surface: `CONTRIBUTING.md`, `SECURITY.md`, `.github/ISSUE_TEMPLATE/`, and
-   `.github/workflows/ci.yml` running `npm ci` and `npm run verify`.
+   `.github/workflows/ci.yml` running `corepack enable pnpm`, `pnpm install --frozen-lockfile`, and
+   `pnpm run verify`. `package.json` already pins `packageManager`, so corepack selects that pnpm
+   version.
 7. Maintainer content:
    - Create `docs/operations/production-checkout.md` with concept frontmatter, move the Setup §6
      "Production checkout: deploy and rollback" subsection into it, and switch its clone URL to
@@ -187,7 +198,8 @@ effect is hard to reverse once forks, caches, or indexes exist.
      keep their wording.
    - Add the historical-record note to the implementation prompt and the install-predates-Settings
      note to the Setup §4 upgrade steps.
-8. Portability: remove the nvm assumption from `.husky/pre-commit`.
+8. Portability: remove the nvm assumption from `.husky/pre-commit` and `.husky/commit-msg`. The
+   hooks must still find `node` and corepack's `pnpm` shim without an nvm-specific path.
 9. Release: add `CHANGELOG.md`, record the delivery in `docs/log.md`, `git mv` this brief to
    `archive/`, and tag after the checks below pass.
 
@@ -200,7 +212,7 @@ effect is hard to reverse once forks, caches, or indexes exist.
 | `README.md`                                                   | Platform, Node, disclaimer, screenshot, policy links |
 | `CONTRIBUTING.md`, `SECURITY.md`, `CHANGELOG.md`              | New                                                  |
 | `.github/workflows/ci.yml`, `.github/ISSUE_TEMPLATE/`         | New                                                  |
-| `.husky/pre-commit`                                           | Portable `PATH`                                      |
+| `.husky/pre-commit`, `.husky/commit-msg`                      | Portable `PATH`                                      |
 | `src/lib/config.ts`, `tests/unit/config-time.test.ts`         | System timezone default with `UTC` fallback          |
 | `.env.example`                                                | Timezone comment                                     |
 | `docs/plan/ai-usage-dashboard-implementation-plan.md`         | Remove the §3.2 pending note                         |
@@ -229,29 +241,31 @@ effect is hard to reverse once forks, caches, or indexes exist.
       account data.
 - [ ] `CONTRIBUTING.md` and `SECURITY.md` exist and are linked from the README; `SECURITY.md`
       covers how saved keys are stored and backed up.
-- [ ] The CI workflow runs `npm run verify`, and no end-to-end suite, on a pull request and passes.
+- [ ] The CI workflow installs with `pnpm install --frozen-lockfile` through corepack and runs
+      `pnpm run verify`, and no end-to-end suite, on a pull request and passes.
 - [ ] The production-checkout runbook lives in `docs/operations/production-checkout.md`, is linked
       from the operations index and Setup §6, and no current document points to its old location.
 - [ ] The implementation prompt and the Setup §4 upgrade steps carry their notes.
 - [ ] A fresh clone with an empty `HOME`, following only the README, completes install, migrate,
       collect, build, and start.
 - [ ] A full-history secret scan at the release head matches only test fakes.
-- [ ] `npm run verify` and the OKF validator pass.
+- [ ] `pnpm run verify` and the OKF validator pass.
 
 ## Testing
 
-- Focused: `npx vitest run tests/unit/config-time.test.ts`, then the same run under `TZ=UTC` and
+- Focused: `pnpm exec vitest run tests/unit/config-time.test.ts`, then the same run under `TZ=UTC` and
   `TZ=America/New_York` to prove the default follows the host.
 - Hygiene: `git grep -nE '/home/[a-z]+|/Users/[a-z]+|git@github\.com'` reviewed by hand, plus the
   full-history key scan from Context.
 - Links: the OKF validator, and `git grep -n 'Production checkout: deploy and rollback'` matching
   only the new document and dated history.
-- Fresh clone in a scratch directory with `HOME` and `AUD_DATA_DIR` pointed there: `npm ci`,
-  `npm run db:migrate`, `npm run collect`, `npm run build`, `npm run start`.
-- `npm run test:e2e` in the development checkout, never the production checkout, because the
+- Fresh clone in a scratch directory with `HOME` and `AUD_DATA_DIR` pointed there:
+  `corepack enable pnpm`, `pnpm install --frozen-lockfile`, `pnpm run db:migrate`,
+  `pnpm run collect`, `pnpm run build`, `pnpm run start`.
+- `pnpm run test:e2e` in the development checkout, never the production checkout, because the
   configuration default feeds the web server.
 - CI: the workflow run on the pull request that adds it.
-- `npm run verify` is the final gate. Changing repository visibility is done by the user and is
+- `pnpm run verify` is the final gate. Changing repository visibility is done by the user and is
   not verified by an agent.
 
 ## Open Questions
