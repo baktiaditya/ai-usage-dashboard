@@ -203,6 +203,26 @@ describe('saving', () => {
     expect(screen.getByTestId('settings-save')).toBeDisabled();
   });
 
+  it('keeps a saved status when the initial GET answers after the save', async () => {
+    let answer: (res: Response) => void = () => {};
+    stubApi({ list: () => new Promise<Response>((resolve) => (answer = resolve)) });
+    const user = userEvent.setup();
+    render(<Harness />);
+    await user.click(screen.getByRole('button', { name: 'Open settings' }));
+    expect(await screen.findByTestId('settings-loading')).toBeInTheDocument();
+
+    await user.type(screen.getByTestId('settings-input-openrouter'), KEY);
+    await user.click(screen.getByTestId('settings-save'));
+    expect(await screen.findByTestId('settings-success')).toHaveTextContent('Saved.');
+    expect(screen.getByTestId('settings-status-openrouter')).toHaveTextContent('Saved ••••wxyz');
+
+    // The GET was sent before the save, so its "Not set" is stale.
+    answer(json({ credentials: [unsaved('deepseek'), unsaved('openrouter')] }));
+    await waitFor(() => expect(screen.queryByTestId('settings-loading')).not.toBeInTheDocument());
+    expect(screen.getByTestId('settings-status-openrouter')).toHaveTextContent('Saved ••••wxyz');
+    expect(screen.getByTestId('settings-status-deepseek')).toHaveTextContent('Not set');
+  });
+
   it('keeps the value of a failed PUT and shows the server message in an alert', async () => {
     const calls = stubApi({
       save: async (provider) =>

@@ -203,7 +203,12 @@ function SettingsForm({
         if (typeof result === 'string') {
           setError(result);
         } else {
-          setStatuses(Object.fromEntries(result.map((status) => [status.provider, status])));
+          // Save stays enabled while this loads. Anything already in state came
+          // from a PUT or DELETE answered after this GET was sent, so it wins.
+          setStatuses((prev) => ({
+            ...Object.fromEntries(result.map((status) => [status.provider, status])),
+            ...prev,
+          }));
           setNow(Date.now());
         }
         setLoading(false);
