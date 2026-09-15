@@ -2,7 +2,18 @@
 
 ## Status
 
-Ready for agent
+Archived
+
+Delivered on 2026-09-15 in [PR #11](https://github.com/baktiaditya/ai-usage-dashboard/pull/11),
+merged as `820d873` and deployed to the production checkout. The contract lives in
+[plan §4.1](../../plan/ai-usage-dashboard-implementation-plan.md) and
+[Setup](../../operations/setup.md) §1 and §6; the delivery is recorded in the [log](../../log.md).
+
+Delivery goes beyond the Implementation Contract below, by decisions during implementation and
+review. The Setup §6 deploy preflight also requires `pnpm-lock.yaml` and a
+`pnpm@<version>+sha512.<hash>` pin, and the rollback preflight refuses a pin without that hash.
+`pnpm-workspace.yaml` also sets `pmOnFail: ignore`, so `pnpm-lock.yaml` stays a single YAML
+document. Setup is the canonical statement of these rules; this brief is not updated further.
 
 The status above must match the directory that contains this brief. Move the file with
 `git mv` when its readiness changes.
