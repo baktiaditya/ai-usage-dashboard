@@ -2,6 +2,16 @@
 
 ## 2026-09-15
 
+- **Proposed**: prepare the repository for an open-source release, in
+  [prepare-open-source-release](backlog/ready-for-human/prepare-open-source-release.md). A readiness
+  assessment at `e1d6923` found the code ready: `npm run verify` passes, `npm audit` is clean, a
+  fresh clone installs, collects, and builds, and the git history holds no real key. The gaps are
+  packaging: no license, maintainer paths in tracked docs, an unstated platform scope and provider
+  affiliation, maintainer-only agent tooling, and no CI or contributor policy. Publishing the source
+  leaves the plan's "Public or multi-user access" non-goal intact. The brief waits on the user: the
+  license, whether to keep the `Asia/Jakarta` timezone default, what to do with maintainer-only
+  content, and the commit author email. Nothing is executed yet.
+
 - **Update**: the production deploy and rollback runbook in [setup §6](operations/setup.md) now
   fails closed and reads its settings from the rendered web unit. A unit that does not stop halts
   the procedure before the checkout changes. The installer runs without `--enable`, because its
