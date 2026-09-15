@@ -1,6 +1,23 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+// Wrapped, not replaced: each keeps its real behavior and records its options.
+vi.mock('@/lib/adapters/deepseek', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/adapters/deepseek')>();
+  return { ...actual, createDeepseekAdapter: vi.fn(actual.createDeepseekAdapter) };
+});
+vi.mock('@/lib/adapters/openrouter', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/adapters/openrouter')>();
+  return { ...actual, createOpenrouterAdapter: vi.fn(actual.createOpenrouterAdapter) };
+});
+
+import { createDeepseekAdapter } from '@/lib/adapters/deepseek';
 import { createOpenrouterAdapter } from '@/lib/adapters/openrouter';
 import { collectOnce, runAdapter } from '@/lib/collector/index';
+import { getConfig, resetConfigCache } from '@/lib/config';
+import { removeProviderCredential, saveProviderCredential } from '@/lib/db/credentials';
 import { CollectionError } from '@/lib/errors';
 import type { ErrorCode } from '@/lib/errors';
 import type { ProviderAdapter, Provider, QuotaSnapshot } from '@/lib/domain';
@@ -370,5 +387,102 @@ describe('scoped and idempotent collection', () => {
       finished_at: string | null;
     };
     expect(run.finished_at).not.toBeNull();
+  });
+});
+
+describe('credentials come from the database', () => {
+  // Fake keys only.
+  const DEEPSEEK_KEY = 'sk-fake-collector-deepseek-0001';
+  const OPENROUTER_KEY = 'sk-or-fake-collector-openrouter-0002';
+  const run = (runConfig = config) =>
+    collectOnce({
+      db: t.db,
+      config: runConfig,
+      trigger: 'scheduled',
+      providers: ['deepseek', 'openrouter'],
+    });
+
+  /** The next adapters built fail locally, so no run reaches a provider. */
+  function stubNextAdapters(): void {
+    vi.mocked(createDeepseekAdapter).mockImplementationOnce(
+      () =>
+        failingAdapter('deepseek', 'auth_rejected') as unknown as ReturnType<
+          typeof createDeepseekAdapter
+        >,
+    );
+    vi.mocked(createOpenrouterAdapter).mockImplementationOnce(
+      () =>
+        failingAdapter('openrouter', 'auth_rejected') as unknown as ReturnType<
+          typeof createOpenrouterAdapter
+        >,
+    );
+  }
+
+  beforeEach(() => {
+    vi.mocked(createDeepseekAdapter).mockClear();
+    vi.mocked(createOpenrouterAdapter).mockClear();
+  });
+
+  it('hands each adapter exactly the saved key, re-read on every run', async () => {
+    saveProviderCredential(t.db, 'deepseek', DEEPSEEK_KEY);
+    saveProviderCredential(t.db, 'openrouter', OPENROUTER_KEY);
+    stubNextAdapters();
+    await run();
+
+    expect(vi.mocked(createDeepseekAdapter)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(createDeepseekAdapter)).toHaveBeenLastCalledWith({ apiKey: DEEPSEEK_KEY });
+    expect(vi.mocked(createOpenrouterAdapter)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(createOpenrouterAdapter)).toHaveBeenLastCalledWith({
+      managementKey: OPENROUTER_KEY,
+    });
+
+    // A change between runs applies to the very next one: nothing is cached.
+    saveProviderCredential(t.db, 'deepseek', `${DEEPSEEK_KEY}-rotated`);
+    removeProviderCredential(t.db, 'openrouter');
+    stubNextAdapters();
+    await run();
+
+    expect(vi.mocked(createDeepseekAdapter)).toHaveBeenLastCalledWith({
+      apiKey: `${DEEPSEEK_KEY}-rotated`,
+    });
+    expect(vi.mocked(createOpenrouterAdapter)).toHaveBeenLastCalledWith({ managementKey: null });
+  });
+
+  it('reports both unavailable when no key is saved, even with keys in the environment and AUD_ENV_FILE', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'aud-collector-env-'));
+    const envFile = join(dir, 'collector.env');
+    writeFileSync(envFile, `DEEPSEEK_API_KEY=${DEEPSEEK_KEY}\n`, { mode: 0o600 });
+    const names = ['DEEPSEEK_API_KEY', 'OPENROUTER_MANAGEMENT_KEY', 'AUD_ENV_FILE'] as const;
+    const previous = Object.fromEntries(names.map((name) => [name, process.env[name]]));
+    const upstream = vi.fn(async () => {
+      throw new Error('no network in this suite');
+    });
+    vi.stubGlobal('fetch', upstream);
+    delete process.env['DEEPSEEK_API_KEY'];
+    process.env['OPENROUTER_MANAGEMENT_KEY'] = OPENROUTER_KEY;
+    process.env['AUD_ENV_FILE'] = envFile;
+    resetConfigCache();
+
+    try {
+      // `getConfig` merges the file into the environment, as every entry point does.
+      const summary = await run(getConfig());
+      expect(process.env['DEEPSEEK_API_KEY']).toBe(DEEPSEEK_KEY);
+
+      expect(summary.attempts).toEqual([
+        { provider: 'deepseek', outcome: 'unavailable', code: 'not_configured' },
+        { provider: 'openrouter', outcome: 'unavailable', code: 'not_configured' },
+      ]);
+      expect(vi.mocked(createDeepseekAdapter)).toHaveBeenLastCalledWith({ apiKey: null });
+      expect(vi.mocked(createOpenrouterAdapter)).toHaveBeenLastCalledWith({ managementKey: null });
+      expect(upstream).not.toHaveBeenCalled();
+    } finally {
+      for (const name of names) {
+        if (previous[name] === undefined) delete process.env[name];
+        else process.env[name] = previous[name];
+      }
+      resetConfigCache();
+      vi.unstubAllGlobals();
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

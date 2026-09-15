@@ -1,7 +1,12 @@
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { ConfigError, loadConfig } from '@/lib/config';
+import {
+  ConfigError,
+  RETIRED_CREDENTIAL_ENV_VARS,
+  loadConfig,
+  retiredCredentialEnvVars,
+} from '@/lib/config';
 import {
   ageMs,
   epochSecondsToIso,
@@ -18,14 +23,34 @@ describe('configuration', () => {
     expect(c.port).toBe(3838);
     expect(c.timezone).toBe('Asia/Jakarta');
     expect(c.retentionDays).toBe(90);
-    // Absent credentials must be a normal state, not a boot failure.
-    expect(c.credentials.deepseekApiKey).toBeNull();
-    expect(c.credentials.openrouterManagementKey).toBeNull();
   });
 
-  it('treats a blank credential as absent rather than as an invalid key', () => {
-    const c = loadConfig({ DEEPSEEK_API_KEY: '   ' });
-    expect(c.credentials.deepseekApiKey).toBeNull();
+  it('reads no provider key from the environment', () => {
+    // Fake keys only.
+    const c = loadConfig({
+      DEEPSEEK_API_KEY: 'sk-fake-config-deepseek-0000',
+      OPENROUTER_MANAGEMENT_KEY: 'sk-or-fake-config-openrouter-0000',
+    });
+    expect(c).not.toHaveProperty('credentials');
+    expect(JSON.stringify(c)).not.toMatch(/sk-(or-)?fake-config/);
+  });
+
+  it('names the retired provider key variables that are still set, never their values', () => {
+    expect(RETIRED_CREDENTIAL_ENV_VARS).toEqual(['DEEPSEEK_API_KEY', 'OPENROUTER_MANAGEMENT_KEY']);
+    expect(retiredCredentialEnvVars({})).toEqual([]);
+    expect(
+      retiredCredentialEnvVars({ DEEPSEEK_API_KEY: '', OPENROUTER_MANAGEMENT_KEY: '  ' }),
+    ).toEqual([]);
+    expect(retiredCredentialEnvVars({ OPENROUTER_MANAGEMENT_KEY: 'sk-or-fake' })).toEqual([
+      'OPENROUTER_MANAGEMENT_KEY',
+    ]);
+    expect(
+      retiredCredentialEnvVars({
+        OPENROUTER_MANAGEMENT_KEY: 'sk-or-fake',
+        DEEPSEEK_API_KEY: 'sk-fake',
+        AUD_PORT: '3838',
+      }),
+    ).toEqual(['DEEPSEEK_API_KEY', 'OPENROUTER_MANAGEMENT_KEY']);
   });
 
   it('refuses to bind anywhere but loopback', () => {

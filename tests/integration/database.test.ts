@@ -114,6 +114,7 @@ describe('migrations', () => {
       'collector_attempts',
       'collector_runs',
       'credit_balances',
+      'provider_credentials',
       'provider_snapshots',
       'quota_windows',
       'schema_migrations',

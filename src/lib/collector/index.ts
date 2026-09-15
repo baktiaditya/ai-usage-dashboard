@@ -22,6 +22,8 @@ import { createDeepseekAdapter } from '../adapters/deepseek';
 import { createOpenrouterAdapter } from '../adapters/openrouter';
 import { createClaudeIngestor } from '../ingestors/claude-statusline';
 import type { Db } from '../db/client';
+import { readProviderCredentials } from '../db/credentials';
+import type { ProviderCredentials } from '../db/credentials';
 import { applyRetention, finishRun, recordAttempt, startRun } from '../db/repository';
 import type { RunTrigger } from '../db/repository';
 import { safeErrorMessage } from '../redact';
@@ -29,12 +31,12 @@ import { nowIso } from '../time';
 import type { Logger } from '../logger';
 import { silentLogger } from '../logger';
 
-export function buildAdapters(config: AppConfig): ProviderAdapter[] {
+export function buildAdapters(config: AppConfig, keys: ProviderCredentials): ProviderAdapter[] {
   return [
     createCodexAdapter(),
     createClaudeIngestor({ spoolPath: config.spoolPath }),
-    createDeepseekAdapter({ apiKey: config.credentials.deepseekApiKey }),
-    createOpenrouterAdapter({ managementKey: config.credentials.openrouterManagementKey }),
+    createDeepseekAdapter({ apiKey: keys.deepseekApiKey }),
+    createOpenrouterAdapter({ managementKey: keys.openrouterManagementKey }),
   ];
 }
 
@@ -149,7 +151,10 @@ export interface CollectSummary {
 /** One idempotent collection pass. */
 export async function collectOnce(options: CollectOptions): Promise<CollectSummary> {
   const log = options.logger ?? silentLogger;
-  const all = options.adapters ?? buildAdapters(options.config);
+  // Keys are read on every run and never cached, so a key saved in Settings
+  // applies to the next scheduled run and to an immediate manual refresh.
+  const all =
+    options.adapters ?? buildAdapters(options.config, readProviderCredentials(options.db));
   const selected = options.providers
     ? all.filter((a) => options.providers?.includes(a.provider))
     : all;

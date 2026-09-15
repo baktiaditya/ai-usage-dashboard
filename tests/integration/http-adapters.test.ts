@@ -23,13 +23,19 @@ describe('credential handling', () => {
   it('reports an absent DeepSeek key as not_configured without any network call', async () => {
     const { impl, calls } = capturingFetch('{}');
     const adapter = createDeepseekAdapter({ apiKey: null, fetchImpl: impl });
-    await expect(adapter.collect(signal())).rejects.toMatchObject({ code: 'not_configured' });
+    await expect(adapter.collect(signal())).rejects.toMatchObject({
+      code: 'not_configured',
+      message: 'DeepSeek API key is not saved in Settings',
+    });
     expect(calls).toHaveLength(0);
   });
 
   it('reports an absent OpenRouter management key as not_configured', async () => {
     const adapter = createOpenrouterAdapter({ managementKey: null });
-    await expect(adapter.collect(signal())).rejects.toMatchObject({ code: 'not_configured' });
+    await expect(adapter.collect(signal())).rejects.toMatchObject({
+      code: 'not_configured',
+      message: 'OpenRouter Management key is not saved in Settings',
+    });
   });
 
   it('sends the key as a bearer token and nowhere else', async () => {

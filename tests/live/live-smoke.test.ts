@@ -18,6 +18,7 @@ import { createOpenrouterAdapter } from '@/lib/adapters/openrouter';
 import { createClaudeIngestor } from '@/lib/ingestors/claude-statusline';
 import { loadConfig } from '@/lib/config';
 import { loadCollectorEnvFile } from '@/lib/env-file';
+import { readSavedCredentials } from '../helpers/saved-credentials';
 
 const enabled = process.env['LIVE_SMOKE'] === '1';
 const describeLive = enabled ? describe : describe.skip;
@@ -25,10 +26,13 @@ const describeLive = enabled ? describe : describe.skip;
 /** Skip a gate whose credential is absent, rather than failing it. */
 const describeWhen = (condition: boolean) => (enabled && condition ? describe : describe.skip);
 
-// Read keys from the same collector.env the systemd unit uses, so provisioning
-// the file once is enough for this suite too.
+// collector.env may still set AUD_* settings such as the data directory. Keys
+// come from that directory's database, where dashboard Settings saved them. A
+// missing database or table means no key, so those gates skip; any other
+// database error fails the run.
 loadCollectorEnvFile(process.env);
 const config = loadConfig(process.env);
+const saved = readSavedCredentials(config.databasePath);
 const signal = () => AbortSignal.timeout(30_000);
 
 describeLive('live: codex app-server', () => {
@@ -73,10 +77,10 @@ describeLive('live: claude status-line spool', () => {
   }, 20_000);
 });
 
-describeWhen(config.credentials.deepseekApiKey !== null)('live: deepseek balance', () => {
+describeWhen(saved.deepseekApiKey !== null)('live: deepseek balance', () => {
   it('returns at least one currency with a decimal balance', async () => {
     const snap = await createDeepseekAdapter({
-      apiKey: config.credentials.deepseekApiKey,
+      apiKey: saved.deepseekApiKey,
       timeoutMs: 20_000,
     }).collect(signal());
 
@@ -91,20 +95,17 @@ describeWhen(config.credentials.deepseekApiKey !== null)('live: deepseek balance
   }, 30_000);
 });
 
-describeWhen(config.credentials.openrouterManagementKey !== null)(
-  'live: openrouter credits',
-  () => {
-    it('returns credits, usage and an exact decimal remainder', async () => {
-      const snap = await createOpenrouterAdapter({
-        managementKey: config.credentials.openrouterManagementKey,
-        timeoutMs: 20_000,
-      }).collect(signal());
+describeWhen(saved.openrouterManagementKey !== null)('live: openrouter credits', () => {
+  it('returns credits, usage and an exact decimal remainder', async () => {
+    const snap = await createOpenrouterAdapter({
+      managementKey: saved.openrouterManagementKey,
+      timeoutMs: 20_000,
+    }).collect(signal());
 
-      const usd = snap.balances[0];
-      expect(usd?.currency).toBe('USD');
-      expect(usd?.totalCredits).toMatch(/^-?\d+(\.\d+)?$/);
-      expect(usd?.totalUsage).toMatch(/^-?\d+(\.\d+)?$/);
-      expect(usd?.remainingCredit).toMatch(/^-?\d+(\.\d+)?$/);
-    }, 30_000);
-  },
-);
+    const usd = snap.balances[0];
+    expect(usd?.currency).toBe('USD');
+    expect(usd?.totalCredits).toMatch(/^-?\d+(\.\d+)?$/);
+    expect(usd?.totalUsage).toMatch(/^-?\d+(\.\d+)?$/);
+    expect(usd?.remainingCredit).toMatch(/^-?\d+(\.\d+)?$/);
+  }, 30_000);
+});

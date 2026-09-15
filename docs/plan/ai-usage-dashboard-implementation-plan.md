@@ -10,8 +10,10 @@ A local dashboard for monitoring Codex and Claude Code quota and DeepSeek and Op
 
 ## 0. Machine validation baseline
 
-> **Implementation status (2026-09-14).** This plan has been implemented, including
-> §3.4 Development isolation. The baseline below is the initial observation;
+> **Implementation status (2026-09-15).** This plan has been implemented, including
+> §3.4 Development isolation and §3.5 Provider credentials (implemented 2026-09-15): DeepSeek
+> and OpenRouter keys are saved from the dashboard's Settings dialog, as described in
+> [`setup.md`](../operations/setup.md) §4. The baseline below is the initial observation;
 > re-probe results, per-provider gate status, finalized decisions, and adopted
 > deviations are recorded in
 > [`m0-discovery.md`](../discovery/m0-discovery.md). Usage guidance is in
@@ -142,13 +144,34 @@ The dashboard makes no automatic routing decisions in the MVP. It only presents 
 - Development-only settings are parsed at the launcher seam, not by the shared application
   configuration, so an invalid development override cannot stop production or scheduled collection.
 - Development manual refresh is disabled by default before any database or provider side effect.
-  `AUD_DEV_LIVE_REFRESH=1` is the explicit opt-in; the offline child does not inherit the DeepSeek
-  or OpenRouter credential values and also prevents credentialless Codex collection.
+  `AUD_DEV_LIVE_REFRESH=1` is the explicit opt-in. The offline child prevents collection from every
+  provider, Codex included. It no longer handles credential variables: keys come only from the
+  development server's own database (§3.5).
 - Development data starts empty. `npm run seed:dev` may replace seeded rows in that directory only;
   production data is never copied or selected implicitly.
 - A dedicated production checkout remains a separate operational hardening task for build,
   dependency, restart, and rollback isolation. Next.js 16 already separates `next dev` output under
   `.next/dev`, so that checkout is not a prerequisite for the development port/data contract.
+
+### 3.5 Provider credentials
+
+Decided and implemented 2026-09-15 (see the [log](../log.md)); delivered from the archived brief
+[store-provider-keys-in-settings](../backlog/archive/store-provider-keys-in-settings.md).
+
+- The DeepSeek API key and the OpenRouter Management key are entered in a Settings dialog on the
+  dashboard and stored in the SQLite database, in plaintext, protected by the database's
+  owner-only (`0600`) permissions. Database backups therefore contain them.
+- Every collection path — the systemd timer, `npm run collect`, and manual refresh — reads the
+  keys from the database at the start of each run. `DEEPSEEK_API_KEY` and
+  `OPENROUTER_MANAGEMENT_KEY` are no longer read from any environment, file, or `.env.local`;
+  there is no fallback and no import. An existing install re-enters its keys after upgrading.
+- The browser never receives a full key. The settings API returns, per provider, whether a key is
+  saved, its last four characters (only for keys of at least 16 characters), and when it was
+  saved. Every settings route, reads included, requires a same-origin request.
+- Saving a key does not validate it upstream and does not start a collection. Saving or removing a
+  key changes only the dashboard's local copy; the application still never creates, modifies, or
+  deletes keys at the provider (§10).
+- The development server stores keys only in its own database (§3.4).
 
 ## 4. Technical design
 
@@ -231,7 +254,7 @@ All money values are stored as canonical decimal strings or scaled integers with
 
 Derive success/failure counts from attempts so partial success is auditable and cannot drift from its details.
 
-The database stores no API keys, OAuth tokens, account emails, account IDs, full CLI/status-line inputs, full app-server responses, or raw API payloads.
+The database stores no OAuth tokens, account emails, account IDs, full CLI/status-line inputs, full app-server responses, or raw API payloads. Under §3.5 it stores exactly two API keys — DeepSeek and OpenRouter — in `provider_credentials`.
 
 ### 4.5 Status semantics
 
@@ -244,8 +267,8 @@ Attempt status and snapshot freshness are separate concepts and are not stored a
 
 ## 5. Security and operations
 
-- Read `DEEPSEEK_API_KEY` and `OPENROUTER_MANAGEMENT_KEY` from the collector process environment. For systemd, use an environment file outside the repository with `0600` permissions; a user service does not automatically inherit the shell environment.
-- Treat the OpenRouter Management Key as a high-impact secret since it can access other administrative operations. Use a dashboard-specific key when the provider supports operational separation, restrict file permissions, and never send it to the browser.
+- Read `DEEPSEEK_API_KEY` and `OPENROUTER_MANAGEMENT_KEY` from the collector process environment. For systemd, use an environment file outside the repository with `0600` permissions; a user service does not automatically inherit the shell environment. **Superseded by §3.5 (decided and implemented 2026-09-15):** keys are saved from the dashboard's Settings dialog into the owner-only database and are no longer read from any environment.
+- Treat the OpenRouter Management Key as a high-impact secret since it can access other administrative operations. Use a dashboard-specific key when the provider supports operational separation, restrict file permissions, and never send it to the browser. Under §3.5 the browser may receive only its last four characters.
 - Do not copy Codex/Claude OAuth credentials into `.env`. The Codex adapter delegates auth to the app-server; the Claude bridge only accepts status line fields the CLI already provides.
 - Selectors/redactors run before logging and persistence. Tests must prove that emails, account IDs, bearer tokens, authorization headers, and raw payloads never leak through.
 - The web server binds to `127.0.0.1`. Refresh endpoints accept `POST`, verify same-origin/CSRF, enforce a local rate limit, and never trust `Host`/`X-Forwarded-For` as the sole control.
@@ -322,7 +345,7 @@ The MVP may proceed with unavailable adapters, but acceptance for a given provid
 | ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | CLI format/protocol changes               | Isolated adapters, per-version fixtures, generated schema at discovery, subset validation, version guards, and `unavailable`                                                                                                        |
 | Claude idle or account ineligible         | Event timestamps + stale policy; do not promise realtime polling; show unavailable with a setup hint                                                                                                                                |
-| OpenRouter Management Key leak            | `0600` environment file, process-only access, redaction, never sent to the UI, document administrative privileges                                                                                                                   |
+| OpenRouter Management Key leak            | `0600` database (§3.5; `0600` environment file until implemented), redaction, only the last four characters ever sent to the UI, same-origin settings routes, document administrative privileges and that backups contain keys      |
 | API rate limits                           | Conservative poll interval, jitter, timeouts, bounded backoff, and last-snapshot cache                                                                                                                                              |
 | Subscription quota mistaken for cost      | Separate quota gauges from money/counters; do not convert to USD                                                                                                                                                                    |
 | DeepSeek balance mistaken for usage       | Label balance changes explicitly and do not compute spend without a transaction/usage API                                                                                                                                           |

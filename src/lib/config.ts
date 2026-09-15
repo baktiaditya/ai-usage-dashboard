@@ -2,9 +2,12 @@
  * Validated configuration with safe defaults.
  *
  * The application must start and stay useful with an entirely empty
- * environment: absent credentials become `unavailable` cards, never a boot
- * failure. Anything that *is* set is validated here so a typo surfaces at
+ * environment. Anything that *is* set is validated here so a typo surfaces at
  * startup rather than as a mystery at collection time.
+ *
+ * Only `AUD_*` settings come from the environment, including `collector.env`.
+ * Provider keys are saved in dashboard Settings and read from the database
+ * (`src/lib/db/credentials.ts`); an unsaved key is an `unavailable` card.
  */
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -107,9 +110,17 @@ const envSchema = z.object({
   AUD_THRESHOLDS: z.string().optional(),
   // Internal: set only by the development launcher (src/lib/dev-environment.ts).
   AUD_REFRESH_ENABLED: z.enum(['0', '1']).optional(),
-  DEEPSEEK_API_KEY: z.string().optional(),
-  OPENROUTER_MANAGEMENT_KEY: z.string().optional(),
 });
+
+/**
+ * Provider key variables that are no longer read from any environment
+ * (plan §3.5). They are listed only so `npm run collect` can warn that a stale
+ * value is being ignored.
+ */
+export const RETIRED_CREDENTIAL_ENV_VARS = [
+  'DEEPSEEK_API_KEY',
+  'OPENROUTER_MANAGEMENT_KEY',
+] as const;
 
 export interface AppConfig {
   readonly dataDir: string;
@@ -145,10 +156,6 @@ export interface AppConfig {
     readonly quota: Record<string, z.infer<typeof quotaThresholdSchema>>;
     /** Keyed `provider:CURRENCY` so USD and CNY never share a threshold. */
     readonly balance: Record<string, z.infer<typeof balanceThresholdSchema>>;
-  };
-  readonly credentials: {
-    readonly deepseekApiKey: string | null;
-    readonly openrouterManagementKey: string | null;
   };
 }
 
@@ -226,13 +233,6 @@ export function loadConfig(env: EnvLike = process.env): AppConfig {
     throw err;
   }
 
-  // An empty string is treated as absent so a blank line in an env file does
-  // not turn into an auth_rejected error later.
-  const nonEmpty = (v: string | undefined): string | null => {
-    const t = v?.trim();
-    return t ? t : null;
-  };
-
   // Validate the shipped defaults with the same schemas that validate
   // user-supplied overrides, so a bad default cannot ship silently.
   const overrides = parseThresholdOverrides(e.AUD_THRESHOLDS);
@@ -271,11 +271,15 @@ export function loadConfig(env: EnvLike = process.env): AppConfig {
       quota: quotaThresholds,
       balance: balanceThresholds,
     },
-    credentials: {
-      deepseekApiKey: nonEmpty(e.DEEPSEEK_API_KEY),
-      openrouterManagementKey: nonEmpty(e.OPENROUTER_MANAGEMENT_KEY),
-    },
   };
+}
+
+/**
+ * The names of the retired provider key variables that are set and non-blank.
+ * Never returns a value.
+ */
+export function retiredCredentialEnvVars(env: EnvLike): string[] {
+  return RETIRED_CREDENTIAL_ENV_VARS.filter((name) => Boolean(env[name]?.trim()));
 }
 
 let cached: AppConfig | null = null;
@@ -285,7 +289,7 @@ let cached: AppConfig | null = null;
  *
  * The collector environment file is merged into `process.env` first, so the
  * CLI, the web server's manual refresh, and the systemd unit all resolve the
- * same credentials. `loadConfig` itself stays pure for tests.
+ * same `AUD_*` settings. `loadConfig` itself stays pure for tests.
  */
 export function getConfig(): AppConfig {
   if (cached === null) {

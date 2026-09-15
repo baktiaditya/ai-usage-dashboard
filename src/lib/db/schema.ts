@@ -110,6 +110,16 @@ export const creditBalances = sqliteTable(
   ],
 );
 
+/**
+ * Keys saved from dashboard Settings, in plaintext (plan §3.5). A missing row
+ * means no key is saved. Read only through `src/lib/db/credentials.ts`.
+ */
+export const providerCredentials = sqliteTable('provider_credentials', {
+  provider: text('provider', { enum: ['deepseek', 'openrouter'] }).primaryKey(),
+  secret: text('secret').notNull(),
+  updatedAt: text('updated_at').notNull(),
+});
+
 export const schemaMigrations = sqliteTable('schema_migrations', {
   version: integer('version').primaryKey(),
   appliedAt: text('applied_at').notNull(),

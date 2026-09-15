@@ -159,13 +159,13 @@ echo "Installed into $UNIT_DIR."
 if [[ ! -f "$ENV_FILE" ]]; then
   cat <<EOF
 
-Note: $ENV_FILE does not exist yet.
-The collector will still run; DeepSeek and OpenRouter will report "unavailable"
-until you create it:
+Note: $ENV_FILE does not exist yet, and that is fine.
+DeepSeek and OpenRouter keys are saved in dashboard Settings, not in this file;
+the file holds only optional AUD_* overrides. To add some:
 
   mkdir -p "\$(dirname "$ENV_FILE")"
   install -m 0600 /dev/null "$ENV_FILE"
-  \$EDITOR "$ENV_FILE"     # DEEPSEEK_API_KEY=... / OPENROUTER_MANAGEMENT_KEY=...
+  \$EDITOR "$ENV_FILE"     # AUD_TIMEZONE=..., AUD_LOG_LEVEL=...
 EOF
 fi
 

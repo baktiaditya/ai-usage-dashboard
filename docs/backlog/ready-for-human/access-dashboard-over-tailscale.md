@@ -169,3 +169,7 @@ header-based trust, and any local process can send those headers.
   this machine's port 443 to the user's own devices. Owner: user.
 - Is refresh from the phone needed, or is read-only enough? Read-only needs only the Setup
   documentation and no code. Owner: user.
+- Now that [store-provider-keys-in-settings](../archive/store-provider-keys-in-settings.md)
+  has landed, the Settings routes that save and remove provider keys use the same `allowedOrigins`
+  guard. Should an added tailnet origin also be allowed to write keys, or should those routes stay
+  loopback-only? Owner: user.

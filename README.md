@@ -29,6 +29,7 @@ and manual refresh disabled unless `AUD_DEV_LIVE_REFRESH=1`.
 
 It works with nothing configured. Providers you have not set up render as
 `unavailable` with a setup hint instead of blocking the page or failing the run.
+DeepSeek and OpenRouter keys are entered under **Settings**, next to **Reload view**.
 
 Full instructions, including the Claude status-line bridge, credentials, and the
 systemd timer: **[docs/operations/setup.md](docs/operations/setup.md)**.
@@ -93,9 +94,13 @@ so scheduled and manual runs cannot drift apart in behaviour.
 - a redaction pass runs before every log write, persisted diagnostic, API
   response and rendered string, with tests asserting on each secret shape;
 - manual refresh is `POST`, same-origin enforced, and locally rate limited;
-- credentials live outside the repository in a `0600` environment file, and are
-  never sent to the browser;
-- read-only by construction: no plan change, no purchase, no key management.
+- DeepSeek and OpenRouter keys are saved from the Settings dialog into the
+  owner-only (`0600`) database, are never read from the environment, and never
+  reach the browser in full: it receives at most a key's last four characters,
+  and every settings route requires a same-origin request;
+- read-only toward providers: no plan change, no purchase, and no key is ever
+  created, modified, or deleted at a provider. Saving or removing a key in
+  Settings changes only the dashboard's local copy.
 
 ## Commands
 
@@ -120,8 +125,9 @@ so scheduled and manual runs cannot drift apart in behaviour.
 `claude-code 2.1.269` with both the 5-hour and 7-day windows.
 
 **DeepSeek** and **OpenRouter** are verified live as well, against their balance
-and credits endpoints once a key is in `collector.env`. Without a key, each
-surfaces as `unavailable` with a precise setup hint. Per-gate evidence is in
+and credits endpoints, with keys that were then read from `collector.env`. Keys are
+now saved in the dashboard's Settings dialog. Without a saved key, each surfaces as
+`unavailable` with a precise setup hint. Per-gate evidence is in
 **[docs/discovery/m0-discovery.md](docs/discovery/m0-discovery.md)**.
 
 Design rationale and scope: [docs/plan/ai-usage-dashboard-implementation-plan.md](docs/plan/ai-usage-dashboard-implementation-plan.md).
