@@ -2,8 +2,23 @@
 
 ## 2026-09-15
 
+- **Decision**: the package manager moves from npm to pnpm, and
+  [migrate-from-npm-to-pnpm](backlog/ready-for-agent/migrate-from-npm-to-pnpm.md) is promoted to
+  `ready-for-agent/`. The user chose each term:
+  - pnpm and `pnpm-lock.yaml` replace npm and `package-lock.json`. This supersedes the
+    "npm + `package-lock.json`" pin in [plan](plan/ai-usage-dashboard-implementation-plan.md) §4.1
+    and the `npm run` commands in §3.3, §3.4, and §3.5.
+  - pnpm is provided through corepack, pinned with `"packageManager": "pnpm@12.4.2"`. Node 25 and
+    later no longer bundle corepack, so there `npm install -g corepack` comes first.
+  - The migration lands before the open-source release is implemented, so that work adopts pnpm.
+  - The agent may deploy the first pnpm commit to the production checkout once a deploy and
+    rollback rehearsal in a throwaway clone passes.
+
+  The plan, [Setup](operations/setup.md), and the README change on delivery; until then npm is what
+  runs.
+
 - **Proposed**: migrating the package manager from npm to pnpm, filed as
-  [migrate-from-npm-to-pnpm](backlog/ready-for-human/migrate-from-npm-to-pnpm.md). A trial at
+  [migrate-from-npm-to-pnpm](backlog/ready-for-agent/migrate-from-npm-to-pnpm.md). A trial at
   `e2d553c` in a throwaway clone, with pnpm 12.4.2, found no blocker: `pnpm import` kept every
   resolved version, and `verify`, `build`, `test:e2e`, and `pnpm audit` passed once the native build
   allowlist moved to `allowBuilds` in `pnpm-workspace.yaml` and `pnpm-lock.yaml` joined

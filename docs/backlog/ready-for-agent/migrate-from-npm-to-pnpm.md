@@ -2,7 +2,7 @@
 
 ## Status
 
-Ready for human
+Ready for agent
 
 The status above must match the directory that contains this brief. Move the file with
 `git mv` when its readiness changes.
@@ -74,7 +74,8 @@ The trial also found differences that the migration must handle:
 6. **The plan pins npm.** [Plan](../../plan/ai-usage-dashboard-implementation-plan.md) §4.1 names
    "npm + `package-lock.json`" as the repository-pinned package manager, and its dated §0 baseline
    row recommends the same. §3.3, §3.4, and §3.5 give `npm run` commands as part of the contract.
-   The plan wins over this brief until a logged `Decision` changes §4.1.
+   The 2026-09-15 `Decision` in [log](../../log.md) supersedes that pin; the plan text changes on
+   delivery.
 
 The benefit for a single-package application is moderate: faster installs, one store shared by the
 development repository and the production checkout, build scripts blocked unless approved, and a
@@ -87,17 +88,20 @@ PR #7 and not yet on `main`, rewrites the README, moves the Setup §6 runbook in
 
 ## Dependencies and Gates
 
-- **A `Decision` superseding plan §4.1**, recorded in `docs/log.md`, that pnpm and
-  `pnpm-lock.yaml` replace npm and `package-lock.json`. Owner: user.
-- **Order relative to the open-source release.** Migrate before the release, so the first public
-  README, contributing guide, and CI already use pnpm, or after it, and rewrite those surfaces a
-  second time. Owner: user.
-- **How pnpm is installed** on the development machine and for the production checkout: corepack
-  (bundled with Node 24 only), pnpm's standalone installer, or `npm install -g pnpm` inside nvm.
-  The choice decides the Setup §1 install step and whether `packageManager` is enforced. Owner:
-  user.
-- **Authorization to deploy** the first pnpm commit to the production checkout and to rehearse a
-  rollback across the boundary. This stops both units. Owner: user.
+The user closed every gate on 2026-09-15, recorded as a `Decision` in [log](../../log.md):
+
+- **Package manager:** pnpm and `pnpm-lock.yaml` replace npm and `package-lock.json`, superseding
+  [plan](../../plan/ai-usage-dashboard-implementation-plan.md) §4.1.
+- **Order:** this migration lands before the open-source release is implemented. The first public
+  README, contributing guide, and CI therefore use pnpm, and the open-source release brief adopts
+  pnpm commands when it is worked.
+- **Installing pnpm:** corepack, pinned with `"packageManager": "pnpm@12.4.2"`. Setup §1 and the
+  README run `corepack enable pnpm` before installing. Node 25 and later no longer bundle corepack,
+  so there `npm install -g corepack` comes first.
+- **Production deploy:** the agent deploys the first pnpm commit to the production checkout with
+  the updated Setup §6 procedure, once the rehearsal in Approach step 7 passes. The deploy stops
+  both units briefly. If it fails, the agent rolls back to the recorded previous commit and reports
+  it.
 
 ## Scope
 
@@ -109,8 +113,8 @@ PR #7 and not yet on `main`, rewrites the README, moves the Setup §6 runbook in
   package-manager decision (§4.1) and current commands (§3.3, §3.4, §3.5).
 - Accepting a leading `--` in `scripts/db-backup.ts` and `scripts/db-restore.ts`, so old and new
   command forms both work.
-- The Setup §6 deploy and rollback procedure, including the migration boundary, and a `Decision`
-  plus `Update` in `docs/log.md`.
+- The Setup §6 deploy and rollback procedure, including the migration boundary, the first
+  production deploy, and an `Update` in `docs/log.md`.
 
 ### Out of scope
 
@@ -127,12 +131,13 @@ PR #7 and not yet on `main`, rewrites the README, moves the Setup §6 runbook in
 1. On a branch from `main`, run `pnpm import`, delete `package-lock.json`, and create
    `pnpm-workspace.yaml` with `allowBuilds` for `@tailwindcss/oxide`, `better-sqlite3`, `esbuild`,
    and `unrs-resolver`. Remove `allowScripts` from `package.json` and add
-   `"packageManager": "pnpm@<version>"` for the version the gate chose. In `.prettierignore`, replace
+   `"packageManager": "pnpm@12.4.2"`. In `.prettierignore`, replace
    `package-lock.json` with `pnpm-lock.yaml`.
 2. `package.json`: each `npm run` in `verify` becomes `pnpm run`. `playwright.config.ts`:
    `webServer.command` becomes `pnpm run build && pnpm run seed:demo && pnpm run start`.
 3. `.husky/pre-commit` and `.husky/commit-msg`: `npx` becomes `pnpm exec`, and `npm run` becomes
-   `pnpm run`. Keep the nvm `PATH` line, unless the install gate puts pnpm elsewhere.
+   `pnpm run`. Keep the nvm `PATH` line: corepack's `pnpm` shim lives in the
+   nvm Node `bin` directory it adds.
 4. `scripts/db-backup.ts` and `scripts/db-restore.ts`: drop one leading `--` from the arguments
    before validating them, and change the usage lines to `pnpm run db:backup [<file>]` and
    `pnpm run db:restore <backup file>`. Cover both forms in `tests/integration/db-backup.test.ts`,
@@ -145,20 +150,24 @@ PR #7 and not yet on `main`, rewrites the README, moves the Setup §6 runbook in
    `describe` titles that quote `npm run` in `tests/integration/collect-script.test.ts` and
    `tests/integration/next-wrapper.test.ts`.
 6. Documents:
-   - `README.md` and `AGENTS.md`: every command, and "npm single-package repo".
-   - Setup: §1 install and approval text, §3 `claude:install-statusline` without `--`, §10's
-     install-script entry for `pnpm approve-builds`, and §6's deploy with
-     `pnpm install --frozen-lockfile`.
+   - `README.md` and `AGENTS.md`: every command, `corepack enable pnpm` in the README quick start,
+     and "npm single-package repo".
+   - Setup §1: `corepack enable pnpm`, preceded by `npm install -g corepack` on Node 25 and later,
+     then `pnpm install` and its approval text.
+   - Setup §3 `claude:install-statusline` without `--`, §10's install-script entry for
+     `pnpm approve-builds`, and §6's deploy with `pnpm install --frozen-lockfile`.
    - Setup §6 rollback: check out the target, then run `pnpm install --frozen-lockfile` when it has
      `pnpm-lock.yaml`, or `npm ci` when it has only `package-lock.json`. If step 7 shows that pnpm
      refuses an npm-built `node_modules` without a terminal, remove `node_modules` before installing.
    - Plan §4.1 names pnpm and `pnpm-lock.yaml`, and §3.3, §3.4, and §3.5 give pnpm commands.
    - `docs/backlog/template.md` Testing section.
-   - `docs/log.md`: a `Decision` for the switch and an `Update` for existing installs.
+   - `docs/log.md`: an `Update` for existing installs that names the corepack step.
 7. Rehearse the deploy in a throwaway clone: install with `npm ci`, check out the pnpm commit, and run
    the §6 install command with standard input closed. Then check out a pre-migration commit and run
    `npm ci` to rehearse the rollback. Fix the runbook from what happened.
-8. With the deploy gate closed, deploy to the production checkout with the updated §6 procedure.
+8. Deploy to the production checkout with the updated §6 procedure, which records the previous and
+   candidate commits. If any step fails, roll back to the previous commit with the §6 rollback
+   procedure and report it.
 
 ## Files Touched
 
@@ -185,10 +194,10 @@ PR #7 and not yet on `main`, rewrites the README, moves the Setup §6 runbook in
 | `docs/operations/setup.md`                                              | §1, §2, §3, §4, §6 (deploy, rollback, migration boundary), §7, §9, §10 |
 | `docs/plan/ai-usage-dashboard-implementation-plan.md`                   | §4.1 package-manager decision; §3.3, §3.4, and §3.5 commands           |
 | `docs/backlog/template.md`                                              | Testing section commands                                               |
-| `docs/log.md`                                                           | `Decision` and `Update` entries                                        |
+| `docs/log.md`                                                           | `Update` entry                                                         |
 
-If the open-source release lands first, add `CONTRIBUTING.md`, the CI workflow under `.github/`, and
-`docs/operations/production-checkout.md`, and drop the Setup §6 rows that moved there.
+`CONTRIBUTING.md`, `.github/`, and `docs/operations/production-checkout.md` do not exist yet. The
+open-source release creates them after this migration, with pnpm commands.
 
 ## Acceptance Criteria
 
@@ -201,12 +210,14 @@ If the open-source release lands first, add `CONTRIBUTING.md`, the CI workflow u
       `pnpm run db:restore -- <file>` behave identically, proven by integration tests.
 - [ ] A commit touching a `.ts` file runs lint-staged, the typecheck, and `vitest related` through
       pnpm in the pre-commit hook.
-- [ ] Plan §4.1 names pnpm, and a `Decision` in `docs/log.md` records the change.
+- [ ] Plan §4.1 names pnpm and `pnpm-lock.yaml`.
+- [ ] `package.json` pins `"packageManager": "pnpm@12.4.2"`, and the README and Setup §1 enable
+      pnpm through corepack, naming `npm install -g corepack` for Node 25 and later.
 - [ ] Outside `docs/log.md`, `docs/backlog/archive/`, the plan's §0 baseline, M1, and §11, M0
       Discovery, and `.mcp.json`, no tracked file tells the reader to run `npm` or `npx`.
 - [ ] The deploy and rollback rehearsal from Approach step 7 succeeds with standard input closed,
       and Setup §6 describes exactly what was run.
-- [ ] After the gated production deploy, both units are active, the dashboard answers on its
+- [ ] After the production deploy, both units are active, the dashboard answers on its
       configured URL, and the next collector run succeeds.
 - [ ] The OKF validator passes.
 
@@ -220,11 +231,7 @@ If the open-source release lands first, add `CONTRIBUTING.md`, the CI workflow u
 - `pnpm run test:e2e`, because `playwright.config.ts` changes.
 - `python3 .agents/skills/okf-sync/scripts/validate_okf_bundle.py`.
 - `pnpm run verify` is the final gate.
-- Live, gated on the user: the production deploy and its checks. Report which were performed.
+- Live, by the agent once the rehearsal passes: the production deploy and its checks. Report which
+  were performed.
 
 ## Open Questions
-
-- Does pnpm replace npm as the pinned package manager in plan §4.1? Owner: user.
-- Should the migration land before or after the open-source release in PR #7? Owner: user.
-- Which install method provides pnpm on the development machine and for the production checkout,
-  given that Node 25 and later drop corepack? Owner: user.
