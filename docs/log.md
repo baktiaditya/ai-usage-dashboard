@@ -2,6 +2,36 @@
 
 ## 2026-09-15
 
+- **Update**: the move to pnpm is implemented and rehearsed on the branch
+  `feat/migrate-to-pnpm` at `840c905`, but not merged or deployed, so production still runs npm at
+  `e2d553c`. The user stopped before the production deploy, which Setup §6 allows only from
+  `origin/main`. [migrate-from-npm-to-pnpm](backlog/ready-for-agent/migrate-from-npm-to-pnpm.md)
+  therefore stays in `ready-for-agent/`. On the branch:
+  - `pnpm import` kept all 739 resolved versions.
+  - `allowBuilds` names exactly `@tailwindcss/oxide@4.1.13`, `better-sqlite3@12.4.1`,
+    `esbuild@0.25.12` and `unrs-resolver@1.12.2`. Dropping one entry makes
+    `pnpm install --frozen-lockfile` fail with `ERR_PNPM_IGNORED_BUILDS` naming it.
+  - `packageManager` pins `pnpm@12.4.2` with the sha512 hash corepack's `lastKnownGood.json`
+    records, and `engines.node` is `^24.15.0`.
+  - Existing installs run `corepack enable pnpm` once per Node installation, on Node 24.15 or a
+    later Node 24 release.
+  - `db:backup` and `db:restore` accept both `<file>` and `-- <file>`.
+  - [Setup](operations/setup.md) §6 caches the candidate's pinned pnpm before any unit stops, and
+    rolls back with `npm ci` to a commit that has only `package-lock.json`. Its preflight also
+    requires the deploy candidate to have `pnpm-lock.yaml`.
+
+  Plan §4.1, §3.3, §3.4 and §3.5, Setup, the README and `AGENTS.md` describe pnpm on that branch. In
+  throwaway clones, with an empty `COREPACK_HOME` and standard input closed, the Setup §6 blocks ran
+  verbatim in zsh and bash against shimmed units. Each pass:
+  1. cached pnpm and its platform binary during the preflight;
+  2. replaced the npm-built `node_modules` without a prompt;
+  3. passed `verify` and `build`;
+  4. rolled back to `e2d553c` with `npm ci`.
+
+  `pnpm run verify`, `pnpm run test:e2e`, `pnpm audit`, a fresh-clone install, migrate and build, and
+  the pre-commit hook passed through pnpm. Not performed: the production deploy and its live checks,
+  and this brief's archival. Both wait for the commit to reach `origin/main`.
+
 - **Decision**: the package manager moves from npm to pnpm, and
   [migrate-from-npm-to-pnpm](backlog/ready-for-agent/migrate-from-npm-to-pnpm.md) is promoted to
   `ready-for-agent/`. The user chose each term:
