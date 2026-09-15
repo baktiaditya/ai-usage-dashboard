@@ -409,9 +409,10 @@ a half-installed tree and the web unit never serves a build being replaced. On t
 machine a deploy took about half a minute, `npm run verify` included.
 
 Run the blocks in one shell, in order. Each block after the preflight starts only
-when `CANDIDATE` is set and stops at its first failing command, so pasting the whole
-procedure cannot stop the units after a failed preflight or install units from a
-failed build.
+when `CANDIDATE` is set and stops at its first failing command, and a unit that does
+not stop clears `CANDIDATE`. Pasting the whole procedure therefore cannot stop the
+units after a failed preflight, change the checkout while a unit may still be
+running, or start the timer before the new web unit answers.
 
 ```bash
 cd ~/Workspace/ai-usage-dashboard-prod
@@ -431,31 +432,50 @@ else
 fi
 
 # 2. Stop everything that reads source, dependencies or .next.
-[[ -n "$CANDIDATE" ]] \
-  && systemctl --user stop ai-usage-dashboard-collector.timer \
-  && until [[ "$(systemctl --user is-active ai-usage-dashboard-collector.service)" =~ ^(inactive|failed)$ ]]; do sleep 1; done \
-  && systemctl --user stop ai-usage-dashboard-web.service \
-  && echo "units stopped"
+if [[ -n "$CANDIDATE" ]]; then
+  if systemctl --user stop ai-usage-dashboard-collector.timer \
+    && until [[ "$(systemctl --user is-active ai-usage-dashboard-collector.service)" =~ ^(inactive|failed)$ ]]; do sleep 1; done \
+    && systemctl --user stop ai-usage-dashboard-web.service; then
+    echo "units stopped"
+  else
+    CANDIDATE=
+    echo "STOP: a unit did not stop; the checkout is unchanged"
+  fi
+fi
 
-# 3. Stage the candidate, then reinstall both units from this checkout.
-#    The installer starts the timer and restarts the web unit.
-[[ -n "$CANDIDATE" ]] \
-  && git checkout --detach "$CANDIDATE" \
-  && npm ci \
-  && npm run verify \
-  && npm run build \
-  && scripts/install-systemd.sh --install --enable --with-web \
-  && echo "deployed $(git rev-parse HEAD)"
+# 3. Stage the candidate and reinstall both units from this checkout without
+#    enabling them, then start the web unit and, once it answers, the timer.
+if [[ -n "$CANDIDATE" ]]; then
+  if git checkout --detach "$CANDIDATE" \
+    && npm ci \
+    && npm run verify \
+    && npm run build \
+    && scripts/install-systemd.sh --install --with-web \
+    && [[ -z "$(ss -ltnH 'sport = :3838')" ]] \
+    && systemctl --user enable ai-usage-dashboard-web.service \
+    && systemctl --user restart ai-usage-dashboard-web.service \
+    && curl -fsS -o /dev/null --retry 30 --retry-delay 1 --retry-connrefused http://127.0.0.1:3838/ \
+    && systemctl --user enable --now ai-usage-dashboard-collector.timer; then
+    echo "deployed $(git rev-parse HEAD)"
+  else
+    echo "STOP: the deploy failed; roll back to $PREVIOUS"
+  fi
+fi
 ```
 
-Record both SHAs from the `preflight ok` line. A `STOP` line leaves the units
-running and changes nothing; inspect a dirty checkout instead of discarding it.
-The collector is a one-shot service, so step 2 waits for a run already in progress
-rather than cutting it off; `systemctl --user stop ai-usage-dashboard-collector.service`
+Record both SHAs from the `preflight ok` line. A `STOP` line from the preflight
+leaves the units running and changes nothing; inspect a dirty checkout instead of
+discarding it. The collector is a one-shot service, so step 2 waits for a run already
+in progress rather than cutting it off; `systemctl --user stop ai-usage-dashboard-collector.service`
 ends one that must not finish. The stopped web unit reads `failed` (Next.js exits
-with status 143 on `SIGTERM`) until step 3 restarts it. Ignore the installer's closing
-"After pulling changes" hint in the production checkout; the procedure above
-replaces it.
+with status 143 on `SIGTERM`) until step 3 restarts it.
+
+Step 3 runs the installer without `--enable`, so it only renders, installs and
+reloads the units; ignore its closing "Not enabled" hint. The installer's own
+`--enable` would start the timer before checking the port and restarting the web
+unit, leaving the timer running when either fails. Step 3 instead refuses a port
+held by another process (the stopped web unit holds none), waits until the new web
+unit answers, and starts the timer last. Replace `3838` if you set `AUD_PORT`.
 
 Verify the deploy:
 
@@ -484,10 +504,15 @@ sqlite3 -readonly ~/.local/share/ai-usage-dashboard/usage.db \
 
 #### Failure
 
-If `git checkout`, `npm ci`, `npm run verify`, `npm run build` or the installer fails
-in step 3, the chain stops there and the timer and web unit stay stopped instead of
-starting on the partial candidate. Do not start them by hand; roll back to
-`$PREVIOUS` from the same shell.
+If a unit does not stop in step 2, step 3 does nothing and the checkout still holds
+the previous commit. Find the cause with `scripts/install-systemd.sh --status`, then
+start what was stopped:
+`systemctl --user start ai-usage-dashboard-web.service ai-usage-dashboard-collector.timer`.
+
+If any command in step 3 fails, the chain stops there. The timer stays stopped,
+because starting it is the last command, and the web unit is stopped or serving a
+partial candidate. Do not start units by hand; roll back to `$PREVIOUS` from the
+same shell.
 
 #### Rollback
 
@@ -512,21 +537,38 @@ else
 fi
 
 # 2. Stop everything that reads source, dependencies or .next.
-[[ -n "$KNOWN_GOOD" ]] \
-  && systemctl --user stop ai-usage-dashboard-collector.timer \
-  && until [[ "$(systemctl --user is-active ai-usage-dashboard-collector.service)" =~ ^(inactive|failed)$ ]]; do sleep 1; done \
-  && systemctl --user stop ai-usage-dashboard-web.service \
-  && echo "units stopped"
+if [[ -n "$KNOWN_GOOD" ]]; then
+  if systemctl --user stop ai-usage-dashboard-collector.timer \
+    && until [[ "$(systemctl --user is-active ai-usage-dashboard-collector.service)" =~ ^(inactive|failed)$ ]]; do sleep 1; done \
+    && systemctl --user stop ai-usage-dashboard-web.service; then
+    echo "units stopped"
+  else
+    KNOWN_GOOD=
+    echo "STOP: a unit did not stop; the checkout is unchanged"
+  fi
+fi
 
-# 3. Restore the known-good commit and reinstall both units from it.
-[[ -n "$KNOWN_GOOD" ]] \
-  && git checkout --detach "$KNOWN_GOOD" \
-  && npm ci \
-  && npm run build \
-  && scripts/install-systemd.sh --install --enable --with-web \
-  && echo "rolled back to $(git rev-parse HEAD)"
+# 3. Restore the known-good commit, reinstall both units from it, then start the
+#    web unit and, once it answers, the timer.
+if [[ -n "$KNOWN_GOOD" ]]; then
+  if git checkout --detach "$KNOWN_GOOD" \
+    && npm ci \
+    && npm run build \
+    && scripts/install-systemd.sh --install --with-web \
+    && [[ -z "$(ss -ltnH 'sport = :3838')" ]] \
+    && systemctl --user enable ai-usage-dashboard-web.service \
+    && systemctl --user restart ai-usage-dashboard-web.service \
+    && curl -fsS -o /dev/null --retry 30 --retry-delay 1 --retry-connrefused http://127.0.0.1:3838/ \
+    && systemctl --user enable --now ai-usage-dashboard-collector.timer; then
+    echo "rolled back to $(git rev-parse HEAD)"
+  else
+    echo "STOP: the rollback failed; the timer stays stopped"
+  fi
+fi
 ```
 
+A rollback `STOP` line follows the same rules as a deploy failure: after step 2,
+nothing changed; after step 3, fix the reported cause and run the rollback again.
 Source, dependencies, build and rendered units then all come from the same
 known-good commit. Verify it as above, expecting `HEAD` to equal `$KNOWN_GOOD`.
 Rollback skips `npm run verify` because that commit passed it when it was deployed.
