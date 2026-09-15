@@ -90,6 +90,6 @@ Keep this hierarchy intact:
   is the current truth for versions and gate status.
 - `ai-usage-dashboard-implementation-prompt.md` describes the build as future work. The
   build is done — the prompt is a historical record, not an instruction to re-run.
-- DeepSeek and OpenRouter cards render `unavailable` until keys are provisioned; that is
-  intended behavior, not a fault. See the
-  `docs/backlog/archive/provision-provider-credentials.md` brief.
+- DeepSeek and OpenRouter cards render `unavailable` until keys are saved in the dashboard's
+  Settings dialog; that is intended behavior, not a fault. Keys live in the database (plan §3.5),
+  never in `collector.env`. See `docs/operations/setup.md` §4.

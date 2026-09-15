@@ -139,6 +139,11 @@ Fixtures are synthetic and marked as such in their `_fixture.note`.
 **Gate closed** by provisioning the key in the collector environment file
 (`docs/operations/setup.md` §4) and running `npm run test:live`.
 
+> **Note (2026-09-15).** Keys now come from the dashboard's Settings dialog and are stored in the
+> database ([plan §3.5](../plan/ai-usage-dashboard-implementation-plan.md)); the environment variable
+> is no longer read. The gate evidence above stays as recorded. It was gathered with the key in
+> `collector.env` and has not been re-run with a key saved in Settings.
+
 ### OpenRouter — PASSED (live)
 
 Passed live on 2026-09-14 with a Management key in `collector.env`: `npm run test:live`
@@ -166,6 +171,11 @@ Two facts drove implementation decisions:
 
 **Gate closed** by provisioning a Management key in the collector environment file and
 running `npm run test:live`.
+
+> **Note (2026-09-15).** Keys now come from the dashboard's Settings dialog and are stored in the
+> database ([plan §3.5](../plan/ai-usage-dashboard-implementation-plan.md)); the environment variable
+> is no longer read. The gate evidence above stays as recorded. It was gathered with the key in
+> `collector.env` and has not been re-run with a key saved in Settings.
 
 ## Decisions fixed at M0
 

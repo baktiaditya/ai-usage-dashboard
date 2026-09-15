@@ -43,12 +43,13 @@ type/test step but still get formatted and linted for message shape.
 
 Nothing runtime-related is stored inside the repository.
 
-| What                  | Default path                                                     | Mode                   |
-| --------------------- | ---------------------------------------------------------------- | ---------------------- |
-| Database              | `~/.local/share/ai-usage-dashboard/usage.db`                     | `0600`                 |
-| Claude spool          | `~/.local/share/ai-usage-dashboard/spool/claude-statusline.json` | `0600`                 |
-| Data directory        | `~/.local/share/ai-usage-dashboard/`                             | `0700`                 |
-| Collector credentials | `~/.config/ai-usage-dashboard/collector.env`                     | `0600` (you create it) |
+| What              | Default path                                                     | Mode                   |
+| ----------------- | ---------------------------------------------------------------- | ---------------------- |
+| Database          | `~/.local/share/ai-usage-dashboard/usage.db`                     | `0600`                 |
+| Claude spool      | `~/.local/share/ai-usage-dashboard/spool/claude-statusline.json` | `0600`                 |
+| Data directory    | `~/.local/share/ai-usage-dashboard/`                             | `0700`                 |
+| Provider keys     | inside the database, saved from Settings (§4)                    | `0600` (the database)  |
+| Optional settings | `~/.config/ai-usage-dashboard/collector.env`                     | `0600` (you create it) |
 
 Override the base directory with `AUD_DATA_DIR`, using an absolute path or `~/…`.
 A relative path is rejected at startup, because each process would resolve it
@@ -67,6 +68,9 @@ npm run db:backup -- ~/usage-copy.db   # or a file of your choosing
 
 A backup runs while the collector and the dashboard keep writing, and produces one verified `0600`
 file. A backup inside the data directory does not survive losing the disk, so copy it elsewhere too.
+
+A backup contains the DeepSeek and OpenRouter keys saved in Settings (§4), in plaintext, as the
+database holds them. Keep every copy owner-only, and delete copies you no longer need.
 
 To restore, stop everything that has the database open, restore, and start it again. Leave the web
 unit out of both `systemctl` lines if you did not install it.
@@ -179,30 +183,44 @@ untested.
 
 ## 4. DeepSeek and OpenRouter
 
-Both read a key from the collector's environment. A user systemd service does
-**not** inherit your shell environment, so put them in a file:
+Both need a key, and both keys are entered in the dashboard. Open it, select
+**Settings** next to **Reload view**, paste the **DeepSeek API Key** and the
+**OpenRouter Management Key**, and select **Save**. A field left empty keeps its
+saved key. Surrounding spaces and a trailing newline are removed; a key with a
+space inside it is refused.
 
-```bash
-mkdir -p ~/.config/ai-usage-dashboard
-install -m 0600 /dev/null ~/.config/ai-usage-dashboard/collector.env
-$EDITOR ~/.config/ai-usage-dashboard/collector.env
-```
+The keys are stored in the dashboard's SQLite database, in plaintext, protected by
+the database's owner-only (`0600`) mode, so `npm run db:backup` files contain them
+too (§1). Every collection path reads them from there at the start of each run:
+the systemd collector, `npm run collect`, and a card's **Refresh**. A saved key is
+used from the next collection, and **Refresh** on a card collects now. Saving does
+not check the key with the provider: a rejected key shows up on the next
+collection as `auth_rejected`, or as `insufficient_scope` for an OpenRouter
+inference key.
 
-```ini
-DEEPSEEK_API_KEY=...
-OPENROUTER_MANAGEMENT_KEY=...
-```
+The dashboard never shows a saved key again. For each provider it receives only
+whether a key is saved, its last four characters (for keys of at least 16
+characters), and when it was saved. **Remove** deletes the dashboard's copy at
+once. Neither action creates, changes, or revokes anything at the provider. The
+settings API requires a same-origin request, reads included.
 
-Every entry point loads this file itself: the systemd collector, `npm run
-collect`, `npm run test:live`, and the dashboard's manual refresh. A variable
-already set takes precedence over the file — an export in your shell, or a value
-the installer baked into the unit (§5). Set `AUD_ENV_FILE` to use a different
-path.
+The environment variables `DEEPSEEK_API_KEY` and `OPENROUTER_MANAGEMENT_KEY` are
+no longer read from `collector.env`, your shell, or a repository `.env.local`.
+While either is still set, `npm run collect` logs one warning that names the
+variables and never their values.
 
-Do not rely on a `.env.local` in the repository for these keys. Next.js loads
-that file into the dashboard server only, so a manual refresh succeeds while
-the systemd collector reports `not_configured` every interval, and the cards
-flip back to `unavailable`.
+### Upgrading from keys in `collector.env`
+
+After an upgrade from a build that read keys from the environment, the DeepSeek
+and OpenRouter cards read `unavailable` until the keys are saved in Settings:
+
+1. Deploy the new build (§6).
+2. Open the dashboard, select **Settings**, and save both keys.
+3. Select **Refresh** on the DeepSeek and OpenRouter cards. Both should turn
+   `Healthy`.
+4. Delete the `DEEPSEEK_API_KEY` and `OPENROUTER_MANAGEMENT_KEY` lines from
+   `~/.config/ai-usage-dashboard/collector.env` and from any repository
+   `.env.local`. The file may keep its `AUD_*` settings.
 
 ### OpenRouter needs a _Management_ key
 
@@ -210,10 +228,11 @@ flip back to `unavailable`.
 management key at <https://openrouter.ai/settings/management-keys>.
 
 > A management key can create, modify and delete your API keys. Treat it as a
-> high-impact administrative credential: keep the file `0600`, use a key
-> dedicated to this dashboard, and rotate it if it is ever exposed. This
-> application only ever issues `GET` requests with it, and never sends it to the
-> browser — but the key itself is not read-only.
+> high-impact administrative credential: use a key dedicated to this dashboard,
+> keep the database and its backups owner-only, and rotate the key if it is ever
+> exposed. This application only ever issues `GET` requests with it, and never
+> sends it to the browser (Settings receives at most its last four characters) —
+> but the key itself is not read-only.
 
 ### What each provider reports
 
@@ -325,9 +344,10 @@ development variables set it:
   `$XDG_DATA_HOME/ai-usage-dashboard-dev` when that is absolute, and never the
   production `AUD_DATA_DIR`, even when `collector.env` sets it;
 - refuses manual refresh with `409 refresh_disabled` before the rate limiter, the
-  database, or any provider is touched. The card shows that message. Next.js
-  sees empty DeepSeek and OpenRouter keys even when `collector.env`, your shell,
-  or `.env.local` holds real ones.
+  database, or any provider is touched. The card shows that message;
+- reads DeepSeek and OpenRouter keys only from its own database. A key saved in
+  **Settings** there lands in the development database, never the production
+  one, and saving or removing a key works whatever the refresh setting.
 
 The development database starts empty, and production data is never copied into
 it. To see every card state:
@@ -336,8 +356,8 @@ it. To see every card state:
 npm run seed:dev     # replaces the seeded runs in the development database only
 ```
 
-To let manual refresh collect for real, using the keys your shell and
-`collector.env` resolve and writing only the development database:
+To let manual refresh collect for real, using the keys saved in the development
+server's Settings and writing only the development database:
 
 ```bash
 AUD_DEV_LIVE_REFRESH=1 npm run dev
@@ -620,9 +640,7 @@ Every value has a safe default; all are optional.
 | `AUD_RETENTION_DAYS`           | `90`                                         |                                                                                    |
 | `AUD_COLLECT_INTERVAL_MINUTES` | `5`                                          | also drives the freshness budget                                                   |
 | `AUD_LOG_LEVEL`                | `info`                                       | `debug` \| `info` \| `warn` \| `error`                                             |
-| `AUD_ENV_FILE`                 | `~/.config/ai-usage-dashboard/collector.env` | credential file, absolute or `~/…`; see §4                                         |
-| `DEEPSEEK_API_KEY`             | —                                            | absent ⇒ `unavailable`                                                             |
-| `OPENROUTER_MANAGEMENT_KEY`    | —                                            | absent ⇒ `unavailable`                                                             |
+| `AUD_ENV_FILE`                 | `~/.config/ai-usage-dashboard/collector.env` | optional `AUD_*` settings file, absolute or `~/…`; never keys (§4)                 |
 
 ### Thresholds
 
@@ -696,11 +714,12 @@ negative usage.
 ```bash
 npm run verify          # format + lint + typecheck + unit + integration
 npm run test:e2e        # browser smoke, desktop and mobile
-npm run test:live       # opt-in; skips any gate whose credential is absent
+npm run test:live       # opt-in; skips any gate whose key is not saved
 ```
 
-`npm run test:live` talks to the real CLI and real endpoints. It asserts shape
-and reachability only, prints no observed value, and never writes a fixture.
+`npm run test:live` talks to the real CLI and real endpoints, with the keys saved
+in the database `AUD_DATA_DIR` names, opened read-only. It asserts shape and
+reachability only, prints no observed value or key, and never writes a fixture.
 
 Confirm the listener:
 
@@ -723,9 +742,10 @@ the bridge is working. This account or plan does not publish quota.
 **OpenRouter shows `insufficient_scope`** — you used an inference key. The
 credits endpoint needs a Management key.
 
-**DeepSeek or OpenRouter shows `not_configured`** — the collector did not see
-the key. A user systemd service does not inherit your shell environment; put it
-in `~/.config/ai-usage-dashboard/collector.env`.
+**DeepSeek or OpenRouter shows `not_configured`** — no key is saved in the
+database this dashboard reads. Save it in **Settings** (§4). A key in
+`collector.env`, your shell, or `.env.local` is ignored, and a key saved on
+`npm run dev` lands only in the development database.
 
 **The timer runs but nothing updates** — check that the unit's `AUD_DATA_DIR`
 matches its `ReadWritePaths` and the directory the dashboard reads (re-run the
@@ -753,11 +773,15 @@ native module. Approve it with `npm approve-scripts better-sqlite3`.
 
 - read `~/.codex/auth.json`, extract an OAuth token, or call a provider backend
   with an extracted credential;
-- store a raw provider payload, an API key, an email, an account ID, or the full
-  status-line input;
-- send any credential to the browser;
+- store a raw provider payload, an email, an account ID, or the full status-line
+  input. The only keys it stores are the DeepSeek and OpenRouter keys saved in
+  Settings, and only in its database;
+- send a full DeepSeek or OpenRouter key, or any other credential, to the
+  browser. Settings receives at most a key's last four characters;
 - bind to anything but loopback;
-- change your plan, buy credit, consume a reset credit, create or modify an API
-  key, or take any other billing action — it only ever issues reads;
+- change your plan, buy credit, consume a reset credit, create, modify, or delete
+  a key at the provider, or take any other billing action — it only ever issues
+  reads to providers. Saving or removing a key in Settings changes only the
+  dashboard's local copy;
 - convert subscription quota into a currency estimate, or mix currencies;
 - claim DeepSeek usage from a balance change.

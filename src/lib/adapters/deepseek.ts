@@ -131,7 +131,7 @@ export function createDeepseekAdapter(
     timeoutMs,
     async collect(signal: AbortSignal, context?: CollectContext): Promise<CreditSnapshot> {
       if (!options.apiKey) {
-        throw new CollectionError('not_configured', 'DEEPSEEK_API_KEY is not set');
+        throw new CollectionError('not_configured', 'DeepSeek API key is not saved in Settings');
       }
       const { value } = await withBoundedRetry(
         () =>

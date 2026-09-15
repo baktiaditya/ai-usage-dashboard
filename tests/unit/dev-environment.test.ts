@@ -2,14 +2,12 @@ import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { ConfigError, loadConfig } from '@/lib/config';
+import { ConfigError, RETIRED_CREDENTIAL_ENV_VARS, loadConfig } from '@/lib/config';
 import type { EnvLike } from '@/lib/config';
 import { resolveDevEnvironment } from '@/lib/dev-environment';
 
-// Fake credentials. Assertions compare only unset/empty/set state, so a failure
-// message never carries a credential.
-const DEEPSEEK = 'sk-fake-deepseek-dev-environment';
-const OPENROUTER = 'sk-or-fake-dev-environment';
+// A fake value, standing in for anything collector.env may hold.
+const FILE_VALUE = 'fake-collector-env-value-dev-environment';
 
 let dir: string;
 beforeEach(() => {
@@ -34,9 +32,6 @@ function writeEnvFile(contents: string): string {
   writeFileSync(path, contents, { mode: 0o600 });
   return path;
 }
-
-const state = (value: string | undefined) =>
-  value === undefined ? 'unset' : value === '' ? 'empty' : 'set';
 
 function configError(resolve: () => unknown): string {
   try {
@@ -93,13 +88,13 @@ describe('development defaults', () => {
 
   it('does not mutate the environment it is given', () => {
     const source = base({
-      AUD_ENV_FILE: writeEnvFile(`AUD_PORT=4000\nDEEPSEEK_API_KEY=${DEEPSEEK}\n`),
+      AUD_ENV_FILE: writeEnvFile(`AUD_PORT=4000\nAUD_LOG_LEVEL=debug\n`),
       AUD_DEV_PORT: '4100',
     });
     const before = { ...source };
     resolveDevEnvironment(source);
     expect(source).toEqual(before);
-    expect('DEEPSEEK_API_KEY' in source).toBe(false);
+    expect('AUD_LOG_LEVEL' in source).toBe(false);
   });
 });
 
@@ -121,37 +116,11 @@ describe('environment-file precedence', () => {
   });
 });
 
-describe('credential isolation', () => {
-  it('gives the default child empty credentials from the parent shell', () => {
-    const dev = resolveDevEnvironment(
-      base({ DEEPSEEK_API_KEY: DEEPSEEK, OPENROUTER_MANAGEMENT_KEY: OPENROUTER }),
-    );
-    expect(state(dev.env['DEEPSEEK_API_KEY'])).toBe('empty');
-    expect(state(dev.env['OPENROUTER_MANAGEMENT_KEY'])).toBe('empty');
-  });
-
-  it('gives the default child empty credentials from collector.env', () => {
-    const file = writeEnvFile(
-      `DEEPSEEK_API_KEY=${DEEPSEEK}\nOPENROUTER_MANAGEMENT_KEY=${OPENROUTER}\n`,
-    );
-    const dev = resolveDevEnvironment(base({ AUD_ENV_FILE: file }));
-    expect(state(dev.env['DEEPSEEK_API_KEY'])).toBe('empty');
-    expect(state(dev.env['OPENROUTER_MANAGEMENT_KEY'])).toBe('empty');
-    const child = loadConfig(dev.env);
-    expect(child.credentials.deepseekApiKey === null).toBe(true);
-    expect(child.credentials.openrouterManagementKey === null).toBe(true);
-  });
-
-  it('preserves resolved credentials when live refresh is opted into', () => {
-    const file = writeEnvFile(`OPENROUTER_MANAGEMENT_KEY=${OPENROUTER}\nDEEPSEEK_API_KEY=other\n`);
-    const dev = resolveDevEnvironment(
-      base({ AUD_ENV_FILE: file, AUD_DEV_LIVE_REFRESH: '1', DEEPSEEK_API_KEY: DEEPSEEK }),
-    );
+describe('refresh policy', () => {
+  it('enables refresh in the child only with AUD_DEV_LIVE_REFRESH=1', () => {
+    const dev = resolveDevEnvironment(base({ AUD_DEV_LIVE_REFRESH: '1' }));
     expect(dev.liveRefresh).toBe(true);
     expect(dev.env['AUD_REFRESH_ENABLED']).toBe('1');
-    expect(state(dev.env['OPENROUTER_MANAGEMENT_KEY'])).toBe('set');
-    // The parent's value wins over the file's, as everywhere else.
-    expect(dev.env['DEEPSEEK_API_KEY'] === DEEPSEEK).toBe(true);
     expect(loadConfig(dev.env).refreshEnabled).toBe(true);
   });
 
@@ -164,6 +133,19 @@ describe('credential isolation', () => {
         'AUD_REFRESH_ENABLED'
       ],
     ).toBe('1');
+  });
+
+  it('passes the retired provider key variables through untouched, in either mode', () => {
+    for (const live of ['0', '1']) {
+      const parent = base({
+        AUD_DEV_LIVE_REFRESH: live,
+        ...Object.fromEntries(RETIRED_CREDENTIAL_ENV_VARS.map((name) => [name, `fake-${name}`])),
+      });
+      const dev = resolveDevEnvironment(parent);
+      for (const name of RETIRED_CREDENTIAL_ENV_VARS) {
+        expect(dev.env[name], `${name} with AUD_DEV_LIVE_REFRESH=${live}`).toBe(parent[name]);
+      }
+    }
   });
 });
 
@@ -320,8 +302,8 @@ describe('validation', () => {
     );
   });
 
-  it('never puts a credential in a configuration error', () => {
-    const file = writeEnvFile(`OPENROUTER_MANAGEMENT_KEY=${OPENROUTER}\n`);
+  it('never puts an environment-file value in a configuration error', () => {
+    const file = writeEnvFile(`UNRELATED_TOKEN=${FILE_VALUE}\n`);
     for (const invalid of [
       { AUD_DEV_PORT: 'abc' },
       { AUD_DEV_PORT: '3838' },
@@ -331,9 +313,9 @@ describe('validation', () => {
       { AUD_THRESHOLDS: '{' },
     ]) {
       const message = configError(() =>
-        resolveDevEnvironment(base({ AUD_ENV_FILE: file, DEEPSEEK_API_KEY: DEEPSEEK, ...invalid })),
+        resolveDevEnvironment(base({ AUD_ENV_FILE: file, ...invalid })),
       );
-      expect(message.includes(DEEPSEEK) || message.includes(OPENROUTER)).toBe(false);
+      expect(message.includes(FILE_VALUE)).toBe(false);
     }
   });
 });

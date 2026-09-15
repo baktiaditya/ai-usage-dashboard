@@ -9,15 +9,10 @@ const WRAPPER = join(process.cwd(), 'scripts', 'next.ts');
 const TSX = join(process.cwd(), 'node_modules', 'tsx', 'dist', 'cli.mjs');
 const RECORDER = pathToFileURL(join(process.cwd(), 'tests', 'helpers', 'spawn-recorder.mjs')).href;
 
-// Fake credentials; the recorder reports only whether each is unset, empty, or set.
-const DEEPSEEK = 'sk-fake-deepseek-next-wrapper';
-const OPENROUTER = 'sk-or-fake-next-wrapper';
-
 interface SpawnRecord {
   readonly command: string;
   readonly args: readonly string[];
   readonly env: Record<string, string | null>;
-  readonly credentials: Record<string, 'unset' | 'empty' | 'set'>;
 }
 
 let home: string;
@@ -43,13 +38,7 @@ function launch(mode: string, extra: Record<string, string> = {}, flags: string[
   const record = join(home, 'spawn.json');
   const env: Record<string, string | undefined> = {};
   for (const [key, value] of Object.entries(process.env)) {
-    if (
-      !key.startsWith('AUD_') &&
-      key !== 'DEEPSEEK_API_KEY' &&
-      key !== 'OPENROUTER_MANAGEMENT_KEY'
-    ) {
-      env[key] = value;
-    }
+    if (!key.startsWith('AUD_')) env[key] = value;
   }
   Object.assign(env, {
     HOME: home,
@@ -99,10 +88,7 @@ describe('the Next.js wrapper keeps the validated bind address', () => {
 
 describe('npm run start keeps its production contract', () => {
   it('binds AUD_HOST/AUD_PORT and passes the environment through untouched', () => {
-    const r = launch('start', { AUD_PORT: '4400', DEEPSEEK_API_KEY: DEEPSEEK }, [
-      '--keepAliveTimeout',
-      '5',
-    ]);
+    const r = launch('start', { AUD_PORT: '4400' }, ['--keepAliveTimeout', '5']);
     expect(r.status).toBe(0);
     expect(r.spawned?.args.slice(1)).toEqual([
       'start',
@@ -119,7 +105,6 @@ describe('npm run start keeps its production contract', () => {
       AUD_DATA_DIR: null,
       AUD_REFRESH_ENABLED: null,
     });
-    expect(r.spawned?.credentials['DEEPSEEK_API_KEY']).toBe('set');
   });
 
   it('ignores development settings, including malformed or colliding ones', () => {
@@ -144,12 +129,10 @@ describe('npm run start keeps its production contract', () => {
 });
 
 describe('npm run dev is isolated from production', () => {
-  it('defaults to port 3839, its own data directory, and no credentials', () => {
+  it('defaults to port 3839 and its own data directory', () => {
     const production = join(home, 'production');
-    const file = writeEnvFile(
-      `AUD_DATA_DIR=${production}\nDEEPSEEK_API_KEY=${DEEPSEEK}\nOPENROUTER_MANAGEMENT_KEY=${OPENROUTER}\n`,
-    );
-    const r = launch('dev', { AUD_ENV_FILE: file, DEEPSEEK_API_KEY: DEEPSEEK });
+    const file = writeEnvFile(`AUD_DATA_DIR=${production}\n`);
+    const r = launch('dev', { AUD_ENV_FILE: file });
     expect(r.status).toBe(0);
     expect(r.spawned?.args.slice(1)).toEqual(['dev', '--hostname', '127.0.0.1', '--port', '3839']);
     expect(r.spawned?.env).toEqual({
@@ -158,15 +141,10 @@ describe('npm run dev is isolated from production', () => {
       AUD_DATA_DIR: join(home, 'share', 'ai-usage-dashboard-dev'),
       AUD_REFRESH_ENABLED: '0',
     });
-    expect(r.spawned?.credentials).toEqual({
-      DEEPSEEK_API_KEY: 'empty',
-      OPENROUTER_MANAGEMENT_KEY: 'empty',
-    });
-    expect(r.stdout.includes(DEEPSEEK) || r.stderr.includes(DEEPSEEK)).toBe(false);
   });
 
   it('applies AUD_DEV_PORT, AUD_DEV_DATA_DIR, and the live-refresh opt-in', () => {
-    const file = writeEnvFile(`OPENROUTER_MANAGEMENT_KEY=${OPENROUTER}\n`);
+    const file = writeEnvFile(`AUD_LOG_LEVEL=warn\n`);
     const r = launch(
       'dev',
       {
@@ -174,7 +152,6 @@ describe('npm run dev is isolated from production', () => {
         AUD_DEV_PORT: '4500',
         AUD_DEV_DATA_DIR: join(home, 'dev-data'),
         AUD_DEV_LIVE_REFRESH: '1',
-        DEEPSEEK_API_KEY: DEEPSEEK,
       },
       ['--turbopack'],
     );
@@ -191,10 +168,6 @@ describe('npm run dev is isolated from production', () => {
       AUD_PORT: '4500',
       AUD_DATA_DIR: join(home, 'dev-data'),
       AUD_REFRESH_ENABLED: '1',
-    });
-    expect(r.spawned?.credentials).toEqual({
-      DEEPSEEK_API_KEY: 'set',
-      OPENROUTER_MANAGEMENT_KEY: 'set',
     });
   });
 
@@ -230,11 +203,10 @@ describe('npm run dev is isolated from production', () => {
     ['AUD_DEV_DATA_DIR', 'relative/dir'],
     ['AUD_DEV_LIVE_REFRESH', 'yes'],
     ['AUD_DEV_LIVE_REFRESH', ''],
-  ])('exits 2 on an invalid %s without spawning or leaking a credential', (name, value) => {
-    const r = launch('dev', { [name]: value, DEEPSEEK_API_KEY: DEEPSEEK });
+  ])('exits 2 on an invalid %s without spawning', (name, value) => {
+    const r = launch('dev', { [name]: value });
     expect(r.status).toBe(2);
     expect(r.stderr).toMatch(new RegExp(`^configuration error: ConfigError: ${name}`));
-    expect(r.stderr.includes(DEEPSEEK)).toBe(false);
     expect(r.spawned).toBeNull();
   });
 });

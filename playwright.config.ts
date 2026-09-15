@@ -40,11 +40,6 @@ export default defineConfig({
       AUD_DATA_DIR: DATA_DIR,
       // Never merge a provisioned ~/.config/ai-usage-dashboard/collector.env.
       AUD_ENV_FILE: join(DATA_DIR, 'no-such-collector.env'),
-      // `next start` also loads a repository `.env.local`, and @next/env fills a
-      // variable only while it is unset. Blank keys keep a refresh from reaching
-      // a real upstream and turning a seeded card healthy.
-      DEEPSEEK_API_KEY: '',
-      OPENROUTER_MANAGEMENT_KEY: '',
       AUD_PORT: String(PORT),
       AUD_TIMEZONE: 'Asia/Jakarta',
       AUD_LOG_LEVEL: 'warn',

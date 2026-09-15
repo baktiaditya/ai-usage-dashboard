@@ -24,6 +24,29 @@ export function isProvider(v: string): v is Provider {
   return (PROVIDERS as readonly string[]).includes(v);
 }
 
+/**
+ * Providers whose key is saved in dashboard Settings (plan §3.5). Codex and
+ * Claude authenticate through their own CLIs and have no key here.
+ */
+export const CREDENTIAL_PROVIDERS = ['deepseek', 'openrouter'] as const;
+export type CredentialProvider = (typeof CREDENTIAL_PROVIDERS)[number];
+
+export function isCredentialProvider(value: string): value is CredentialProvider {
+  return (CREDENTIAL_PROVIDERS as readonly string[]).includes(value);
+}
+
+/**
+ * What the browser may learn about a saved key. It never carries the key: only
+ * whether one is saved, its last four characters when the key is long enough
+ * for that to reveal little, and when it was saved.
+ */
+export interface CredentialStatus {
+  readonly provider: CredentialProvider;
+  readonly configured: boolean;
+  readonly hint: string | null;
+  readonly updatedAt: string | null;
+}
+
 export const PROVIDER_LABELS: Record<Provider, string> = {
   codex: 'Codex',
   claude: 'Claude Code',
