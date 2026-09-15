@@ -248,7 +248,7 @@ function SettingsForm({
   }
 
   return (
-    <form onSubmit={(event) => void save(event)} noValidate className="flex flex-col gap-4 p-5">
+    <form onSubmit={(event) => void save(event)} noValidate className="flex flex-col gap-5 p-5">
       <div className="flex flex-col gap-1">
         <h2 id={headingId} className="text-base font-semibold">
           Settings
@@ -259,19 +259,13 @@ function SettingsForm({
         </p>
       </div>
 
-      {loading ? (
-        <p className="text-muted-foreground text-xs" data-testid="settings-loading">
-          Loading saved keys…
-        </p>
-      ) : null}
-
       {CREDENTIAL_PROVIDERS.map((provider) => {
         const status = statuses[provider];
         const inputId = `${headingId}-${provider}`;
         const helpId = `${inputId}-help`;
         const statusId = `${inputId}-status`;
         return (
-          <div key={provider} className="flex flex-col gap-1.5">
+          <div key={provider} className="flex flex-col gap-2">
             <label htmlFor={inputId} className="text-sm font-medium">
               {FIELD_LABELS[provider]}
             </label>
@@ -343,18 +337,26 @@ function SettingsForm({
         </p>
       ) : null}
 
-      <div className="flex justify-end gap-2">
-        <button type="button" onClick={onClose} data-testid="settings-close" className={BUTTON}>
-          Cancel
-        </button>
-        <button
-          type="submit"
-          disabled={pending || filled.length === 0}
-          data-testid="settings-save"
-          className={cn(BUTTON, 'bg-foreground text-background hover:bg-foreground/90')}
-        >
-          Save
-        </button>
+      <div className="flex items-center gap-2">
+        {loading ? (
+          <p className="text-muted-foreground text-xs" data-testid="settings-loading">
+            Loading saved keys…
+          </p>
+        ) : null}
+
+        <div className="ml-auto flex gap-2">
+          <button type="button" onClick={onClose} data-testid="settings-close" className={BUTTON}>
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={pending || filled.length === 0}
+            data-testid="settings-save"
+            className={cn(BUTTON, 'bg-foreground text-background hover:bg-foreground/90')}
+          >
+            Save
+          </button>
+        </div>
       </div>
     </form>
   );
