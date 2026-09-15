@@ -10,7 +10,9 @@
   `pnpm install --frozen-lockfile` through corepack; this supersedes "CI runs `npm run verify`" in
   the entry below. The brief's Testing and Acceptance Criteria name pnpm commands, and the portable
   hook `PATH` must still find corepack's `pnpm` shim. The readiness evidence, gathered with npm,
-  stays as recorded.
+  stays as recorded. The migration narrows `engines.node` to `^24.15.0`, so the brief no longer
+  tests Node 22.12: it adds `.nvmrc` for Node 24, CI runs on Node 24 only, and widening to Node 22
+  or 26 is a later decision once CI exists.
 
 - **Decision**: the open-source release gates are closed, and
   [prepare-open-source-release](backlog/ready-for-agent/prepare-open-source-release.md) moves to

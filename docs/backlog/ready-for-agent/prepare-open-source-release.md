@@ -86,7 +86,8 @@ The assessment found these gaps:
 7. **Smaller items.**
    - The README credits "Node 24's JSON source-text access", while `engines.node` in
      `package.json` is `>=22.12.0` and there is no `.nvmrc`. The plan and M0 verified only Node
-     24.19.0, so whether 22.12 works is unverified.
+     24.19.0. The pnpm migration narrows `engines.node` to `^24.15.0`, because corepack 0.35.0
+     supports only `^22.22.2 || ^24.15.0 || >=26.0.0` and Node 25 no longer bundles it.
    - `.husky/pre-commit` and `.husky/commit-msg` prepend an nvm-specific `PATH`.
    - The README has no screenshot. `pnpm run seed:demo` can fill a database that shows no real
      account data.
@@ -121,6 +122,9 @@ The user closed every gate on 2026-09-15, recorded as a `Decision` in [log](../.
   That migration is a preceding change and lands first. Before starting, confirm that `main` has
   `pnpm-lock.yaml` and no `package-lock.json`; otherwise stop and report that the migration has not
   landed.
+- **Supported Node:** `^24.15.0`, as the pnpm migration sets it. This brief keeps that range: CI
+  runs on Node 24 only, and widening to Node 22.22.2 or later, or to Node 26, is a later decision
+  once CI exists. Node 25 stays unsupported.
 
 After delivery, outside agent scope: the user changes the repository's visibility to public. The
 effect is hard to reverse once forks, caches, or indexes exist.
@@ -142,7 +146,7 @@ effect is hard to reverse once forks, caches, or indexes exist.
   reporting through GitHub security advisories, and how saved keys are stored, backed up, and
   exposed. GitHub issue templates.
 - A GitHub Actions workflow running `corepack enable pnpm`, `pnpm install --frozen-lockfile`, and
-  `pnpm run verify` on pull requests and on pushes to `main`.
+  `pnpm run verify` on Node 24, on pull requests and on pushes to `main`.
 - Moving the production-checkout runbook into `docs/operations/production-checkout.md`, and adding
   the notes to the implementation prompt and the Setup §4 upgrade steps.
 - A portable `PATH` line in `.husky/pre-commit` and `.husky/commit-msg`.
@@ -157,6 +161,7 @@ effect is hard to reverse once forks, caches, or indexes exist.
 - Rewriting git history or changing the commit author email.
 - Running `pnpm run test:e2e` in CI.
 - The npm to pnpm migration itself, which lands before this brief.
+- Supporting Node 22, 25, or 26, or widening `engines.node` beyond `^24.15.0`.
 - Removing the Setup §4 upgrade steps.
 - The Tailscale brief itself.
 - Changing the repository's visibility.
@@ -180,8 +185,9 @@ effect is hard to reverse once forks, caches, or indexes exist.
 3. Hygiene: replace maintainer paths in `docs/log.md` and the two archived briefs with a
    placeholder such as `~/Workspace/ai-usage-dashboard-prod`, logged as a redaction rather than a
    decision change.
-4. Node version: run the suite under Node 22.12. If it passes, add both versions to the CI matrix.
-   Otherwise raise `engines.node` to `>=24`. Then add `.nvmrc` and correct the README sentence.
+4. Node version: keep `engines.node` at `^24.15.0`, add `.nvmrc` containing `24`, set the CI
+   workflow's Node version from `.nvmrc`, and make the README name Node 24.15 or a later Node 24
+   release beside the JSON source-text sentence. Do not test or add other Node lines.
 5. README: platform line, non-affiliation and interface-stability note, and a screenshot captured
    from `pnpm run seed:demo` data.
 6. Contributor surface: `CONTRIBUTING.md`, `SECURITY.md`, `.github/ISSUE_TEMPLATE/`, and
@@ -205,26 +211,26 @@ effect is hard to reverse once forks, caches, or indexes exist.
 
 ## Files Touched
 
-| Path                                                          | Change                                               |
-| ------------------------------------------------------------- | ---------------------------------------------------- |
-| `LICENSE`, `THIRD_PARTY_NOTICES.md`                           | New                                                  |
-| `package.json`, `.nvmrc`                                      | License and repository metadata; Node version        |
-| `README.md`                                                   | Platform, Node, disclaimer, screenshot, policy links |
-| `CONTRIBUTING.md`, `SECURITY.md`, `CHANGELOG.md`              | New                                                  |
-| `.github/workflows/ci.yml`, `.github/ISSUE_TEMPLATE/`         | New                                                  |
-| `.husky/pre-commit`, `.husky/commit-msg`                      | Portable `PATH`                                      |
-| `src/lib/config.ts`, `tests/unit/config-time.test.ts`         | System timezone default with `UTC` fallback          |
-| `.env.example`                                                | Timezone comment                                     |
-| `docs/plan/ai-usage-dashboard-implementation-plan.md`         | Remove the §3.2 pending note                         |
-| `docs/plan/ai-usage-dashboard-implementation-prompt.md`       | Historical-record note                               |
-| `docs/operations/setup.md`                                    | §4 upgrade note; §6 runbook pointer; §7 timezone row |
-| `docs/operations/production-checkout.md`                      | New; runbook moved from Setup §6, HTTPS clone URL    |
-| `docs/operations/index.md`                                    | Link the runbook                                     |
-| `.agents/skills/okf-sync/references/repo-sync-map.md`         | Add the runbook                                      |
-| `docs/log.md`                                                 | Path redaction; delivery entry                       |
-| `docs/backlog/archive/separate-production-checkout.md`        | Path redaction                                       |
-| `docs/backlog/archive/store-provider-keys-in-settings.md`     | Path redaction                                       |
-| `docs/backlog/ready-for-agent/prepare-open-source-release.md` | `git mv` to `archive/` on delivery                   |
+| Path                                                          | Change                                                |
+| ------------------------------------------------------------- | ----------------------------------------------------- |
+| `LICENSE`, `THIRD_PARTY_NOTICES.md`                           | New                                                   |
+| `package.json`, `.nvmrc`                                      | License and repository metadata; `.nvmrc` for Node 24 |
+| `README.md`                                                   | Platform, Node, disclaimer, screenshot, policy links  |
+| `CONTRIBUTING.md`, `SECURITY.md`, `CHANGELOG.md`              | New                                                   |
+| `.github/workflows/ci.yml`, `.github/ISSUE_TEMPLATE/`         | New                                                   |
+| `.husky/pre-commit`, `.husky/commit-msg`                      | Portable `PATH`                                       |
+| `src/lib/config.ts`, `tests/unit/config-time.test.ts`         | System timezone default with `UTC` fallback           |
+| `.env.example`                                                | Timezone comment                                      |
+| `docs/plan/ai-usage-dashboard-implementation-plan.md`         | Remove the §3.2 pending note                          |
+| `docs/plan/ai-usage-dashboard-implementation-prompt.md`       | Historical-record note                                |
+| `docs/operations/setup.md`                                    | §4 upgrade note; §6 runbook pointer; §7 timezone row  |
+| `docs/operations/production-checkout.md`                      | New; runbook moved from Setup §6, HTTPS clone URL     |
+| `docs/operations/index.md`                                    | Link the runbook                                      |
+| `.agents/skills/okf-sync/references/repo-sync-map.md`         | Add the runbook                                       |
+| `docs/log.md`                                                 | Path redaction; delivery entry                        |
+| `docs/backlog/archive/separate-production-checkout.md`        | Path redaction                                        |
+| `docs/backlog/archive/store-provider-keys-in-settings.md`     | Path redaction                                        |
+| `docs/backlog/ready-for-agent/prepare-open-source-release.md` | `git mv` to `archive/` on delivery                    |
 
 ## Acceptance Criteria
 
@@ -236,7 +242,9 @@ effect is hard to reverse once forks, caches, or indexes exist.
 - [ ] With `AUD_TIMEZONE` unset, the configured timezone is the zone Node resolves, or `UTC` when
       that is empty or invalid; an invalid explicit `AUD_TIMEZONE` still fails. Plan §3.2, Setup §7,
       and `.env.example` describe the same default, and plan §3.2 carries no pending note.
-- [ ] The README states the supported platform, a Node version matching `engines` and `.nvmrc`,
+- [ ] `engines.node` is still `^24.15.0`, `.nvmrc` contains `24`, and the CI workflow reads its
+      Node version from `.nvmrc`.
+- [ ] The README states the supported platform, Node 24.15 or a later Node 24 release,
       non-affiliation, and the interface-stability caveat, and shows a screenshot free of real
       account data.
 - [ ] `CONTRIBUTING.md` and `SECURITY.md` exist and are linked from the README; `SECURITY.md`
