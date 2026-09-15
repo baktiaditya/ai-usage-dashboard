@@ -24,13 +24,16 @@ longer bundles corepack and is not supported. Corepack runs the exact pnpm versi
 downloads that version; later runs use corepack's cache.
 
 ```bash
-corepack enable pnpm  # once per Node installation: puts corepack's pnpm on PATH
-pnpm install          # builds only the allowlisted native modules; never asks
-pnpm run db:migrate   # creates the SQLite database and applies migrations
-pnpm run collect      # one collection pass
+corepack enable pnpm            # once per Node installation: puts corepack's pnpm on PATH
+pnpm install --frozen-lockfile  # exactly the locked versions; builds only allowlisted native modules
+pnpm run db:migrate             # creates the SQLite database and applies migrations
+pnpm run collect                # one collection pass
 pnpm run build
-pnpm run start        # http://127.0.0.1:3838, serving the database just collected
+pnpm run start                  # http://127.0.0.1:3838, serving the database just collected
 ```
+
+`--frozen-lockfile` fails instead of changing `pnpm-lock.yaml` when it no longer matches
+`package.json`.
 
 `pnpm run db:migrate` prints where the database lives and which migrations ran.
 
@@ -460,13 +463,14 @@ cd ~/Workspace/ai-usage-dashboard-prod
 
 # Cache the pnpm a commit pins and check that it runs, from a scratch copy of that
 # commit's package.json, so the checkout does not change. Step 3 installs with
-# pnpm, so a commit whose packageManager does not pin pnpm fails.
+# pnpm, so a commit that does not pin pnpm with its sha512 hash fails; corepack
+# checks the download against that hash.
 pnpm_pinned_ready() {
-  local dir pinned rc
+  local dir pinned rc locator='^pnpm@[0-9]+\.[0-9]+\.[0-9]+\+sha512\.[0-9a-f]{128}$'
   dir=$(mktemp -d) || return 1
   git show "$1:package.json" > "$dir/package.json" \
     && pinned=$(cd "$dir" && node -p "require('./package.json').packageManager ?? ''") \
-    && [[ "$pinned" == pnpm@* ]] \
+    && [[ "$pinned" =~ $locator ]] \
     && (cd "$dir" && corepack install \
       && [[ "$(pnpm --version)" == "$(echo "${pinned#pnpm@}" | cut -d+ -f1)" ]])
   rc=$?
@@ -540,7 +544,8 @@ The preflight caches pnpm before anything stops. It reads the candidate's `packa
 scratch directory, where `corepack install` caches the pinned pnpm and `pnpm --version` must print
 that version. The first run of a new version also fetches pnpm's platform binary into corepack's
 cache, so step 3 never waits on the registry for pnpm while the units are down. A candidate without
-`pnpm-lock.yaml` or a `pnpm@` pin, a failed download, or a different version clears `CANDIDATE`.
+`pnpm-lock.yaml`, a `packageManager` other than `pnpm@<version>+sha512.<hash>`, a download that fails
+or does not match that hash, or a different version clears `CANDIDATE`.
 
 The first deploy after the move from npm meets a `node_modules` that `npm ci` laid out.
 `pnpm install --frozen-lockfile` replaces it without prompting, even with standard input closed, so
@@ -616,15 +621,16 @@ KNOWN_GOOD="$PREVIOUS"
 
 # Cache the pnpm a commit pins and check that it runs, from a scratch copy of that
 # commit's package.json, so the checkout does not change. A commit that pins no
-# packageManager, from before the move to pnpm, passes: it installs with npm.
+# packageManager, from before the move to pnpm, passes: it installs with npm. A pin
+# must name pnpm with its sha512 hash, which corepack checks the download against.
 pnpm_ready() {
-  local dir pinned rc
+  local dir pinned rc locator='^pnpm@[0-9]+\.[0-9]+\.[0-9]+\+sha512\.[0-9a-f]{128}$'
   dir=$(mktemp -d) || return 1
   git show "$1:package.json" > "$dir/package.json" \
     && pinned=$(cd "$dir" && node -p "require('./package.json').packageManager ?? ''")
   rc=$?
   if [[ $rc -eq 0 && -n "$pinned" ]]; then
-    [[ "$pinned" == pnpm@* ]] \
+    [[ "$pinned" =~ $locator ]] \
       && (cd "$dir" && corepack install \
         && [[ "$(pnpm --version)" == "$(echo "${pinned#pnpm@}" | cut -d+ -f1)" ]])
     rc=$?
@@ -696,7 +702,8 @@ known-good commit. Verify it as above, expecting `HEAD` to equal `$KNOWN_GOOD`.
 Rollback skips the verify step because that commit passed it when it was deployed.
 
 A known-good commit with `pnpm-lock.yaml` installs with `pnpm install --frozen-lockfile`, after the
-preflight has cached the pnpm it pins. A commit from before the move to pnpm has only
+preflight has cached the pnpm it pins. The preflight refuses a commit whose `packageManager` is set
+but is not `pnpm@<version>+sha512.<hash>`. A commit from before the move to pnpm has only
 `package-lock.json` and pins no pnpm, so it installs with `npm ci` and builds with `npm run build`,
 both bundled with Node. `npm ci` deletes the pnpm `node_modules` before it installs.
 The checkout stays detached; a later deploy repeats the normal fetch-and-detach

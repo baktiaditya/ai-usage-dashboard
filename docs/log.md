@@ -19,8 +19,10 @@
   - `db:backup` and `db:restore` accept both `<file>` and `-- <file>`.
   - [Setup](operations/setup.md) §6 caches the candidate's pinned pnpm before any unit stops, and
     rolls back with `npm ci` to a commit that has only `package-lock.json`. Its deploy preflight
-    also requires `pnpm-lock.yaml` and a `pnpm@` pin. In a rehearsal, a candidate with the lockfile
-    but no pin stopped at the preflight, and no unit was stopped.
+    also requires `pnpm-lock.yaml` and a `pnpm@<version>+sha512.<hash>` pin, and its rollback
+    preflight refuses any other pin. In rehearsals, candidates with the lockfile and no pin, a bare
+    `pnpm@12.4.2` pin, or a hash corepack rejected all stopped at the preflight, and no unit was
+    stopped. A candidate with the hashed pin still deployed and rolled back in zsh and bash.
 
   Plan §4.1, §3.3, §3.4 and §3.5, Setup, the README and `AGENTS.md` describe pnpm in that PR. In
   throwaway clones, with an empty `COREPACK_HOME` and standard input closed, the Setup §6 blocks ran

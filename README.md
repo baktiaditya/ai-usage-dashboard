@@ -20,7 +20,7 @@ version `package.json` pins.
 
 ```bash
 corepack enable pnpm
-pnpm install
+pnpm install --frozen-lockfile
 pnpm run db:migrate
 pnpm run collect
 pnpm run build
