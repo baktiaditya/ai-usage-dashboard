@@ -2,6 +2,39 @@
 
 ## 2026-09-15
 
+- **Decision**: the package manager moves from npm to pnpm, and
+  [migrate-from-npm-to-pnpm](backlog/ready-for-agent/migrate-from-npm-to-pnpm.md) is promoted to
+  `ready-for-agent/`. The user chose each term:
+  - pnpm and `pnpm-lock.yaml` replace npm and `package-lock.json`. This supersedes the
+    "npm + `package-lock.json`" pin in [plan](plan/ai-usage-dashboard-implementation-plan.md) §4.1
+    and the `npm run` commands in §3.3, §3.4, and §3.5.
+  - pnpm is provided through corepack, with `packageManager` pinned to `pnpm@12.4.2` plus its
+    sha512 integrity hash.
+  - `engines.node` narrows from `>=22.12.0` to `^24.15.0`. Corepack 0.35.0 supports only
+    `^22.22.2 || ^24.15.0 || >=26.0.0`, Node 25 no longer bundles corepack and falls outside that
+    range, and the trial ran only on Node 24.19.0. Node 25 is unsupported; widening to Node 22 or
+    26 waits for CI in the open-source release. This corrects, the same day after review, an
+    earlier version of this entry that had Node 25 install corepack with `npm install -g corepack`.
+  - The build allowlist moves to `allowBuilds` at the exact versions `allowScripts` already names,
+    dropping the unused `esbuild@0.28.2`, so no future version runs an install script unreviewed.
+  - The production deploy confirms, before any unit stops, that corepack has the pinned pnpm cached.
+  - The migration lands before the open-source release is implemented, so that work adopts pnpm.
+  - The agent may deploy the first pnpm commit to the production checkout once a deploy and
+    rollback rehearsal in a throwaway clone passes.
+
+  The plan, [Setup](operations/setup.md), and the README change on delivery; until then npm is what
+  runs.
+
+- **Proposed**: migrating the package manager from npm to pnpm, filed as
+  [migrate-from-npm-to-pnpm](backlog/ready-for-agent/migrate-from-npm-to-pnpm.md). A trial at
+  `e2d553c` in a throwaway clone, with pnpm 12.4.2, found no blocker: `pnpm import` kept every
+  resolved version, and `verify`, `build`, `test:e2e`, and `pnpm audit` passed once the native build
+  allowlist moved to `allowBuilds` in `pnpm-workspace.yaml` and `pnpm-lock.yaml` joined
+  `.prettierignore`. It also found that pnpm forwards a literal `--` to scripts, which would break
+  the documented `db:backup -- <file>` and `db:restore -- <file>` forms. The brief waits on the
+  user to order it against the open-source release and to choose how pnpm is installed.
+  Plan §4.1 still pins npm, and [Setup](operations/setup.md) still describes it.
+
 - **Update**: the Claude status line now runs its bridge from the production checkout. It was
   installed on 2026-09-12 from the development repository, and the 2026-09-14 move to a
   [separate production checkout](backlog/archive/separate-production-checkout.md) did not repoint
