@@ -104,6 +104,15 @@ describe('opening and closing', () => {
     await waitFor(() => expect(opener).toHaveFocus());
   });
 
+  it('closes on the Close button and returns focus to the opener', async () => {
+    stubApi();
+    const { user, opener, dialog } = await openDialog();
+
+    await user.click(within(dialog).getByRole('button', { name: 'Close' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    await waitFor(() => expect(opener).toHaveFocus());
+  });
+
   it('closes on Cancel and returns focus to the opener', async () => {
     stubApi();
     const { user, opener } = await openDialog();

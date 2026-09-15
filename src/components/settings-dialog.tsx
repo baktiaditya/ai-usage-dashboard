@@ -12,6 +12,7 @@ import {
   useRole,
   useTransitionStatus,
 } from '@floating-ui/react';
+import { X } from 'lucide-react';
 import { CREDENTIAL_PROVIDERS } from '@/lib/domain';
 import type { CredentialProvider, CredentialStatus } from '@/lib/domain';
 import { formatAge } from '@/lib/time';
@@ -147,6 +148,16 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
               inputRefs={{ deepseek: deepseekInput, openrouter: openrouterInput }}
               onClose={() => onOpenChange(false)}
             />
+            {/* shadcn/ui's corner close button, last in tab order, level with the heading. */}
+            <button
+              type="button"
+              onClick={() => onOpenChange(false)}
+              aria-label="Close"
+              data-testid="settings-dismiss"
+              className="text-muted-foreground hover:text-foreground absolute top-5 right-5 inline-flex size-6 items-center justify-center rounded-md opacity-70 transition-opacity hover:opacity-100"
+            >
+              <X className="size-4" aria-hidden />
+            </button>
           </div>
         </FloatingFocusManager>
       </FloatingOverlay>
@@ -262,7 +273,7 @@ function SettingsForm({
 
   return (
     <form onSubmit={(event) => void save(event)} noValidate className="flex flex-col gap-5 p-5">
-      <div className="flex flex-col gap-1">
+      <div className="flex flex-col gap-2">
         <h2 id={headingId} className="text-base font-semibold">
           Settings
         </h2>

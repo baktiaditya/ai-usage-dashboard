@@ -134,7 +134,7 @@ test('opens a modal dialog that takes focus, traps it, locks scroll, and fits th
   ).toBe(true);
 });
 
-test('Escape, an outside press, and Cancel each close it and return focus to Settings', async ({
+test('Escape, an outside press, Close, and Cancel each close it and return focus to Settings', async ({
   page,
 }) => {
   await page.goto('/');
@@ -147,6 +147,7 @@ test('Escape, an outside press, and Cancel each close it and return focus to Set
       'outside press',
       () => page.getByTestId('settings-overlay').click({ position: { x: 4, y: 4 } }),
     ],
+    ['Close', () => dialog.getByRole('button', { name: 'Close' }).click()],
     ['Cancel', () => page.getByTestId('settings-close').click()],
   ];
   for (const [name, close] of closers) {
