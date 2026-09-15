@@ -3,7 +3,7 @@
 ## 2026-09-15
 
 - **Decision**: the open-source release gates are closed, and
-  [prepare-open-source-release](backlog/ready-for-human/prepare-open-source-release.md) moves to
+  [prepare-open-source-release](backlog/ready-for-agent/prepare-open-source-release.md) moves to
   `ready-for-agent/`. The user chose each term. The license is MIT. The timezone default follows the
   system timezone as Node resolves it, falling back to `UTC` when none resolves; an explicit
   `AUD_TIMEZONE` still wins, and an invalid one is still rejected.
@@ -21,7 +21,7 @@
   step after delivery.
 
 - **Proposed**: prepare the repository for an open-source release, in
-  [prepare-open-source-release](backlog/ready-for-human/prepare-open-source-release.md). A readiness
+  [prepare-open-source-release](backlog/ready-for-agent/prepare-open-source-release.md). A readiness
   assessment at `e1d6923`, re-run against `e2d553c` after provider keys moved into the database,
   found the code ready: `npm run verify` passes, `npm audit` is clean, a fresh clone installs,
   collects, and builds, and the git history holds no real key. The re-run added the second
