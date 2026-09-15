@@ -2,6 +2,24 @@
 
 ## 2026-09-15
 
+- **Decision**: the open-source release gates are closed, and
+  [prepare-open-source-release](backlog/ready-for-human/prepare-open-source-release.md) moves to
+  `ready-for-agent/`. The user chose each term. The license is MIT. The timezone default follows the
+  system timezone as Node resolves it, falling back to `UTC` when none resolves; an explicit
+  `AUD_TIMEZONE` still wins, and an invalid one is still rejected.
+  [Plan](plan/ai-usage-dashboard-implementation-plan.md) §3.2 now states that default;
+  `src/lib/config.ts`, Setup §7, and `.env.example` change on delivery, and until then
+  `Asia/Jakarta` is what runs. This machine resolves `Asia/Jakarta` and production sets no
+  `AUD_TIMEZONE`, so production's day boundary does not move. Maintainer-only content: `docs/log.md`,
+  the implementation prompt, the Tailscale brief, `AGENTS.md`, `.mcp.json`, `.claude/`, and
+  `.agents/` stay, the prompt gains a historical-record note, and `CONTRIBUTING.md` marks the agent
+  tooling optional. The production-checkout deploy and rollback runbook moves out of Setup §6 into
+  its own maintainer operations document. The Setup §4 steps for upgrading from keys in
+  `collector.env` stay, with a note that only an install predating the Settings dialog needs them.
+  Commits keep the current author email, and history is not rewritten. CI runs `npm run verify`
+  only; `npm run test:e2e` stays local. Changing the repository's visibility remains the user's
+  step after delivery.
+
 - **Proposed**: prepare the repository for an open-source release, in
   [prepare-open-source-release](backlog/ready-for-human/prepare-open-source-release.md). A readiness
   assessment at `e1d6923`, re-run against `e2d553c` after provider keys moved into the database,

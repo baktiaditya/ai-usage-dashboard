@@ -15,11 +15,11 @@ Related issue: none yet
 
 ## Objective
 
-The GitHub repository can be made public. It carries a clear license, no tracked file names the
+The GitHub repository can be made public. It carries an MIT license, no tracked file names the
 maintainer's machine or account, the README states the supported platform and that the project is
 not affiliated with any provider, and an outside user or contributor finds the minimum surface
 they need: CI, a contributing guide, and a security policy. Runtime behavior and the security
-posture do not change, apart from the timezone default if the user decides to change it.
+posture do not change, apart from the timezone default, which follows the system timezone.
 
 ## Context
 
@@ -55,10 +55,10 @@ The assessment found these gaps:
      [store-provider-keys-in-settings](../archive/store-provider-keys-in-settings.md).
    - [Setup](../../operations/setup.md) §6 clones over SSH, which needs a GitHub SSH key that
      outside users will not have for this repository.
-   - `loadConfig` in `src/lib/config.ts` defaults `AUD_TIMEZONE` to `Asia/Jakarta`. The plan's
-     "today" boundary rule (§3.2) fixes that default, and Setup §7 documents it. The dated
-     `Asia/Jakarta` baselines in the plan and in
-     [M0 Discovery](../../discovery/m0-discovery.md) are observations and can stay.
+   - `loadConfig` in `src/lib/config.ts` defaults `AUD_TIMEZONE` to `Asia/Jakarta`, and Setup §7
+     and `.env.example` document that default. Plan §3.2 now requires the system timezone instead
+     (see Dependencies and Gates). The dated `Asia/Jakarta` baselines in the plan and in
+     [M0 Discovery](../../discovery/m0-discovery.md) are observations and stay.
 3. **Affiliation and interface stability are unstated.** The README names Codex, Claude Code,
    DeepSeek, and OpenRouter and the dashboard renders their marks, with no statement that the
    project is unaffiliated. Codex is read through `codex app-server` JSON-RPC and Claude through
@@ -67,7 +67,7 @@ The assessment found these gaps:
 4. **Maintainer-only content.** Much of the tracked tree serves the maintainer's machine and agent
    workflow rather than a user:
    - `docs/log.md`, [the implementation prompt](../../plan/ai-usage-dashboard-implementation-prompt.md),
-     and [access-dashboard-over-tailscale](access-dashboard-over-tailscale.md);
+     and [access-dashboard-over-tailscale](../ready-for-human/access-dashboard-over-tailscale.md);
    - the production-checkout deploy and rollback runbook in Setup §6;
    - the Setup §4 "Upgrading from keys in `collector.env`" steps, which only an install that predates
      the Settings dialog needs;
@@ -91,30 +91,42 @@ The assessment found these gaps:
    - Adding a provider means editing hard-coded lists, such as `PROVIDER_PATTERN` in
      `src/lib/config.ts`, and no guide describes the path.
    - Every commit carries the maintainer's author email, which becomes public with the repository.
-     That is a choice, not a defect.
+     The user accepted this.
 
 ## Dependencies and Gates
 
-- A license choice. MIT or Apache-2.0 fits a small tool. Owner: user.
-- A decision on the timezone default: keep `Asia/Jakarta`, or follow the system timezone and fall
-  back to UTC. A change needs a `Decision` in `docs/log.md` and an update to the plan's "today"
-  boundary rule. Owner: user.
-- A decision on each maintainer-only item in Context 4: keep as-is with a note, move it to a
-  maintainer area, or remove it from the tree. Owner: user.
-- A decision on the commit author email: accept it, or switch future commits to a GitHub noreply
-  address. Rewriting history is not recommended, because it breaks existing clones, including the
-  production checkout that pulls from `origin`. Owner: user.
-- Changing the repository's visibility to public on GitHub. The effect is hard to reverse once
-  forks, caches, or indexes exist. Owner: user.
+The user closed every gate on 2026-09-15, recorded as a `Decision` in [log](../../log.md):
+
+- **License:** MIT.
+- **Timezone default:** with `AUD_TIMEZONE` unset, the system timezone as Node resolves it, falling
+  back to `UTC` when none resolves. [Plan](../../plan/ai-usage-dashboard-implementation-plan.md)
+  §3.2 already states this. The development machine and production both resolve `Asia/Jakarta` and
+  production sets no `AUD_TIMEZONE`, so production's day boundary does not move.
+- **Maintainer-only content**, per Context 4 item:
+  - `docs/log.md` stays; only the path redaction applies.
+  - The implementation prompt stays, with a note at its top that it is a historical record.
+  - The Tailscale brief stays in `ready-for-human/`.
+  - The production-checkout deploy and rollback runbook moves out of Setup §6 into a new
+    maintainer document, `docs/operations/production-checkout.md`.
+  - The Setup §4 "Upgrading from keys in `collector.env`" steps stay, with a note that only an
+    install predating the Settings dialog needs them.
+  - `AGENTS.md`, `.mcp.json`, `.claude/`, and `.agents/` stay; `CONTRIBUTING.md` marks them
+    optional.
+- **Commit author email:** kept. History is not rewritten.
+- **CI:** `npm run verify` only; `npm run test:e2e` stays a local check.
+
+After delivery, outside agent scope: the user changes the repository's visibility to public. The
+effect is hard to reverse once forks, caches, or indexes exist.
 
 ## Scope
 
 ### In scope
 
-- `LICENSE`, a third-party notice for Lobe Icons, and `package.json` metadata.
-- Replacing maintainer paths in tracked docs with placeholders, and an HTTPS clone URL in Setup.
-- The timezone default, following the decision, across code, tests, the plan, Setup §7, and
-  `.env.example`.
+- An MIT `LICENSE`, a third-party notice for Lobe Icons, and `package.json` metadata.
+- Replacing maintainer paths in tracked docs with placeholders, and an HTTPS clone URL in the
+  runbook.
+- The timezone default following the system timezone with a `UTC` fallback, across code, tests,
+  Setup §7, and `.env.example`, and removing the pending note from plan §3.2.
 - README additions: supported platform, a Node version consistent with `engines` and `.nvmrc`, a
   non-affiliation and interface-stability note, a screenshot from demo data, and links to the
   license, contributing guide, and security policy.
@@ -123,8 +135,8 @@ The assessment found these gaps:
   advisories, and how saved keys are stored, backed up, and exposed. GitHub issue templates.
 - A GitHub Actions workflow running `npm ci` and `npm run verify` on pull requests and on pushes
   to `main`.
-- Separating the user-facing setup from the maintainer runbook, as far as the Context 4 decision
-  requires.
+- Moving the production-checkout runbook into `docs/operations/production-checkout.md`, and adding
+  the notes to the implementation prompt and the Setup §4 upgrade steps.
 - A portable `PATH` line in `.husky/pre-commit`.
 - A `CHANGELOG.md` and a first release tag.
 
@@ -134,67 +146,93 @@ The assessment found these gaps:
 - Publishing to npm.
 - Any change to the bind policy, authentication, or public or multi-user access, which the plan
   excludes.
-- Rewriting git history.
+- Rewriting git history or changing the commit author email.
+- Running `npm run test:e2e` in CI.
+- Removing the Setup §4 upgrade steps.
 - The Tailscale brief itself.
+- Changing the repository's visibility.
 
 ## Approach
 
-Provisional until the gates close.
-
-1. Record the gate decisions in `docs/log.md`, and update the plan's "today" boundary rule if the
-   timezone default changes.
-2. Legal: add `LICENSE` and `THIRD_PARTY_NOTICES.md`, and set `license`, `repository`, `bugs`, and
-   `homepage` in `package.json`.
-3. Hygiene:
-   - replace maintainer paths in `docs/log.md` and the two archived briefs with a placeholder such as
-     `~/Workspace/ai-usage-dashboard-prod`, logged as a redaction rather than a decision change;
-   - switch the Setup §6 clone URL to HTTPS;
-   - change the timezone default in `src/lib/config.ts` and its tests if decided.
+1. Legal: add `LICENSE` with the MIT text, its copyright line naming the git author name, and
+   `THIRD_PARTY_NOTICES.md` with the Lobe Icons MIT notice. Set `license` to `MIT` and
+   `repository`, `bugs`, and `homepage` to the GitHub repository in `package.json`.
+2. Timezone:
+   - In `loadConfig`, when `AUD_TIMEZONE` is unset or empty, use
+     `Intl.DateTimeFormat().resolvedOptions().timeZone`; if that is empty or fails
+     `validateTimezone`, use `UTC`. An explicit invalid `AUD_TIMEZONE` still throws `ConfigError`.
+   - Make the default assertion in `tests/unit/config-time.test.ts` independent of the host: stub
+     the resolved zone for a valid zone, an empty one, and an invalid one. Tests that set
+     `AUD_TIMEZONE` or pass `Asia/Jakarta` explicitly (`tests/helpers/db.ts`,
+     `playwright.config.ts`, `tests/unit/env-file.test.ts`, `tests/unit/provider-card.test.tsx`,
+     and the `startOfLocalDayUtc` cases) keep it, because they pin a value rather than the default.
+   - Describe the new default in the Setup §7 row and the `.env.example` comment, and remove the
+     pending note from plan §3.2.
+3. Hygiene: replace maintainer paths in `docs/log.md` and the two archived briefs with a
+   placeholder such as `~/Workspace/ai-usage-dashboard-prod`, logged as a redaction rather than a
+   decision change.
 4. Node version: run the suite under Node 22.12. If it passes, add both versions to the CI matrix.
    Otherwise raise `engines.node` to `>=24`. Then add `.nvmrc` and correct the README sentence.
 5. README: platform line, non-affiliation and interface-stability note, and a screenshot captured
    from `npm run seed:demo` data.
 6. Contributor surface: `CONTRIBUTING.md`, `SECURITY.md`, `.github/ISSUE_TEMPLATE/`, and
-   `.github/workflows/ci.yml`.
-7. Maintainer content: apply the Context 4 decision, and keep every in-bundle link valid.
+   `.github/workflows/ci.yml` running `npm ci` and `npm run verify`.
+7. Maintainer content:
+   - Create `docs/operations/production-checkout.md` with concept frontmatter, move the Setup §6
+     "Production checkout: deploy and rollback" subsection into it, and switch its clone URL to
+     HTTPS. Leave a one-line pointer in Setup §6.
+   - Repoint the Setup references that send the reader to §6 for the production checkout, link the
+     new document from `docs/operations/index.md`, and add it to
+     `.agents/skills/okf-sync/references/repo-sync-map.md`. Dated log entries and archived briefs
+     keep their wording.
+   - Add the historical-record note to the implementation prompt and the install-predates-Settings
+     note to the Setup §4 upgrade steps.
 8. Portability: remove the nvm assumption from `.husky/pre-commit`.
-9. Release: add `CHANGELOG.md`, and tag after the checks below pass. The user changes visibility.
+9. Release: add `CHANGELOG.md`, record the delivery in `docs/log.md`, `git mv` this brief to
+   `archive/`, and tag after the checks below pass.
 
 ## Files Touched
 
-Provisional; the Context 4 decision may add or remove entries.
-
-| Path                                                      | Change                                               |
-| --------------------------------------------------------- | ---------------------------------------------------- |
-| `LICENSE`, `THIRD_PARTY_NOTICES.md`                       | New                                                  |
-| `package.json`, `.nvmrc`                                  | License and repository metadata; Node version        |
-| `README.md`                                               | Platform, Node, disclaimer, screenshot, policy links |
-| `CONTRIBUTING.md`, `SECURITY.md`, `CHANGELOG.md`          | New                                                  |
-| `.github/workflows/ci.yml`, `.github/ISSUE_TEMPLATE/`     | New                                                  |
-| `.husky/pre-commit`                                       | Portable `PATH`                                      |
-| `src/lib/config.ts`, `tests/unit/config-time.test.ts`     | Timezone default, if decided                         |
-| `.env.example`                                            | Timezone comment, if decided                         |
-| `docs/plan/ai-usage-dashboard-implementation-plan.md`     | "Today" boundary rule, if decided                    |
-| `docs/operations/setup.md`                                | HTTPS clone URL; §7 timezone row; runbook split      |
-| `docs/log.md`                                             | Path redaction; gate decisions                       |
-| `docs/backlog/archive/separate-production-checkout.md`    | Path redaction                                       |
-| `docs/backlog/archive/store-provider-keys-in-settings.md` | Path redaction                                       |
-| `AGENTS.md`, `.mcp.json`, `.claude/`, `.agents/`          | Per the Context 4 decision                           |
+| Path                                                          | Change                                               |
+| ------------------------------------------------------------- | ---------------------------------------------------- |
+| `LICENSE`, `THIRD_PARTY_NOTICES.md`                           | New                                                  |
+| `package.json`, `.nvmrc`                                      | License and repository metadata; Node version        |
+| `README.md`                                                   | Platform, Node, disclaimer, screenshot, policy links |
+| `CONTRIBUTING.md`, `SECURITY.md`, `CHANGELOG.md`              | New                                                  |
+| `.github/workflows/ci.yml`, `.github/ISSUE_TEMPLATE/`         | New                                                  |
+| `.husky/pre-commit`                                           | Portable `PATH`                                      |
+| `src/lib/config.ts`, `tests/unit/config-time.test.ts`         | System timezone default with `UTC` fallback          |
+| `.env.example`                                                | Timezone comment                                     |
+| `docs/plan/ai-usage-dashboard-implementation-plan.md`         | Remove the §3.2 pending note                         |
+| `docs/plan/ai-usage-dashboard-implementation-prompt.md`       | Historical-record note                               |
+| `docs/operations/setup.md`                                    | §4 upgrade note; §6 runbook pointer; §7 timezone row |
+| `docs/operations/production-checkout.md`                      | New; runbook moved from Setup §6, HTTPS clone URL    |
+| `docs/operations/index.md`                                    | Link the runbook                                     |
+| `.agents/skills/okf-sync/references/repo-sync-map.md`         | Add the runbook                                      |
+| `docs/log.md`                                                 | Path redaction; delivery entry                       |
+| `docs/backlog/archive/separate-production-checkout.md`        | Path redaction                                       |
+| `docs/backlog/archive/store-provider-keys-in-settings.md`     | Path redaction                                       |
+| `docs/backlog/ready-for-agent/prepare-open-source-release.md` | `git mv` to `archive/` on delivery                   |
 
 ## Acceptance Criteria
 
-- [ ] `LICENSE` exists at the root, `package.json` `license` names the same SPDX identifier, and
-      GitHub detects the license.
+- [ ] `LICENSE` holds the MIT text, `package.json` `license` is `MIT`, and GitHub detects the
+      license.
 - [ ] The Lobe Icons MIT notice ships in `THIRD_PARTY_NOTICES.md`.
 - [ ] No tracked file names the maintainer's home directory, username, or SSH remote. Generic
       placeholders such as `/home/you` remain.
-- [ ] The timezone default is the same in `src/lib/config.ts`, its tests, the plan, Setup §7, and
-      `.env.example`.
+- [ ] With `AUD_TIMEZONE` unset, the configured timezone is the zone Node resolves, or `UTC` when
+      that is empty or invalid; an invalid explicit `AUD_TIMEZONE` still fails. Plan §3.2, Setup §7,
+      and `.env.example` describe the same default, and plan §3.2 carries no pending note.
 - [ ] The README states the supported platform, a Node version matching `engines` and `.nvmrc`,
       non-affiliation, and the interface-stability caveat, and shows a screenshot free of real
       account data.
-- [ ] `CONTRIBUTING.md` and `SECURITY.md` exist and are linked from the README.
-- [ ] The CI workflow runs `npm run verify` on a pull request and passes.
+- [ ] `CONTRIBUTING.md` and `SECURITY.md` exist and are linked from the README; `SECURITY.md`
+      covers how saved keys are stored and backed up.
+- [ ] The CI workflow runs `npm run verify`, and no end-to-end suite, on a pull request and passes.
+- [ ] The production-checkout runbook lives in `docs/operations/production-checkout.md`, is linked
+      from the operations index and Setup §6, and no current document points to its old location.
+- [ ] The implementation prompt and the Setup §4 upgrade steps carry their notes.
 - [ ] A fresh clone with an empty `HOME`, following only the README, completes install, migrate,
       collect, build, and start.
 - [ ] A full-history secret scan at the release head matches only test fakes.
@@ -202,22 +240,18 @@ Provisional; the Context 4 decision may add or remove entries.
 
 ## Testing
 
-- Focused: `npx vitest run tests/unit/config-time.test.ts` if the timezone default changes.
+- Focused: `npx vitest run tests/unit/config-time.test.ts`, then the same run under `TZ=UTC` and
+  `TZ=America/New_York` to prove the default follows the host.
 - Hygiene: `git grep -nE '/home/[a-z]+|/Users/[a-z]+|git@github\.com'` reviewed by hand, plus the
   full-history key scan from Context.
+- Links: the OKF validator, and `git grep -n 'Production checkout: deploy and rollback'` matching
+  only the new document and dated history.
 - Fresh clone in a scratch directory with `HOME` and `AUD_DATA_DIR` pointed there: `npm ci`,
   `npm run db:migrate`, `npm run collect`, `npm run build`, `npm run start`.
+- `npm run test:e2e` in the development checkout, never the production checkout, because the
+  configuration default feeds the web server.
 - CI: the workflow run on the pull request that adds it.
-- `python3 .agents/skills/okf-sync/scripts/validate_okf_bundle.py` for the docs changes.
 - `npm run verify` is the final gate. Changing repository visibility is done by the user and is
   not verified by an agent.
 
 ## Open Questions
-
-- MIT or Apache-2.0? Owner: user.
-- Keep the `Asia/Jakarta` timezone default, or follow the system timezone? Owner: user.
-- For each maintainer-only item in Context 4, keep, move, or remove? Owner: user.
-- Keep the current author email in commits, or switch future commits to a noreply address?
-  Owner: user.
-- Should CI also run `npm run test:e2e`? It needs Playwright browsers and adds run time. Owner:
-  user.
