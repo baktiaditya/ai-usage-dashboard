@@ -10,6 +10,7 @@ import {
   useFloating,
   useInteractions,
   useRole,
+  useTransitionStatus,
 } from '@floating-ui/react';
 import { CREDENTIAL_PROVIDERS } from '@/lib/domain';
 import type { CredentialProvider, CredentialStatus } from '@/lib/domain';
@@ -107,26 +108,38 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const dismiss = useDismiss(context, { outsidePressEvent: 'click' });
   const role = useRole(context, { role: 'dialog' });
   const { getFloatingProps } = useInteractions([dismiss, role]);
+  // Stays mounted through the close transition; focus returns to the Settings
+  // button when it unmounts.
+  const { isMounted, status } = useTransitionStatus(context, { duration: 200 });
   const headingId = useId();
   const deepseekInput = useRef<HTMLInputElement>(null);
   const openrouterInput = useRef<HTMLInputElement>(null);
 
-  if (!open) return null;
+  if (!isMounted) return null;
 
+  // shadcn/ui's dialog motion: the backdrop fades over 150ms, the panel fades
+  // and zooms from 95% over 200ms. They are siblings, so the backdrop's fade
+  // never dims the panel.
   return (
     <FloatingPortal>
       <FloatingOverlay
         lockScroll
-        className="z-50 flex items-center justify-center bg-black/50"
+        className="z-50 flex items-center justify-center"
         data-testid="settings-overlay"
       >
+        <div
+          aria-hidden
+          data-status={status}
+          className="fixed inset-0 bg-black/50 opacity-0 transition-opacity duration-150 ease-[ease] data-[status=open]:opacity-100"
+        />
         {/* Returns focus to the element that opened it: the Settings button. */}
         <FloatingFocusManager context={context} initialFocus={deepseekInput}>
           <div
             ref={setPanel}
             aria-labelledby={headingId}
             data-testid="settings-dialog"
-            className="bg-surface border-border m-4 max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-xl border shadow-sm"
+            data-status={status}
+            className="bg-surface border-border relative m-4 max-h-[calc(100dvh-2rem)] w-full max-w-md scale-95 overflow-y-auto rounded-xl border opacity-0 shadow-sm transition-[opacity,scale] duration-200 ease-[ease] data-[status=open]:scale-100 data-[status=open]:opacity-100"
             {...getFloatingProps()}
           >
             <SettingsForm
