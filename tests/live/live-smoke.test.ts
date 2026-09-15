@@ -17,11 +17,8 @@ import { createDeepseekAdapter } from '@/lib/adapters/deepseek';
 import { createOpenrouterAdapter } from '@/lib/adapters/openrouter';
 import { createClaudeIngestor } from '@/lib/ingestors/claude-statusline';
 import { loadConfig } from '@/lib/config';
-import { openDb } from '@/lib/db/client';
-import type { Db } from '@/lib/db/client';
-import { readProviderCredentials } from '@/lib/db/credentials';
-import type { ProviderCredentials } from '@/lib/db/credentials';
 import { loadCollectorEnvFile } from '@/lib/env-file';
+import { readSavedCredentials } from '../helpers/saved-credentials';
 
 const enabled = process.env['LIVE_SMOKE'] === '1';
 const describeLive = enabled ? describe : describe.skip;
@@ -30,28 +27,13 @@ const describeLive = enabled ? describe : describe.skip;
 const describeWhen = (condition: boolean) => (enabled && condition ? describe : describe.skip);
 
 // collector.env may still set AUD_* settings such as the data directory. Keys
-// come from that directory's database, where dashboard Settings saved them.
+// come from that directory's database, where dashboard Settings saved them. A
+// missing database or table means no key, so those gates skip; any other
+// database error fails the run.
 loadCollectorEnvFile(process.env);
 const config = loadConfig(process.env);
-const saved = savedCredentials();
+const saved = readSavedCredentials(config.databasePath);
 const signal = () => AbortSignal.timeout(30_000);
-
-/**
- * Keys saved in dashboard Settings, read without migrating or writing. A missing
- * database or `provider_credentials` table counts as no key, so those gates
- * skip. A key is never printed.
- */
-function savedCredentials(): ProviderCredentials {
-  let database: Db | undefined;
-  try {
-    database = openDb({ path: config.databasePath, readonly: true, migrate: false });
-    return readProviderCredentials(database);
-  } catch {
-    return { deepseekApiKey: null, openrouterManagementKey: null };
-  } finally {
-    database?.$client.close();
-  }
-}
 
 describeLive('live: codex app-server', () => {
   it('answers account/rateLimits/read with at least one usable window', async () => {
