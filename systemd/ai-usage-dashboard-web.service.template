@@ -29,7 +29,7 @@ Environment=CODEX_HOME=__CODEXHOME__
 
 # The same resolved values as the collector unit, so the server reads the
 # database the timer writes. No `EnvironmentFile=`, for the same reason as the
-# collector: the application loads the credential file itself.
+# collector: the application loads that file itself, for AUD_* settings only.
 Environment="AUD_ENV_FILE=__ENVFILE__"
 Environment="AUD_DATA_DIR=__DATADIR__"
 Environment=AUD_COLLECT_INTERVAL_MINUTES=__INTERVAL__

@@ -23,9 +23,9 @@ Environment=CODEX_HOME=__CODEXHOME__
 # Resolved by the installer with the collector's own precedence, so the timer,
 # the writable data path below, and the collector agree. There is deliberately
 # no `EnvironmentFile=`: systemd would let the file override these values. The
-# collector loads the credential file itself and fills only unset variables,
-# which keeps these authoritative. An absent file is fine: DeepSeek and
-# OpenRouter then report "unavailable".
+# collector loads that file itself for optional AUD_* settings and fills only
+# unset variables, which keeps these authoritative. An absent file is fine.
+# Provider keys never come from it; they are saved in dashboard Settings.
 Environment="AUD_ENV_FILE=__ENVFILE__"
 Environment="AUD_DATA_DIR=__DATADIR__"
 Environment=AUD_COLLECT_INTERVAL_MINUTES=__INTERVAL__
