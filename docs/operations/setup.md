@@ -459,20 +459,17 @@ running, or start the timer before the new web unit answers.
 cd ~/Workspace/ai-usage-dashboard-prod
 
 # Cache the pnpm a commit pins and check that it runs, from a scratch copy of that
-# commit's package.json, so the checkout does not change. A commit that pins no
-# packageManager, from before the move to pnpm, passes: it installs with npm.
-pnpm_ready() {
+# commit's package.json, so the checkout does not change. Step 3 installs with
+# pnpm, so a commit whose packageManager does not pin pnpm fails.
+pnpm_pinned_ready() {
   local dir pinned rc
   dir=$(mktemp -d) || return 1
   git show "$1:package.json" > "$dir/package.json" \
-    && pinned=$(cd "$dir" && node -p "require('./package.json').packageManager ?? ''")
+    && pinned=$(cd "$dir" && node -p "require('./package.json').packageManager ?? ''") \
+    && [[ "$pinned" == pnpm@* ]] \
+    && (cd "$dir" && corepack install \
+      && [[ "$(pnpm --version)" == "$(echo "${pinned#pnpm@}" | cut -d+ -f1)" ]])
   rc=$?
-  if [[ $rc -eq 0 && -n "$pinned" ]]; then
-    [[ "$pinned" == pnpm@* ]] \
-      && (cd "$dir" && corepack install \
-        && [[ "$(pnpm --version)" == "$(echo "${pinned#pnpm@}" | cut -d+ -f1)" ]])
-    rc=$?
-  fi
   rm -rf "$dir"
   return $rc
 }
@@ -487,7 +484,7 @@ elif git fetch origin \
   && CANDIDATE=$(git rev-parse origin/main) \
   && git merge-base --is-ancestor "$CANDIDATE" origin/main \
   && git cat-file -e "$CANDIDATE:pnpm-lock.yaml" \
-  && pnpm_ready "$CANDIDATE"; then
+  && pnpm_pinned_ready "$CANDIDATE"; then
   echo "preflight ok: previous=$PREVIOUS candidate=$CANDIDATE"
 else
   CANDIDATE=
