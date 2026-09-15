@@ -1,4 +1,12 @@
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import Database from 'better-sqlite3';
@@ -42,6 +50,29 @@ describe('live gate credential reading', () => {
     check.close();
     expect(tables).toEqual([{ name: 'other' }]);
   });
+
+  // Root ignores directory permissions, so the denial cannot be staged.
+  it.skipIf(process.getuid?.() === 0)(
+    'throws when the database path cannot be reached instead of reporting no keys',
+    () => {
+      const parent = join(dir, 'locked');
+      const t = createTestDb();
+      try {
+        mkdirSync(parent);
+        copyFileSync(t.path, join(parent, 'usage.db'));
+      } finally {
+        t.cleanup();
+      }
+      chmodSync(parent, 0o000);
+      try {
+        expect(() => readSavedCredentials(join(parent, 'usage.db'))).toThrow(
+          expect.objectContaining({ code: 'EACCES' }),
+        );
+      } finally {
+        chmodSync(parent, 0o700);
+      }
+    },
+  );
 
   it('throws when the database cannot be read instead of reporting no keys', () => {
     const path = join(dir, 'usage.db');

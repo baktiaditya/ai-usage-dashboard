@@ -7,14 +7,21 @@
  * unreadable one, is thrown, so the live run fails instead of quietly skipping
  * its provider gates. A key is never printed.
  */
-import { existsSync } from 'node:fs';
+import { statSync } from 'node:fs';
 import { openDb } from '@/lib/db/client';
 import { readProviderCredentials } from '@/lib/db/credentials';
 import type { ProviderCredentials } from '@/lib/db/credentials';
 
 export function readSavedCredentials(databasePath: string): ProviderCredentials {
   // Checked first: opening a path that does not exist creates its directory.
-  if (!existsSync(databasePath)) return noKeys();
+  // Only ENOENT means absent. `existsSync` would also answer false for a path
+  // it cannot reach, such as one under a directory without search permission.
+  try {
+    statSync(databasePath);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return noKeys();
+    throw err;
+  }
   const database = openDb({ path: databasePath, readonly: true, migrate: false });
   try {
     return readProviderCredentials(database);
