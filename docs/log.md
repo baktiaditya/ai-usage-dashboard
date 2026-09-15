@@ -2,12 +2,11 @@
 
 ## 2026-09-15
 
-- **Update**: the move to pnpm is implemented and rehearsed in
-  [PR #11](https://github.com/baktiaditya/ai-usage-dashboard/pull/11), but not merged or deployed,
-  so production still runs npm at `e2d553c`. The user stopped before the production deploy, which
-  Setup §6 allows only from `origin/main`.
-  [migrate-from-npm-to-pnpm](backlog/ready-for-agent/migrate-from-npm-to-pnpm.md) therefore stays in
-  `ready-for-agent/`. In that PR:
+- **Update**: the move to pnpm is delivered in
+  [PR #11](https://github.com/baktiaditya/ai-usage-dashboard/pull/11), merged as `820d873` and
+  deployed to the production checkout, and
+  [migrate-from-npm-to-pnpm](backlog/archive/migrate-from-npm-to-pnpm.md) moves to `archive/`.
+  In that PR:
   - `pnpm import` kept all 739 resolved versions.
   - `allowBuilds` names exactly `@tailwindcss/oxide@4.1.13`, `better-sqlite3@12.4.1`,
     `esbuild@0.25.12` and `unrs-resolver@1.12.2`. Dropping one entry makes
@@ -41,11 +40,22 @@
   4. rolled back to `e2d553c` with `npm ci`.
 
   `pnpm run verify`, `pnpm run test:e2e`, `pnpm audit`, a fresh-clone install, migrate and build, and
-  the pre-commit hook passed through pnpm. Not performed: the production deploy and its live checks,
-  and this brief's archival. Both wait for the commit to reach `origin/main`.
+  the pre-commit hook passed through pnpm.
+
+  The production checkout then moved from `e2d553c` to `820d873`. The Setup §6 blocks from
+  `origin/main` ran verbatim in bash with standard input closed:
+  1. the preflight cached the pinned pnpm before any unit stopped;
+  2. `pnpm install --frozen-lockfile` replaced the npm-built `node_modules` without a prompt;
+  3. `verify` and `build` passed;
+  4. no rollback was needed.
+
+  The verify block showed a clean checkout on `origin/main`, both units running from the production
+  checkout with installed units identical to the rendered ones, and the dashboard answering. The
+  timer's first run, a manual Codex refresh from the dashboard, and the next scheduled run all
+  recorded successful attempts for every provider they collected.
 
 - **Decision**: the package manager moves from npm to pnpm, and
-  [migrate-from-npm-to-pnpm](backlog/ready-for-agent/migrate-from-npm-to-pnpm.md) is promoted to
+  [migrate-from-npm-to-pnpm](backlog/archive/migrate-from-npm-to-pnpm.md) is promoted to
   `ready-for-agent/`. The user chose each term:
   - pnpm and `pnpm-lock.yaml` replace npm and `package-lock.json`. This supersedes the
     "npm + `package-lock.json`" pin in [plan](plan/ai-usage-dashboard-implementation-plan.md) §4.1
@@ -68,7 +78,7 @@
   runs.
 
 - **Proposed**: migrating the package manager from npm to pnpm, filed as
-  [migrate-from-npm-to-pnpm](backlog/ready-for-agent/migrate-from-npm-to-pnpm.md). A trial at
+  [migrate-from-npm-to-pnpm](backlog/archive/migrate-from-npm-to-pnpm.md). A trial at
   `e2d553c` in a throwaway clone, with pnpm 12.4.2, found no blocker: `pnpm import` kept every
   resolved version, and `verify`, `build`, `test:e2e`, and `pnpm audit` passed once the native build
   allowlist moved to `allowBuilds` in `pnpm-workspace.yaml` and `pnpm-lock.yaml` joined
