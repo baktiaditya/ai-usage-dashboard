@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
+import { clearProviderKeys } from './credentials';
 
 /**
  * Manual refresh actually collects, so it mutates the seeded database. It lives
@@ -18,6 +19,12 @@ test.afterAll(() => {
       stdio: 'ignore',
     },
   );
+});
+
+// The desktop project's settings spec runs before the mobile project reaches
+// this file; DeepSeek must have no saved key here.
+test.beforeEach(async ({ request }) => {
+  await clearProviderKeys(request);
 });
 
 test('manual refresh is scoped to one provider and reports its outcome', async ({ page }) => {

@@ -13,7 +13,7 @@
  *   2  the run could not start at all (configuration or database failure)
  */
 import { collectOnce } from '../src/lib/collector/index';
-import { getConfig } from '../src/lib/config';
+import { getConfig, retiredCredentialEnvVars } from '../src/lib/config';
 import { openDb } from '../src/lib/db/client';
 import { createLogger } from '../src/lib/logger';
 import { PROVIDERS, isProvider } from '../src/lib/domain';
@@ -50,6 +50,16 @@ async function main(): Promise<number> {
   }
 
   const logger = createLogger(config.logLevel, { component: 'collector' });
+
+  // Keys now come only from the database. A leftover variable, in the shell or
+  // in collector.env, would otherwise look like it still does something. Names
+  // only: a value never reaches the log.
+  const retired = retiredCredentialEnvVars(process.env);
+  if (retired.length > 0) {
+    logger.warn('provider key environment variables are ignored; save keys in dashboard Settings', {
+      variables: retired,
+    });
+  }
 
   let providers: Provider[] | undefined;
   try {

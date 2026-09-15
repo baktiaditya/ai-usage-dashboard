@@ -2,10 +2,42 @@
 
 ## 2026-09-15
 
+- **Update**: the Claude status line now runs its bridge from the production checkout. It was
+  installed on 2026-09-12 from the development repository, and the 2026-09-14 move to a
+  [separate production checkout](backlog/archive/separate-production-checkout.md) did not repoint
+  it, so the production spool depended on the branch checked out for development. Re-running
+  `npm run claude:install-statusline -- --apply` from the production checkout refreshed the
+  installation in place: only the bridge path changed, `settings.json` stayed `0600` with a backup,
+  and the spool was next written through the new path 12 seconds later.
+  [Setup](operations/setup.md) §3 and §6 now say to install from the production checkout and to
+  keep the `--`, without which npm consumes `--apply` and only a dry run happens.
+
+- **Update**: provider keys are saved from the dashboard's Settings dialog, and
+  [store-provider-keys-in-settings](backlog/archive/store-provider-keys-in-settings.md) moves to
+  `archive/`. Migration `0002` adds `provider_credentials`. Every collection path — the systemd
+  collector, `npm run collect`, and manual refresh — reads the DeepSeek and OpenRouter keys from the
+  database at the start of each run, and `DEEPSEEK_API_KEY` and `OPENROUTER_MANAGEMENT_KEY` are no
+  longer read from any environment; `npm run collect` logs one warning naming them, never their
+  values, while either is set. `GET /api/settings/credentials` and `PUT` and `DELETE
+/api/settings/credentials/[provider]` require a same-origin request, reads included, answer
+  `Cache-Control: no-store`, and return only whether a key is saved, its last four characters for a
+  key of at least 16 characters, and when it was saved. The dialog uses `@floating-ui/react`
+  `0.27.20`. The development launcher no longer rewrites the credential variables, and development
+  refresh still answers `409 refresh_disabled` without `AUD_DEV_LIVE_REFRESH=1`. Beyond the brief,
+  an outside press dismisses the dialog on `click` rather than `pointerdown`: in the browser, the
+  `mousedown` after a pointerdown dismissal moved focus off the Settings button. An integration test
+  also runs `scripts/collect.ts` itself to prove the warning. [Setup](operations/setup.md) §1, §4,
+  §6, §7, §9, §10 and §11, the README, [m0-discovery](discovery/m0-discovery.md), and
+  [plan](plan/ai-usage-dashboard-implementation-plan.md) §0, §3.4, §3.5, §4.4 and §5 now describe the
+  delivered behavior. `npm run verify` and `npm run test:e2e` passed in the development checkout with
+  fake keys only. Not performed: deploying to the production checkout, saving the real keys, and live
+  collection from them. After deploy, both cards read `unavailable` until the Setup §4 upgrade steps
+  are followed.
+
 - **Decision**: provider keys move from the environment into the database, entered from a Settings
   dialog on the dashboard. The canonical contract is
   [plan §3.5](plan/ai-usage-dashboard-implementation-plan.md), and the implementation brief is
-  [store-provider-keys-in-settings](backlog/ready-for-agent/store-provider-keys-in-settings.md),
+  [store-provider-keys-in-settings](backlog/archive/store-provider-keys-in-settings.md),
   now in `ready-for-agent/`. The user chose each term. The DeepSeek API key and the OpenRouter
   Management key are stored in plaintext in the `0600` database, so `npm run db:backup` files
   contain them. `DEEPSEEK_API_KEY` and `OPENROUTER_MANAGEMENT_KEY` are removed outright, with no

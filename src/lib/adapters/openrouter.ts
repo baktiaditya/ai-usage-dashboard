@@ -112,7 +112,10 @@ export function createOpenrouterAdapter(
     timeoutMs,
     async collect(signal: AbortSignal, context?: CollectContext): Promise<CreditSnapshot> {
       if (!options.managementKey) {
-        throw new CollectionError('not_configured', 'OPENROUTER_MANAGEMENT_KEY is not set');
+        throw new CollectionError(
+          'not_configured',
+          'OpenRouter Management key is not saved in Settings',
+        );
       }
       const { value } = await withBoundedRetry(
         () =>

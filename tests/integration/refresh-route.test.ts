@@ -40,10 +40,12 @@ vi.mock('@/lib/adapters/codex', async (importOriginal) => {
 });
 
 import { POST } from '@/app/api/providers/[provider]/refresh/route';
+import { PUT } from '@/app/api/settings/credentials/[provider]/route';
 import { createCodexAdapter } from '@/lib/adapters/codex';
 import { createDeepseekAdapter } from '@/lib/adapters/deepseek';
 import { createOpenrouterAdapter } from '@/lib/adapters/openrouter';
 import { collectOnce } from '@/lib/collector/index';
+import { CollectionError } from '@/lib/errors';
 import { resetConfigCache } from '@/lib/config';
 import { closeSharedDb, openDb } from '@/lib/db/client';
 import { collectorAttempts, collectorRuns } from '@/lib/db/schema';
@@ -189,4 +191,40 @@ describe('refresh enabled (production, or AUD_DEV_LIVE_REFRESH=1)', () => {
       expect(persisted(join(dir, 'usage.db'))).toEqual({ runs: 1, attempts: 1 });
     },
   );
+});
+
+describe('a key saved in Settings', () => {
+  it('reaches the next manual refresh with no server restart', async () => {
+    configure('1');
+    // The running server has already cached its config and opened the database.
+    expect((await refresh('openrouter')).status).toBe(200);
+    expect(vi.mocked(createOpenrouterAdapter)).toHaveBeenLastCalledWith({ managementKey: null });
+
+    const key = 'sk-or-fake-refresh-route-0000009876';
+    const saved = await PUT(
+      new NextRequest(`${DEV_ORIGIN}/api/settings/credentials/openrouter`, {
+        method: 'PUT',
+        headers: { origin: DEV_ORIGIN, 'content-type': 'application/json' },
+        body: JSON.stringify({ secret: key }),
+      }),
+      { params: Promise.resolve({ provider: 'openrouter' }) },
+    );
+    expect(saved.status).toBe(200);
+
+    // The adapter built with that key fails locally instead of calling OpenRouter.
+    vi.mocked(createOpenrouterAdapter).mockImplementationOnce(() => ({
+      provider: 'openrouter',
+      schemaVersion: 1,
+      timeoutMs: 100,
+      async collect(): Promise<never> {
+        throw new CollectionError('auth_rejected', 'stubbed adapter');
+      },
+    }));
+    const res = await refresh('openrouter');
+
+    expect(res.status).toBe(200);
+    expect(vi.mocked(createOpenrouterAdapter)).toHaveBeenLastCalledWith({ managementKey: key });
+    expect(upstream).not.toHaveBeenCalled();
+    expect(JSON.stringify(await res.json())).not.toContain(key.slice(0, -4));
+  });
 });

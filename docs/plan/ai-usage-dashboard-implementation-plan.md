@@ -10,9 +10,9 @@ A local dashboard for monitoring Codex and Claude Code quota and DeepSeek and Op
 
 ## 0. Machine validation baseline
 
-> **Implementation status (2026-09-14).** This plan has been implemented, including
-> §3.4 Development isolation. §3.5 Provider credentials (decided 2026-09-15) is **not yet
-> implemented**; until it is, keys still come from the environment as described in
+> **Implementation status (2026-09-15).** This plan has been implemented, including
+> §3.4 Development isolation and §3.5 Provider credentials (implemented 2026-09-15): DeepSeek
+> and OpenRouter keys are saved from the dashboard's Settings dialog, as described in
 > [`setup.md`](../operations/setup.md) §4. The baseline below is the initial observation;
 > re-probe results, per-provider gate status, finalized decisions, and adopted
 > deviations are recorded in
@@ -144,8 +144,9 @@ The dashboard makes no automatic routing decisions in the MVP. It only presents 
 - Development-only settings are parsed at the launcher seam, not by the shared application
   configuration, so an invalid development override cannot stop production or scheduled collection.
 - Development manual refresh is disabled by default before any database or provider side effect.
-  `AUD_DEV_LIVE_REFRESH=1` is the explicit opt-in; the offline child does not inherit the DeepSeek
-  or OpenRouter credential values and also prevents credentialless Codex collection.
+  `AUD_DEV_LIVE_REFRESH=1` is the explicit opt-in. The offline child prevents collection from every
+  provider, Codex included. It no longer handles credential variables: keys come only from the
+  development server's own database (§3.5).
 - Development data starts empty. `npm run seed:dev` may replace seeded rows in that directory only;
   production data is never copied or selected implicitly.
 - A dedicated production checkout remains a separate operational hardening task for build,
@@ -154,8 +155,8 @@ The dashboard makes no automatic routing decisions in the MVP. It only presents 
 
 ### 3.5 Provider credentials
 
-Decided 2026-09-15 (see the [log](../log.md)); implementation brief:
-[store-provider-keys-in-settings](../backlog/ready-for-agent/store-provider-keys-in-settings.md).
+Decided and implemented 2026-09-15 (see the [log](../log.md)); delivered from the archived brief
+[store-provider-keys-in-settings](../backlog/archive/store-provider-keys-in-settings.md).
 
 - The DeepSeek API key and the OpenRouter Management key are entered in a Settings dialog on the
   dashboard and stored in the SQLite database, in plaintext, protected by the database's
@@ -253,7 +254,7 @@ All money values are stored as canonical decimal strings or scaled integers with
 
 Derive success/failure counts from attempts so partial success is auditable and cannot drift from its details.
 
-The database stores no OAuth tokens, account emails, account IDs, full CLI/status-line inputs, full app-server responses, or raw API payloads. Once §3.5 is implemented it stores exactly two API keys — DeepSeek and OpenRouter — in `provider_credentials`; until then it stores none.
+The database stores no OAuth tokens, account emails, account IDs, full CLI/status-line inputs, full app-server responses, or raw API payloads. Under §3.5 it stores exactly two API keys — DeepSeek and OpenRouter — in `provider_credentials`.
 
 ### 4.5 Status semantics
 
@@ -266,7 +267,7 @@ Attempt status and snapshot freshness are separate concepts and are not stored a
 
 ## 5. Security and operations
 
-- Read `DEEPSEEK_API_KEY` and `OPENROUTER_MANAGEMENT_KEY` from the collector process environment. For systemd, use an environment file outside the repository with `0600` permissions; a user service does not automatically inherit the shell environment. **Superseded by §3.5 (decided 2026-09-15, not yet implemented):** keys are saved from the dashboard's Settings dialog into the owner-only database and are no longer read from any environment.
+- Read `DEEPSEEK_API_KEY` and `OPENROUTER_MANAGEMENT_KEY` from the collector process environment. For systemd, use an environment file outside the repository with `0600` permissions; a user service does not automatically inherit the shell environment. **Superseded by §3.5 (decided and implemented 2026-09-15):** keys are saved from the dashboard's Settings dialog into the owner-only database and are no longer read from any environment.
 - Treat the OpenRouter Management Key as a high-impact secret since it can access other administrative operations. Use a dashboard-specific key when the provider supports operational separation, restrict file permissions, and never send it to the browser. Under §3.5 the browser may receive only its last four characters.
 - Do not copy Codex/Claude OAuth credentials into `.env`. The Codex adapter delegates auth to the app-server; the Claude bridge only accepts status line fields the CLI already provides.
 - Selectors/redactors run before logging and persistence. Tests must prove that emails, account IDs, bearer tokens, authorization headers, and raw payloads never leak through.

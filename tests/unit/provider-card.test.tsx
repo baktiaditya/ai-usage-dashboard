@@ -260,7 +260,7 @@ describe('card states', () => {
         statusReason: 'no observation has been collected yet',
         diagnostics: {
           errorCode: 'not_configured',
-          hint: 'Credential or source is not configured yet.',
+          hint: 'No credential is saved yet. Add it in Settings.',
           safeMessage: null,
           retryCount: 0,
           lastAttemptAt: null,
@@ -268,7 +268,7 @@ describe('card states', () => {
       }),
     );
     expect(screen.getByText(/Nothing collected yet/)).toBeInTheDocument();
-    expect(screen.getByText(/not configured yet/)).toBeInTheDocument();
+    expect(screen.getByText(/Add it in Settings/)).toBeInTheDocument();
     expect(screen.getByTestId('age-codex')).toHaveTextContent('—');
   });
 });

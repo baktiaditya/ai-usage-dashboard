@@ -1,9 +1,10 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { RefreshCw } from 'lucide-react';
+import { RefreshCw, Settings } from 'lucide-react';
 import { ProviderCardView } from '@/components/provider-card';
 import { HistoryPanel } from '@/components/history-panel';
+import { SettingsDialog } from '@/components/settings-dialog';
 import type { Overview, ProviderCard } from '@/lib/queries/overview';
 import { formatAge } from '@/lib/time';
 import { cn } from '@/lib/cn';
@@ -11,6 +12,12 @@ import { cn } from '@/lib/cn';
 export interface DashboardProps {
   readonly initialOverview: Overview;
 }
+
+/** Shared by Reload view and Settings, which sit side by side. */
+const HEADER_BUTTON = cn(
+  'border-border bg-surface hover:bg-surface-muted inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium',
+  'disabled:cursor-not-allowed disabled:opacity-60',
+);
 
 /**
  * The overview is server-rendered once so the first paint is real data, then
@@ -21,6 +28,7 @@ export function Dashboard({ initialOverview }: DashboardProps) {
   const [overview, setOverview] = useState<Overview>(initialOverview);
   const [reloading, setReloading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   /*
    * Ages are relative to "now", but reading the clock during render would make
    * the server-rendered HTML and the first client render disagree. Seed it from
@@ -75,19 +83,29 @@ export function Dashboard({ initialOverview }: DashboardProps) {
               Subscription quota and prepaid balance across four providers · {overview.timezone}
             </p>
           </div>
-          <button
-            type="button"
-            onClick={() => void reload()}
-            disabled={reloading}
-            data-testid="reload-overview"
-            className={cn(
-              'border-border bg-surface hover:bg-surface-muted inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium',
-              'disabled:cursor-not-allowed disabled:opacity-60',
-            )}
-          >
-            <RefreshCw aria-hidden className={cn('size-3.5', reloading && 'animate-spin')} />
-            Reload view
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void reload()}
+              disabled={reloading}
+              data-testid="reload-overview"
+              className={HEADER_BUTTON}
+            >
+              <RefreshCw aria-hidden className={cn('size-3.5', reloading && 'animate-spin')} />
+              Reload view
+            </button>
+            <button
+              type="button"
+              onClick={() => setSettingsOpen(true)}
+              data-testid="open-settings"
+              aria-haspopup="dialog"
+              aria-expanded={settingsOpen}
+              className={HEADER_BUTTON}
+            >
+              <Settings aria-hidden className="size-3.5" />
+              Settings
+            </button>
+          </div>
         </div>
 
         <div className="text-muted-foreground flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
@@ -118,6 +136,8 @@ export function Dashboard({ initialOverview }: DashboardProps) {
       </section>
 
       <HistoryPanel cards={overview.cards} timezone={overview.timezone} />
+
+      <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
 
       <footer className="text-muted-foreground border-border border-t pt-4 text-xs">
         <p>

@@ -5,9 +5,10 @@
  * database, so a development server must not inherit either. Moving only the
  * bind port is not enough: the same-origin guard reads `AUD_PORT`, opening a
  * database applies pending migrations, and `getConfig()` fills `process.env`
- * from `collector.env`, real provider keys included. The child therefore gets a
- * complete environment with the port, data directory, and refresh policy
- * already decided here.
+ * from `collector.env`. The child therefore gets a complete environment with the
+ * port, data directory, and refresh policy already decided here. Provider keys
+ * live in the database, so the development server only ever sees the keys saved
+ * in its own database.
  *
  * `AUD_DEV_*` settings are parsed only in this module, never by `loadConfig`,
  * so a malformed development value cannot stop `npm run start`, scheduled
@@ -160,13 +161,6 @@ export function resolveDevEnvironment(sourceEnv: EnvLike = process.env): DevEnvi
     AUD_DATA_DIR: dataDir,
     AUD_REFRESH_ENABLED: liveRefresh ? '1' : '0',
   };
-  if (!liveRefresh) {
-    // Empty, not deleted: Next.js fills a variable from `.env.local` only while
-    // it is unset, and the child's own `getConfig()` does the same from
-    // `collector.env`.
-    child['DEEPSEEK_API_KEY'] = '';
-    child['OPENROUTER_MANAGEMENT_KEY'] = '';
-  }
 
   return {
     host: production.host,

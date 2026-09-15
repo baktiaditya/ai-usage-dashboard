@@ -68,7 +68,7 @@ export function isRetryable(code: ErrorCode): boolean {
 
 /** Human-readable, secret-free explanation used by the diagnostics panel. */
 export const ERROR_CODE_HINTS: Record<ErrorCode, string> = {
-  not_configured: 'Credential or source is not configured yet.',
+  not_configured: 'No credential is saved yet. Add it in Settings.',
   not_entitled: 'This account or plan does not expose the data.',
   no_event_yet: 'No event has been received from this source yet.',
   timeout: 'The source did not respond within the adapter timeout.',

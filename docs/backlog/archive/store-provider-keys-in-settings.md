@@ -2,7 +2,15 @@
 
 ## Status
 
-Ready for agent
+Archived
+
+Delivered on 2026-09-15. DeepSeek and OpenRouter keys are saved from a Settings dialog into the
+`provider_credentials` table and read from there at the start of every collection run; the
+environment variables are no longer read. The contract lives in
+[plan §3.5](../../plan/ai-usage-dashboard-implementation-plan.md) and
+[Setup](../../operations/setup.md) §4; the delivery is recorded in the [log](../../log.md). Live
+collection with keys saved in the production database was not performed and remains the user's
+check after deploy.
 
 The status above must match the directory that contains this brief. Move the file with
 `git mv` when its readiness changes.
