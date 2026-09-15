@@ -109,17 +109,17 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const role = useRole(context, { role: 'dialog' });
   const { getFloatingProps } = useInteractions([dismiss, role]);
   // Stays mounted through the close transition; focus returns to the Settings
-  // button when it unmounts.
-  const { isMounted, status } = useTransitionStatus(context, { duration: 200 });
+  // button when it unmounts. Matches the 100ms transitions below.
+  const { isMounted, status } = useTransitionStatus(context, { duration: 100 });
   const headingId = useId();
   const deepseekInput = useRef<HTMLInputElement>(null);
   const openrouterInput = useRef<HTMLInputElement>(null);
 
   if (!isMounted) return null;
 
-  // shadcn/ui's dialog motion: the backdrop fades over 150ms, the panel fades
-  // and zooms from 95% over 200ms. They are siblings, so the backdrop's fade
-  // never dims the panel.
+  // shadcn/ui's dialog motion, shortened to 100ms: the blurred backdrop fades,
+  // and the panel fades and zooms from 95%. They are siblings, so the
+  // backdrop's fade never dims the panel.
   return (
     <FloatingPortal>
       <FloatingOverlay
@@ -130,7 +130,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
         <div
           aria-hidden
           data-status={status}
-          className="fixed inset-0 bg-black/50 opacity-0 transition-opacity duration-150 ease-[ease] data-[status=open]:opacity-100"
+          className="fixed inset-0 bg-black/50 opacity-0 transition-opacity duration-100 ease-[ease] data-[status=open]:opacity-100 supports-backdrop-filter:backdrop-blur-xs"
         />
         {/* Returns focus to the element that opened it: the Settings button. */}
         <FloatingFocusManager context={context} initialFocus={deepseekInput}>
@@ -139,7 +139,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
             aria-labelledby={headingId}
             data-testid="settings-dialog"
             data-status={status}
-            className="bg-surface border-border relative m-4 max-h-[calc(100dvh-2rem)] w-full max-w-md scale-95 overflow-y-auto rounded-xl border opacity-0 shadow-sm transition-[opacity,scale] duration-200 ease-[ease] data-[status=open]:scale-100 data-[status=open]:opacity-100"
+            className="bg-surface border-border relative m-4 max-h-[calc(100dvh-2rem)] w-full max-w-md scale-95 overflow-y-auto rounded-xl border opacity-0 shadow-sm transition-[opacity,scale] duration-100 ease-[ease] data-[status=open]:scale-100 data-[status=open]:opacity-100"
             {...getFloatingProps()}
           >
             <SettingsForm
