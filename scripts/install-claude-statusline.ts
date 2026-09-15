@@ -13,11 +13,11 @@
  *   - it writes a timestamped backup of settings.json before touching it.
  *
  * Usage:
- *   npm run claude:install-statusline                    # dry run (default)
- *   npm run claude:install-statusline -- --apply
- *   npm run claude:install-statusline -- --apply --wrap-existing
- *   npm run claude:install-statusline -- --print         # snippet to paste by hand
- *   npm run claude:install-statusline -- --uninstall --apply
+ *   pnpm run claude:install-statusline                   # dry run (default)
+ *   pnpm run claude:install-statusline --apply
+ *   pnpm run claude:install-statusline --apply --wrap-existing
+ *   pnpm run claude:install-statusline --print           # snippet to paste by hand
+ *   pnpm run claude:install-statusline --uninstall --apply
  */
 import {
   chmodSync,
@@ -164,10 +164,10 @@ function main(): number {
         'This installer will not overwrite it. Choose one:',
         '',
         '  1. Compose with it (the bridge runs your command and prints its output):',
-        '       npm run claude:install-statusline -- --apply --wrap-existing',
+        '       pnpm run claude:install-statusline --apply --wrap-existing',
         '',
         '  2. Configure it yourself:',
-        '       npm run claude:install-statusline -- --print',
+        '       pnpm run claude:install-statusline --print',
         '',
         'Existing command left untouched.',
         '',

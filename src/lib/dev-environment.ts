@@ -1,5 +1,5 @@
 /**
- * The environment `npm run dev` hands to `next dev`.
+ * The environment `pnpm run dev` hands to `next dev`.
  *
  * The production dashboard runs at boot on `AUD_PORT` against the collector's
  * database, so a development server must not inherit either. Moving only the
@@ -11,7 +11,7 @@
  * in its own database.
  *
  * `AUD_DEV_*` settings are parsed only in this module, never by `loadConfig`,
- * so a malformed development value cannot stop `npm run start`, scheduled
+ * so a malformed development value cannot stop `pnpm run start`, scheduled
  * collection, or either systemd unit.
  */
 import { lstatSync, readlinkSync, realpathSync } from 'node:fs';

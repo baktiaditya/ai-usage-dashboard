@@ -114,7 +114,7 @@ const envSchema = z.object({
 
 /**
  * Provider key variables that are no longer read from any environment
- * (plan §3.5). They are listed only so `npm run collect` can warn that a stale
+ * (plan §3.5). They are listed only so `pnpm run collect` can warn that a stale
  * value is being ignored.
  */
 export const RETIRED_CREDENTIAL_ENV_VARS = [

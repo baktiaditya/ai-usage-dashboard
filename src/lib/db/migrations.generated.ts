@@ -2,7 +2,7 @@
  * GENERATED FILE — do not edit.
  *
  * Produced by scripts/build-migrations.ts from drizzle/*.sql, which remain the
- * source of truth. Regenerate with: npm run db:build-migrations
+ * source of truth. Regenerate with: pnpm run db:build-migrations
  */
 
 export interface EmbeddedMigration {

@@ -17,7 +17,7 @@ WorkingDirectory=__WORKDIR__
 # scripts/next.ts serves the production build on AUD_HOST/AUD_PORT, read from
 # the same configuration the refresh origin guard uses, and refuses anything
 # but loopback. The build is never run here: a slow or failing build at boot
-# would leave the dashboard down. Run `npm run build` before (re)starting.
+# would leave the dashboard down. Run `pnpm run build` before (re)starting.
 ExecStart=__NODE__ __TSX__ __WORKDIR__/scripts/next.ts start
 Restart=on-failure
 RestartSec=5

@@ -28,11 +28,11 @@ export default defineConfig({
     { name: 'mobile', use: { ...devices['Pixel 7'] } },
   ],
   webServer: {
-    // Build, seed, then serve through `npm run start`, which binds to AUD_PORT —
+    // Build, seed, then serve through `pnpm run start`, which binds to AUD_PORT —
     // the path that keeps the refresh origin guard and the server on the same
     // port. The build is part of the command so a clean checkout never runs
     // against a missing or stale `.next`.
-    command: 'npm run build && npm run seed:demo && npm run start',
+    command: 'pnpm run build && pnpm run seed:demo && pnpm run start',
     url: `http://127.0.0.1:${PORT}`,
     reuseExistingServer: false,
     timeout: 300_000,

@@ -3,7 +3,7 @@
  *
  * Optional `AUD_*` settings live in one file outside the repository
  * (`~/.config/ai-usage-dashboard/collector.env`, mode `0600`). Every entry
- * point — the systemd unit, `npm run collect`, `npm run test:live`, and the web
+ * point — the systemd unit, `pnpm run collect`, `pnpm run test:live`, and the web
  * server — loads it here, so they share one settings source and one parser.
  * Provider keys are no longer read from it; they are saved in dashboard
  * Settings. The unit uses no `EnvironmentFile=`: that would let the file

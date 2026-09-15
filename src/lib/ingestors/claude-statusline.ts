@@ -146,7 +146,7 @@ export function createClaudeIngestor(
         if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
           throw new CollectionError(
             'no_event_yet',
-            'no status-line event has been recorded yet; run `npm run claude:install-statusline` and start a Claude Code session',
+            'no status-line event has been recorded yet; run `pnpm run claude:install-statusline` and start a Claude Code session',
           );
         }
         throw new CollectionError('io_error', 'the spool file could not be read');

@@ -15,16 +15,20 @@ Four providers, three kinds of number, deliberately never mixed:
 
 ## Quick start
 
+Requires Node.js 24.15 or a later Node 24 release. Its bundled corepack runs the exact pnpm
+version `package.json` pins.
+
 ```bash
-npm install
-npm run db:migrate
-npm run collect
-npm run build
-npm run start        # http://127.0.0.1:3838
+corepack enable pnpm
+pnpm install --frozen-lockfile
+pnpm run db:migrate
+pnpm run collect
+pnpm run build
+pnpm run start        # http://127.0.0.1:3838
 ```
 
-Working on the dashboard itself? `npm run dev` runs beside production on
-`http://127.0.0.1:3839` with its own empty database (`npm run seed:dev` fills it)
+Working on the dashboard itself? `pnpm run dev` runs beside production on
+`http://127.0.0.1:3839` with its own empty database (`pnpm run seed:dev` fills it)
 and manual refresh disabled unless `AUD_DEV_LIVE_REFRESH=1`.
 
 It works with nothing configured. Providers you have not set up render as
@@ -104,19 +108,19 @@ so scheduled and manual runs cannot drift apart in behaviour.
 
 ## Commands
 
-| Command                                    | Does                                                                                                      |
-| ------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
-| `npm run start`                            | production dashboard on `127.0.0.1:3838` (or `AUD_HOST`/`AUD_PORT`) from an `npm run build`               |
-| `npm run dev`                              | development server on `127.0.0.1:3839` (`AUD_DEV_PORT`), own database, refresh off by default             |
-| `npm run seed:dev`                         | fill the development database with every card state; never the production one                             |
-| `npm run collect`                          | one collection pass (`--manual`, `--provider=codex,deepseek`)                                             |
-| `npm run db:migrate`                       | apply migrations, print schema state                                                                      |
-| `npm run db:backup` / `npm run db:restore` | back up the database while it runs; restore one with the units stopped                                    |
-| `npm run claude:install-statusline`        | install the bridge (dry run by default)                                                                   |
-| `npm run systemd:install`                  | render the collector units and the optional web unit (install, enable, and `--with-web` are opt-in flags) |
-| `npm run verify`                           | format + lint + typecheck + unit + integration                                                            |
-| `npm run test:e2e`                         | browser smoke at desktop and mobile widths                                                                |
-| `npm run test:live`                        | opt-in live checks; skips gates whose credential is absent                                                |
+| Command                                      | Does                                                                                                      |
+| -------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `pnpm run start`                             | production dashboard on `127.0.0.1:3838` (or `AUD_HOST`/`AUD_PORT`) from a `pnpm run build`               |
+| `pnpm run dev`                               | development server on `127.0.0.1:3839` (`AUD_DEV_PORT`), own database, refresh off by default             |
+| `pnpm run seed:dev`                          | fill the development database with every card state; never the production one                             |
+| `pnpm run collect`                           | one collection pass (`--manual`, `--provider=codex,deepseek`)                                             |
+| `pnpm run db:migrate`                        | apply migrations, print schema state                                                                      |
+| `pnpm run db:backup` / `pnpm run db:restore` | back up the database while it runs; restore one with the units stopped                                    |
+| `pnpm run claude:install-statusline`         | install the bridge (dry run by default)                                                                   |
+| `pnpm run systemd:install`                   | render the collector units and the optional web unit (install, enable, and `--with-web` are opt-in flags) |
+| `pnpm run verify`                            | format + lint + typecheck + unit + integration                                                            |
+| `pnpm run test:e2e`                          | browser smoke at desktop and mobile widths                                                                |
+| `pnpm run test:live`                         | opt-in live checks; skips gates whose credential is absent                                                |
 
 ## Status
 
