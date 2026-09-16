@@ -2,6 +2,15 @@
 
 ## 2026-09-17
 
+- **Update**: [PR #16](https://github.com/baktiaditya/ai-usage-dashboard/pull/16) is merged as
+  `b46205e` and deployed to the production checkout from `820d873`, after a `db:backup` of the live
+  database. The Setup §6 deploy and verify blocks from `origin/main` passed with no rollback:
+  `verify` passed (36 files, 589 tests), migration `0003` applied and kept the saved DeepSeek and
+  OpenRouter keys, and the next collector run recorded a successful attempt for every provider. The
+  Claude token is saved in production Settings. While a Claude Code session was reporting, Claude
+  readings still came from the status line and no probe was claimed, as designed; the first idle
+  probe, and whether it opens a five-hour window, is still to be observed.
+  [The poll brief](backlog/archive/poll-claude-quota-without-a-session.md) moves to `archive/`.
 - **Update**: plan §2's read-only principle now names the Claude quota probe as its one
   exception. The probe's `POST /v1/messages` is real inference that spends subscription usage, so
   "only performs read operations" was no longer true. Found in PR #16 review.
@@ -30,14 +39,14 @@
   status line, so `session` and `weekly_all` labels are gone and a Claude window is one series again,
   whichever source observed it. The history legend still shows window labels instead of raw
   identifiers.
-- **Update**: [the poll brief](backlog/ready-for-agent/poll-claude-quota-without-a-session.md)
+- **Update**: [the poll brief](backlog/archive/poll-claude-quota-without-a-session.md)
   is implemented on branch `feat/poll-claude-quota-without-a-session`, tracked by
   [#13](https://github.com/baktiaditya/ai-usage-dashboard/issues/13). Migration `0003` rebuilds
   `provider_credentials` with `claude` in its `CHECK` and creates the `claude_poll_state` singleton
   that plan §4.4 now describes as implemented. `src/lib/adapters/claude-usage.ts` holds the poll and
   the single composite Claude adapter. Freshness now keys the Claude budget on the snapshot's
   `sourceVersion`, and [setup](operations/setup.md) §3 documents enabling the poll and the whole
-  token lifecycle. The brief stays in `ready-for-agent/` until the change is merged and deployed.
+  token lifecycle.
 - **Decision**: a `limits[].kind` without a label is refused in the adapter, not rendered. The
   brief left the choice open between labelling and refusing. Refusing there keeps an undocumented
   internal name out of the database, the history legend, and the advisory subject, not only the
@@ -76,7 +85,7 @@
   because either direction is a cross-provider change that belongs in its own brief. The decision
   is tracked in [#15](https://github.com/baktiaditya/ai-usage-dashboard/issues/15).
 - **Decision**: the Claude usage poll follows the implemented mapping, not §4.5. A review of PR #14
-  found that [the poll brief](backlog/ready-for-agent/poll-claude-quota-without-a-session.md)
+  found that [the poll brief](backlog/archive/poll-claude-quota-without-a-session.md)
   required `schema_mismatch` on drift while its acceptance criteria required the card to render
   `unavailable`, which the existing collector cannot produce. Drift now renders `error` when no
   spool snapshot is usable, and no Claude-specific status mapping is added. This supersedes the
@@ -99,7 +108,7 @@
   usable spool the attempt is `error`, and any older snapshot is historical. This replaces the
   earlier shorthand below that said every refusal degrades to `stale`, which contradicted the
   canonical latest-attempt precedence.
-- **Design**: [the poll brief](backlog/ready-for-agent/poll-claude-quota-without-a-session.md)
+- **Design**: [the poll brief](backlog/archive/poll-claude-quota-without-a-session.md)
   specifies that the five-minute Claude usage floor is enforced by an atomic, durable SQLite claim,
   not by configuration or process memory. The systemd collector is a new oneshot process on every
   run, while manual refresh runs in the web process; only shared state prevents either path, or two
@@ -200,7 +209,7 @@
   — has to be rewritten. The Claude token is also optional in a way the other two are not: the
   status-line spool keeps reporting quota without it, so the Settings copy must say so. The brief's
   impact map and testing plan were corrected accordingly; its first version understated both.
-- **Update**: [poll-claude-quota-without-a-session](backlog/ready-for-agent/poll-claude-quota-without-a-session.md)
+- **Update**: [poll-claude-quota-without-a-session](backlog/archive/poll-claude-quota-without-a-session.md)
   is promoted to `ready-for-agent/` on the decision above, and
   [#13](https://github.com/baktiaditya/ai-usage-dashboard/issues/13) is relabelled to match.
   Whether `claude -p "/usage"` calls the same endpoint underneath was probed with `claude --debug`
@@ -232,7 +241,7 @@
   - `scripts/spike-claude-oauth-usage.ts` (`pnpm run spike:claude-usage`) is the gate probe. It
     sends exactly one request, never retries a refusal, never writes the credentials file, and
     prints structure with every leaf elided.
-- **Proposed**: [poll-claude-quota-without-a-session](backlog/ready-for-agent/poll-claude-quota-without-a-session.md)
+- **Proposed**: [poll-claude-quota-without-a-session](backlog/archive/poll-claude-quota-without-a-session.md)
   files the above as a brief, first in `ready-for-human/` and promoted the same day, tracked by
   [#13](https://github.com/baktiaditya/ai-usage-dashboard/issues/13). It is blocked on a user decision, because the
   plan §2 and §3.1 both state that Claude quota arrives via the status line; that contradiction

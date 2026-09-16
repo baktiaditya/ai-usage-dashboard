@@ -118,8 +118,8 @@ is the intended behaviour, not a gap.
 The status line is push-shaped: it answers only while a session is live and only
 after that session's first API response, so the card goes blind exactly when
 nobody is working. The plan admits one pull-shaped source for that gap, an
-optional, default-off probe (§3.1); the implementation contract is the brief
-[poll-claude-quota-without-a-session](../backlog/ready-for-agent/poll-claude-quota-without-a-session.md).
+optional, default-off probe (§3.1), delivered from the now archived brief
+[poll-claude-quota-without-a-session](../backlog/archive/poll-claude-quota-without-a-session.md).
 
 Every Messages API response to a subscription token carries the account's
 unified rate-limit state in its headers. Probed once on 2026-09-17 with a
