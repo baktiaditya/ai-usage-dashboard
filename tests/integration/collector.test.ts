@@ -19,11 +19,11 @@ import { collectOnce, runAdapter } from '@/lib/collector/index';
 import { getConfig, resetConfigCache } from '@/lib/config';
 import { openDb } from '@/lib/db/client';
 import { removeProviderCredential, saveProviderCredential } from '@/lib/db/credentials';
-import { CollectionError } from '@/lib/errors';
+import { CollectionDeferred, CollectionError } from '@/lib/errors';
 import type { ErrorCode } from '@/lib/errors';
 import { CLAUDE_USAGE_SOURCE_VERSION } from '@/lib/domain';
 import type { ProviderAdapter, Provider, QuotaSnapshot } from '@/lib/domain';
-import { getLatestAttempts, getLatestSnapshots } from '@/lib/db/repository';
+import { claimClaudePoll, getLatestAttempts, getLatestSnapshots } from '@/lib/db/repository';
 import type { Logger } from '@/lib/logger';
 import { buildOverview } from '@/lib/queries/overview';
 import { createTestDb, testConfig } from '../helpers/db';
@@ -112,6 +112,31 @@ describe('runAdapter', () => {
     expect(record.result.outcome).toBe('error');
   });
 
+  it('reports a deferred adapter as deferred, and collectOnce writes no attempt for it', async () => {
+    const deferring: ProviderAdapter = {
+      provider: 'claude',
+      schemaVersion: 1,
+      timeoutMs: 500,
+      async collect() {
+        throw new CollectionDeferred('another run owns this answer');
+      },
+    };
+    expect((await runAdapter(deferring)).result.outcome).toBe('deferred');
+
+    const summary = await collectOnce({
+      db: t.db,
+      config,
+      trigger: 'manual',
+      adapters: [deferring, okAdapter('codex')],
+    });
+    expect(summary.attempts).toEqual([
+      { provider: 'claude', outcome: 'deferred', code: null },
+      { provider: 'codex', outcome: 'success', code: null },
+    ]);
+    expect(summary).toMatchObject({ success: 1, deferred: 1, error: 0, unavailable: 0 });
+    expect([...getLatestAttempts(t.db).keys()]).toEqual(['codex']);
+  });
+
   it('classifies a missing credential as unavailable, not error', async () => {
     const record = await runAdapter(failingAdapter('deepseek', 'not_configured'));
     expect(record.result.outcome).toBe('unavailable');
@@ -121,7 +146,7 @@ describe('runAdapter', () => {
     const started = Date.now();
     const record = await runAdapter(hangingAdapter('codex'));
     expect(record.result.outcome).toBe('error');
-    if (record.result.outcome !== 'success') {
+    if (record.result.outcome === 'error') {
       expect(record.result.failure.code).toBe('timeout');
       expect(record.result.failure.retryable).toBe(true);
     }
@@ -138,7 +163,8 @@ describe('runAdapter', () => {
         throw new Error('request failed with Authorization: Bearer sk-or-v1-supersecretvalue');
       },
     });
-    if (record.result.outcome !== 'success') {
+    expect(record.result.outcome).toBe('error');
+    if (record.result.outcome === 'error') {
       expect(record.result.failure.safeMessage).not.toContain('sk-or-v1-supersecretvalue');
     }
   });
@@ -565,8 +591,8 @@ describe('Claude usage poll through the collector', () => {
     });
     expect(card?.windows.map((w) => w.label)).toEqual(['Session', 'Weekly, all models']);
     expect(card?.windows.map((w) => w.resetsAt)).toEqual([
-      '2026-09-17T09:00:00.123456+00:00',
-      '2026-09-21T03:00:00+07:00',
+      '2099-09-17T09:00:00.123456+00:00',
+      '2099-09-21T03:00:00+07:00',
     ]);
   });
 
@@ -651,6 +677,103 @@ describe('Claude usage poll through the collector', () => {
     expect(claudeRows('collector_attempts')).toBe(3);
     expect(claudeRows('provider_snapshots')).toBe(2);
     expect(upstream).toHaveBeenCalledTimes(1);
+  });
+
+  describe('a run that loses the claim with no usable spool', () => {
+    const claudeAttempts = () =>
+      t.db.$client
+        .prepare(
+          "SELECT outcome, error_code FROM collector_attempts WHERE provider = 'claude' ORDER BY id",
+        )
+        .all();
+
+    it('keeps a stored poll reading healthy and lets it age, with no request and no new row', async () => {
+      saveProviderCredential(t.db, 'claude', CLAUDE_TOKEN);
+      await run('scheduled');
+      const polledAt = claudeCard()?.sourceObservedAt;
+      expect(upstream).toHaveBeenCalledTimes(1);
+
+      // A manual refresh and a narrowly early scheduled run both lose the claim.
+      for (const trigger of ['manual', 'scheduled'] as const) {
+        const summary = await run(trigger);
+        expect(summary.attempts).toEqual([{ provider: 'claude', outcome: 'deferred', code: null }]);
+        expect(summary).toMatchObject({ deferred: 1, success: 0, unavailable: 0, error: 0 });
+      }
+
+      expect(upstream).toHaveBeenCalledTimes(1);
+      expect(claudeAttempts()).toEqual([{ outcome: 'success', error_code: null }]);
+      expect(claudeRows('provider_snapshots')).toBe(1);
+      expect(claudeCard()).toMatchObject({ status: 'healthy', sourceObservedAt: polledAt });
+
+      // Age still applies: past the pull budget the same reading is stale, not current.
+      const later = new Date(Date.parse(polledAt!) + 16 * 60_000);
+      expect(
+        buildOverview(t.db, claudeConfig, later).cards.find((c) => c.provider === 'claude'),
+      ).toMatchObject({ status: 'stale', sourceObservedAt: polledAt });
+    });
+
+    it('does not mask the claimant while its poll is still in flight, nor after it lands', async () => {
+      saveProviderCredential(t.db, 'claude', CLAUDE_TOKEN);
+      let release: () => void = () => {};
+      const gate = new Promise<void>((resolve) => (release = resolve));
+      stubUpstream(
+        vi.fn(async () => {
+          await gate;
+          return new Response(fixtureText('claude-usage', 'valid'), { status: 200 });
+        }),
+      );
+      const web = openDb({ path: t.path });
+      try {
+        const winner = run('scheduled');
+        // Wait until the winner holds the claim and its request is open.
+        await vi.waitFor(() => expect(upstream).toHaveBeenCalledTimes(1));
+
+        const loser = await run('manual', web);
+        expect(loser.attempts).toEqual([{ provider: 'claude', outcome: 'deferred', code: null }]);
+        // Nothing was ever collected, so the card honestly says so meanwhile.
+        expect(claudeCard()?.status).toBe('unavailable');
+        expect(claudeAttempts()).toEqual([]);
+
+        release();
+        expect((await winner).attempts).toEqual([
+          { provider: 'claude', outcome: 'success', code: null },
+        ]);
+        expect(claudeCard()).toMatchObject({
+          status: 'healthy',
+          sourceVersion: CLAUDE_USAGE_SOURCE_VERSION,
+        });
+        expect(upstream).toHaveBeenCalledTimes(1);
+      } finally {
+        release();
+        web.$client.close();
+      }
+    });
+
+    it('keeps the claimant’s failure as the card state instead of hiding it', async () => {
+      saveProviderCredential(t.db, 'claude', CLAUDE_TOKEN);
+      stubUpstream(respond(429, '{"error":"elided"}'));
+      await run('scheduled');
+      await run('manual');
+
+      expect(claudeAttempts()).toEqual([{ outcome: 'error', error_code: 'rate_limited' }]);
+      expect(claudeCard()).toMatchObject({
+        status: 'error',
+        diagnostics: { errorCode: 'rate_limited' },
+      });
+      expect(upstream).toHaveBeenCalledTimes(1);
+    });
+
+    it('stays unavailable when no poll result exists at all', async () => {
+      saveProviderCredential(t.db, 'claude', CLAUDE_TOKEN);
+      // A claim left by a run that crashed before recording anything.
+      claimClaudePoll(t.db, new Date().toISOString(), 5 * 60_000);
+
+      expect((await run('manual')).attempts).toEqual([
+        { provider: 'claude', outcome: 'deferred', code: null },
+      ]);
+      expect(upstream).not.toHaveBeenCalled();
+      expect(claudeCard()).toMatchObject({ status: 'unavailable', sourceObservedAt: null });
+    });
   });
 
   it('never logs the token or a quota value', async () => {

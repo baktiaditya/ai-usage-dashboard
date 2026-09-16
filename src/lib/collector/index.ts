@@ -8,14 +8,17 @@
  *     adapter result is therefore reduced to a `CollectionResult` before any of
  *     them is awaited together — `Promise.all` over functions that cannot
  *     reject.
- *   - **One run, one attempt per provider.** Success and failure counts are
- *     derived from the attempt rows, so a partial run is fully auditable and
- *     the summary can never drift from the detail. An attempt that could not be
- *     written is therefore an error, whatever the adapter returned.
+ *   - **One run, at most one attempt per provider.** Success and failure
+ *     counts are derived from the attempt rows, so a partial run is fully
+ *     auditable and the summary can never drift from the detail. An attempt
+ *     that could not be written is therefore an error, whatever the adapter
+ *     returned. The one run that writes none is a deferred one
+ *     (`CollectionDeferred`): it observed nothing and another run owns the
+ *     answer, so a row from it would only mask that run's result.
  */
 import type { AppConfig } from '../config';
 import type { CollectContext, CollectionResult, Provider, ProviderAdapter } from '../domain';
-import { CollectionError, isRetryable, isUnavailable } from '../errors';
+import { CollectionDeferred, CollectionError, isRetryable, isUnavailable } from '../errors';
 import type { ErrorCode } from '../errors';
 import { createClaudeAdapter } from '../adapters/claude-usage';
 import { createCodexAdapter } from '../adapters/codex';
@@ -114,6 +117,14 @@ export async function runAdapter(adapter: ProviderAdapter): Promise<AttemptRecor
       result: { outcome: 'success', snapshot, retryCount: retries },
     };
   } catch (err) {
+    if (err instanceof CollectionDeferred) {
+      return {
+        provider: adapter.provider,
+        startedAt,
+        finishedAt: nowIso(),
+        result: { outcome: 'deferred', reason: safeErrorMessage(err), retryCount: retries },
+      };
+    }
     const code: ErrorCode =
       err instanceof CollectionError
         ? err.code
@@ -162,11 +173,13 @@ export interface CollectSummary {
   readonly success: number;
   readonly unavailable: number;
   readonly error: number;
+  /** Providers that recorded no attempt because another run owns the answer. */
+  readonly deferred: number;
   readonly deduplicated: number;
   readonly prunedSnapshots: number;
   readonly attempts: readonly {
     provider: Provider;
-    outcome: 'success' | 'unavailable' | 'error';
+    outcome: 'success' | 'unavailable' | 'error' | 'deferred';
     code: ErrorCode | null;
   }[];
 }
@@ -198,11 +211,19 @@ export async function collectOnce(options: CollectOptions): Promise<CollectSumma
   let success = 0;
   let unavailable = 0;
   let error = 0;
+  let deferred = 0;
   let deduplicated = 0;
   const attempts: CollectSummary['attempts'][number][] = [];
 
   for (const record of records) {
-    let outcome = record.result.outcome;
+    if (record.result.outcome === 'deferred') {
+      // Nothing is written: the latest attempt must stay the run that did the work.
+      deferred += 1;
+      attempts.push({ provider: record.provider, outcome: 'deferred', code: null });
+      log.info('provider deferred', { provider: record.provider, reason: record.result.reason });
+      continue;
+    }
+    let outcome: 'success' | 'unavailable' | 'error' = record.result.outcome;
     let code = record.result.outcome === 'success' ? null : record.result.failure.code;
 
     // Each attempt is its own short transaction, so a write failure for one
@@ -269,6 +290,7 @@ export async function collectOnce(options: CollectOptions): Promise<CollectSumma
     success,
     unavailable,
     error,
+    deferred,
     deduplicated,
     prunedSnapshots,
   });
@@ -279,6 +301,7 @@ export async function collectOnce(options: CollectOptions): Promise<CollectSumma
     success,
     unavailable,
     error,
+    deferred,
     deduplicated,
     prunedSnapshots,
     attempts,

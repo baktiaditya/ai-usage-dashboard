@@ -411,6 +411,8 @@ export interface QuotaHistoryPoint {
   readonly bucketId: string;
   readonly windowKind: string;
   readonly usedPercent: number;
+  readonly windowDurationMinutes: number | null;
+  readonly sourceVersion: string;
 }
 
 /** Raw quota observations in a window, oldest first. Aggregation happens above. */
@@ -425,6 +427,8 @@ export function getQuotaHistory(
       bucketId: quotaWindows.bucketId,
       windowKind: quotaWindows.windowKind,
       usedPercent: quotaWindows.usedPercent,
+      windowDurationMinutes: quotaWindows.windowDurationMinutes,
+      sourceVersion: providerSnapshots.sourceVersion,
     })
     .from(quotaWindows)
     .innerJoin(providerSnapshots, eq(quotaWindows.snapshotId, providerSnapshots.id))

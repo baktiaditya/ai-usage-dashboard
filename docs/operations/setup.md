@@ -215,7 +215,11 @@ exceptional. The dashboard treats it that way:
 
 - **At most one request per five minutes**, whatever triggers the run. The scheduled collector and a
   card's **Refresh** share one claim in the database, taken before each request, so a refused or
-  failed request still spends the interval. A run inside the interval skips the poll.
+  failed request still spends the interval. A run inside the interval skips the poll and reads the
+  spool. When the spool has nothing usable either, that run records nothing for Claude: the card
+  keeps the last poll's result, ages it by the polled freshness budget, and never turns
+  `unavailable` just because a Refresh landed inside the interval. It reads `unavailable` only when
+  no poll has produced a result yet.
   `AUD_CLAUDE_POLL_INTERVAL_MINUTES` (§7) can lengthen it; a value below `5` stops startup with a
   configuration error.
 - **Never retried.** Refusals escalate with no `Retry-After`, so a `429` is left for the next
@@ -230,6 +234,13 @@ exceptional. The dashboard treats it that way:
   polled freshness budget (three collect intervals) rather than the 12-hour status-line budget. The
   diagnostics panel's source version reads `claude-api/oauth-usage` when the poll supplied the
   reading and `claude-code/<version>` when the spool did.
+- **History keeps the two sources apart.** The status line reports `5 hour` and `7 day` windows and
+  the poll reports `Session` and `Weekly, all models`. They look alike, but nothing has shown they
+  measure the same windows, so the history chart draws each as its own series labelled
+  `(status line)` or `(usage poll)`. When runs alternate between sources, each line has gaps where
+  the other source supplied the reading. Quota threshold overrides in `AUD_THRESHOLDS` (§7) are
+  keyed by window as well, so a `claude:five_hour` override does not apply to a polled `session`
+  window.
 
 The collector never reads `~/.claude/.credentials.json`. The token is one you mint for this
 dashboard.

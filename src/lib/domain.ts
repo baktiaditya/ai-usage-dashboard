@@ -179,6 +179,12 @@ export type CollectionResult =
       readonly outcome: 'unavailable' | 'error';
       readonly failure: CollectionFailure;
       readonly retryCount: number;
+    }
+  | {
+      /** Nothing observed and another run owns the answer; never persisted. */
+      readonly outcome: 'deferred';
+      readonly reason: string;
+      readonly retryCount: number;
     };
 
 /**

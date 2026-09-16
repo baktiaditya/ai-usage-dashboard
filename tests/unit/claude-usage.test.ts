@@ -13,7 +13,7 @@ import {
 } from '@/lib/adapters/claude-usage';
 import { CLAUDE_USAGE_SOURCE_VERSION } from '@/lib/domain';
 import type { QuotaSnapshot } from '@/lib/domain';
-import { CollectionError } from '@/lib/errors';
+import { CollectionDeferred, CollectionError } from '@/lib/errors';
 import { createClaudeIngestor } from '@/lib/ingestors/claude-statusline';
 import { labelWindow } from '@/lib/queries/overview';
 import { fixtureLossless, fixtureText } from '../helpers/fixtures';
@@ -49,21 +49,21 @@ describe('limits[] mapping', () => {
       usageAllowed: null,
       limitReachedCode: null,
     });
-    // The window keys say 99; limits[] is the contract, so they are ignored.
+    // The window keys say 77; limits[] is the contract, so they are ignored.
     expect(snap.windows).toEqual([
       {
         bucketId: 'session:session',
         windowKind: 'session',
         usedPercent: 12.5,
         windowDurationMinutes: null,
-        resetsAt: '2026-09-17T09:00:00.123456+00:00',
+        resetsAt: '2099-09-17T09:00:00.123456+00:00',
       },
       {
         bucketId: 'weekly_all:weekly',
         windowKind: 'weekly_all',
         usedPercent: 48,
         windowDurationMinutes: null,
-        resetsAt: '2026-09-21T03:00:00+07:00',
+        resetsAt: '2099-09-21T03:00:00+07:00',
       },
     ]);
   });
@@ -71,11 +71,11 @@ describe('limits[] mapping', () => {
   it('keeps resets_at to the second, never through an epoch conversion', () => {
     for (const w of normalize('valid').windows) {
       expect(w.resetsAt).not.toBeNull();
-      expect(new Date(w.resetsAt as string).getUTCFullYear()).toBe(2026);
+      expect(new Date(w.resetsAt as string).getUTCFullYear()).toBe(2099);
     }
     const [session, weekly] = normalize('valid').windows;
-    expect(Date.parse(session!.resetsAt!)).toBe(Date.parse('2026-09-17T09:00:00.123Z'));
-    expect(new Date(weekly!.resetsAt!).toISOString()).toBe('2026-09-20T20:00:00.000Z');
+    expect(Date.parse(session!.resetsAt!)).toBe(Date.parse('2099-09-17T09:00:00.123Z'));
+    expect(new Date(weekly!.resetsAt!).toISOString()).toBe('2099-09-20T20:00:00.000Z');
   });
 
   it('derives the bucket id from identity fields only, omitting nulls', () => {
@@ -87,7 +87,7 @@ describe('limits[] mapping', () => {
 
   it('carries nothing from the payload beyond the validated gauges', () => {
     const serialized = JSON.stringify(normalize('valid'));
-    for (const unmodelled of ['unmodelled_example_key', 'extra_usage', 'severity', 'USD', '99']) {
+    for (const unmodelled of ['unmodelled_example_key', 'extra_usage', 'severity', 'USD', '77']) {
       expect(serialized).not.toContain(unmodelled);
     }
   });
@@ -358,10 +358,30 @@ describe('composite Claude adapter', () => {
     });
   });
 
-  it('reports the spool reason when this run did not poll at all', async () => {
-    await expect(adapter({ claim: () => false }).collect(signal())).rejects.toMatchObject({
-      code: 'no_event_yet',
+  it('defers, rather than recording a verdict, when it lost the claim and the spool is unusable', async () => {
+    const fetchImpl = fetchReturning(200);
+    const lost = adapter({ fetchImpl, claim: () => false });
+
+    // No spool file at all.
+    await expect(lost.collect(signal())).rejects.toBeInstanceOf(CollectionDeferred);
+    // A spool that is present but unusable is no different.
+    writeFileSync(spoolPath, '{ not json');
+    await expect(lost.collect(signal())).rejects.toBeInstanceOf(CollectionDeferred);
+    // A claim that could not be written is lost too.
+    const broken = adapter({
+      fetchImpl,
+      claim: () => {
+        throw new Error('database is locked');
+      },
     });
+    await expect(broken.collect(signal())).rejects.toBeInstanceOf(CollectionDeferred);
+
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('never defers a run that did poll: its own failure is the answer', async () => {
+    const refused = adapter({ fetchImpl: fetchReturning(429, '{}'), claim: () => true });
+    await expect(refused.collect(signal())).rejects.toBeInstanceOf(CollectionError);
   });
 
   it('leaves room in its budget for a spool read after a slow poll', () => {

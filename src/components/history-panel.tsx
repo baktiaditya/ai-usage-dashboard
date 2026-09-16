@@ -242,7 +242,7 @@ function QuotaChart({ result }: { result: QuotaHistoryResult }) {
                 <Area
                   type="monotone"
                   dataKey={`${s.bucketId}:${s.windowKind}:range`}
-                  name={`${s.bucketId} · ${s.windowKind} daily min–max`}
+                  name={`${s.label} daily min–max`}
                   stroke="none"
                   fill={SERIES_COLORS[i % SERIES_COLORS.length]}
                   fillOpacity={0.14}
@@ -253,7 +253,7 @@ function QuotaChart({ result }: { result: QuotaHistoryResult }) {
                 <Line
                   type="monotone"
                   dataKey={`${s.bucketId}:${s.windowKind}:latest`}
-                  name={`${s.bucketId} · ${s.windowKind} latest`}
+                  name={`${s.label} latest`}
                   stroke={SERIES_COLORS[i % SERIES_COLORS.length]}
                   strokeWidth={2}
                   dot={false}
@@ -286,7 +286,7 @@ function QuotaChart({ result }: { result: QuotaHistoryResult }) {
               className="size-2.5 rounded-full"
               style={{ background: SERIES_COLORS[i % SERIES_COLORS.length] }}
             />
-            {s.bucketId} · {s.windowKind}
+            {s.label}
           </li>
         ))}
       </ul>

@@ -136,7 +136,11 @@ The dashboard makes no automatic routing decisions in the MVP. It only presents 
   itself, not of the timer: a manual refresh must not bypass it. Scheduled and manual collection
   share an atomic, durable claim in SQLite for the last Claude poll attempt. The claim is written
   before the HTTP request, so failures and process crashes still spend the interval; losing a race
-  skips the poll and continues with the spool.
+  skips the poll and continues with the spool. A run that loses the claim and has no usable spool
+  observed nothing and records no Claude attempt, so the card keeps the claimant's result — a
+  reading aged by ordinary freshness, its error, or a request still in flight — rather than turning
+  `unavailable` over a poll that run never made. It is the one exception to one attempt per
+  provider per run.
 - Use SQLite WAL mode, `busy_timeout`, short transactions, and unique constraints to handle overlap between collector/manual refresh and the web process.
 - Default retention 90 days. Daily aggregates may be kept longer once their rollup and idempotency rules are tested.
 - Define freshness per source. Initial defaults: a pull source becomes `stale` after three missed intervals; a Claude event also becomes `stale` when the event passes its threshold or `resets_at` has passed.

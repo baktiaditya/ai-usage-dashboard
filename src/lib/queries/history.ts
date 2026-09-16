@@ -14,12 +14,14 @@
  *     never called usage.
  */
 import type { AppConfig } from '../config';
+import { CLAUDE_USAGE_SOURCE_VERSION } from '../domain';
 import type { Provider } from '../domain';
 import type { Db } from '../db/client';
 import { getCreditBaselineBefore, getCreditHistory, getQuotaHistory } from '../db/repository';
 import type { MoneyString } from '../money';
 import { compareMoney, subtractMoney } from '../money';
 import { startOfLocalDayNDaysAgoUtc } from '../time';
+import { labelWindow } from './overview';
 
 export type HistoryRange = 'today' | '7d' | '30d';
 
@@ -44,6 +46,12 @@ export interface QuotaSeriesPoint {
 export interface QuotaSeries {
   readonly bucketId: string;
   readonly windowKind: string;
+  /**
+   * What the chart shows for this series. Claude series name their source, so a
+   * status-line window and a polled one are never drawn as one line: nobody has
+   * shown that `five_hour` and `session` measure the same window.
+   */
+  readonly label: string;
   readonly points: readonly QuotaSeriesPoint[];
 }
 
@@ -123,36 +131,60 @@ export function buildQuotaHistory(
     };
   }
 
-  // Group by window, then by local calendar day.
-  const byWindow = new Map<string, Map<string, number[]>>();
+  // Group by source and window, then by local calendar day. Rows arrive oldest
+  // first, so the last row seen for a series carries its current duration.
+  const bySeries = new Map<
+    string,
+    { bucketId: string; windowKind: string; label: string; days: Map<string, number[]> }
+  >();
   for (const row of rows) {
-    const key = `${row.bucketId} ${row.windowKind}`;
+    const source = sourceLabel(provider, row.sourceVersion);
+    const key = [source ?? '', row.bucketId, row.windowKind].join('\u0000');
+    const window = labelWindow({ ...row, resetsAt: null });
+    const entry = bySeries.get(key) ?? {
+      bucketId: row.bucketId,
+      windowKind: row.windowKind,
+      label: '',
+      days: new Map<string, number[]>(),
+    };
+    entry.label = source ? `${window} (${source})` : window;
     const day = localDayKey(row.observedAt, config.timezone);
-    const days = byWindow.get(key) ?? new Map<string, number[]>();
-    const samples = days.get(day) ?? [];
+    const samples = entry.days.get(day) ?? [];
     samples.push(row.usedPercent);
-    days.set(day, samples);
-    byWindow.set(key, days);
+    entry.days.set(day, samples);
+    bySeries.set(key, entry);
   }
 
-  const series: QuotaSeries[] = [...byWindow.entries()].map(([key, days]) => {
-    const parts = key.split(' ');
-    return {
-      bucketId: parts[0] ?? '',
-      windowKind: parts[1] ?? '',
-      points: [...days.entries()]
-        .sort(([a], [b]) => a.localeCompare(b))
-        .map(([day, samples]) => ({
-          day,
-          // `latest` is the last sample of the day, which is the utilisation the
-          // window actually ended at — not an average across a reset.
-          latestPercent: samples[samples.length - 1] ?? 0,
-          minPercent: Math.min(...samples),
-          maxPercent: Math.max(...samples),
-          samples: samples.length,
-        })),
-    };
-  });
+  // Two Codex buckets can both be "5 hour"; their own bucket name tells them
+  // apart. Claude labels never collide, and its bucket ids are never shown.
+  const labelCounts = new Map<string, number>();
+  for (const { label } of bySeries.values()) {
+    labelCounts.set(label, (labelCounts.get(label) ?? 0) + 1);
+  }
+
+  const series: QuotaSeries[] = [...bySeries.values()].map(
+    ({ bucketId, windowKind, label, days }) => {
+      return {
+        bucketId,
+        windowKind,
+        label:
+          provider !== 'claude' && (labelCounts.get(label) ?? 0) > 1
+            ? `${label} · ${bucketId}`
+            : label,
+        points: [...days.entries()]
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([day, samples]) => ({
+            day,
+            // `latest` is the last sample of the day, which is the utilisation the
+            // window actually ended at — not an average across a reset.
+            latestPercent: samples[samples.length - 1] ?? 0,
+            minPercent: Math.min(...samples),
+            maxPercent: Math.max(...samples),
+            samples: samples.length,
+          })),
+      };
+    },
+  );
 
   return {
     metric: 'quota_utilization',
@@ -161,6 +193,12 @@ export function buildQuotaHistory(
     availability: { available: true },
     series,
   };
+}
+
+/** Claude's two sources are named; every other provider has one source. */
+function sourceLabel(provider: Provider, sourceVersion: string): string | null {
+  if (provider !== 'claude') return null;
+  return sourceVersion === CLAUDE_USAGE_SOURCE_VERSION ? 'usage poll' : 'status line';
 }
 
 export function buildCreditHistory(

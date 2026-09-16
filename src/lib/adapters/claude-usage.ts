@@ -20,7 +20,7 @@
  * with the spool ingestor, so a run records one Claude attempt and at most one
  * new snapshot, whichever source observed most recently.
  */
-import { CollectionError } from '../errors';
+import { CollectionDeferred, CollectionError } from '../errors';
 import { CLAUDE_USAGE_SOURCE_VERSION } from '../domain';
 import type { CollectContext, ProviderAdapter, QuotaSnapshot, QuotaWindow } from '../domain';
 import { createClaudeIngestor } from '../ingestors/claude-statusline';
@@ -210,7 +210,10 @@ export interface ClaudeAdapterOptions {
  * With no token it *is* the spool ingestor, unchanged. With one, it claims and
  * makes at most one poll, always reads the spool too, and returns whichever
  * observation is newer. Any poll failure falls back to the spool; only when the
- * spool has nothing usable does the poll's own error explain the card.
+ * spool has nothing usable does the poll's own error explain the card. A run
+ * that lost the claim and has no usable spool defers: it records nothing, so the
+ * card keeps the last poll's result and ages it instead of turning
+ * `unavailable` over a poll this run never made.
  */
 export function createClaudeAdapter(options: ClaudeAdapterOptions): ProviderAdapter<QuotaSnapshot> {
   const spool = createClaudeIngestor({ spoolPath: options.spoolPath });
@@ -227,7 +230,8 @@ export function createClaudeAdapter(options: ClaudeAdapterOptions): ProviderAdap
     async collect(signal: AbortSignal, context?: CollectContext): Promise<QuotaSnapshot> {
       let polled: QuotaSnapshot | null = null;
       let pollError: CollectionError | null = null;
-      if (claim(options.claimPoll)) {
+      const claimed = claim(options.claimPoll);
+      if (claimed) {
         try {
           polled = await pollClaudeUsage(
             {
@@ -259,8 +263,16 @@ export function createClaudeAdapter(options: ClaudeAdapterOptions): ProviderAdap
       }
       if (polled) return polled;
       if (spooled) return spooled;
+      if (!claimed) {
+        // This run neither polled nor observed anything. The run holding the
+        // claim owns the answer — a stored reading, its error, or a request
+        // still in flight — so this one must not record a verdict over it.
+        throw new CollectionDeferred(
+          'another run holds the Claude usage poll for this interval and the status-line spool has nothing usable',
+        );
+      }
       // The user configured the token, so the poll's code is the one that
-      // explains the card. A run that did not poll reports the spool's reason.
+      // explains the card, not the spool's.
       throw pollError ?? spoolError;
     },
   };

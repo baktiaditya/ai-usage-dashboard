@@ -5,7 +5,7 @@
     "important": "The adapter reads limits[] only. The five_hour and seven_day windows deliberately disagree with it, and resets_at is already ISO-8601, never epoch seconds."
   },
   "five_hour": {
-    "utilization": 99,
+    "utilization": 77,
     "resets_at": "2030-01-01T00:00:00+00:00",
     "limit_dollars": null,
     "used_dollars": null,
@@ -13,7 +13,7 @@
     "locked_reason": null
   },
   "seven_day": {
-    "utilization": 99,
+    "utilization": 77,
     "resets_at": "2030-01-01T00:00:00+00:00",
     "limit_dollars": null,
     "used_dollars": null,
@@ -26,7 +26,7 @@
       "group": "session",
       "percent": 12.5,
       "severity": "normal",
-      "resets_at": "2026-09-17T09:00:00.123456+00:00",
+      "resets_at": "2099-09-17T09:00:00.123456+00:00",
       "scope": null,
       "is_active": true
     },
@@ -35,7 +35,7 @@
       "group": "weekly",
       "percent": 48,
       "severity": "normal",
-      "resets_at": "2026-09-21T03:00:00+07:00",
+      "resets_at": "2099-09-21T03:00:00+07:00",
       "scope": null,
       "is_active": true
     },

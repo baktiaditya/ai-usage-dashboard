@@ -20,12 +20,24 @@
   instead of the 12 recorded on 2026-09-16, one still carrying a value. The drift signal fired on a
   field the adapter does not read. Recorded as a count in
   [M0 discovery](discovery/m0-discovery.md); the names stay withheld.
-- **Risk**: a run that loses the poll claim reads only the spool. With a token saved and no spool
-  file at all, a manual **Refresh** inside the five-minute interval records `no_event_yet` and the
-  card reads `unavailable` until the next run that polls. The brief accepts this, since the
-  loser continues through the spool path. A scheduled run can also lose narrowly, because
-  process start-up jitter can land consecutive claims just under five minutes apart. Installs with
-  the status-line bridge are unaffected, because the spool still yields a snapshot.
+- **Decision**: a run that loses the poll claim and has no usable spool records no Claude attempt.
+  The first implementation let it record the spool's `no_event_yet`, so with a token saved and no
+  bridge, a **Refresh** inside the five-minute interval — or a scheduled run landing just under it
+  from start-up jitter — turned a fresh polled reading `unavailable`. Pre-merge review of PR #16
+  ruled that out, because it defeats the point of polling. Any row that run could write would be a
+  verdict about a poll it never made, and since the loser starts later it would also mask the
+  claimant's result, including a request still in flight. The adapter now throws
+  `CollectionDeferred`, the collector records nothing and reports the provider as `deferred`, and
+  the card keeps the claimant's reading, aged by the polled budget, or its error. It reads
+  `unavailable` only when no poll result exists. This amends plan §3.3 and is the one exception to
+  "one run, one attempt per provider"; the brief's criterion that `getLatestAttempts` sees one
+  Claude row per run holds for every run that polled or read a usable spool.
+- **Decision**: history keeps status-line and polled Claude windows as separate series, labelled
+  `(status line)` and `(usage poll)`, and no longer prints raw bucket and window identifiers in the
+  legend. `session` is not mapped onto `five_hour`: the names look equivalent, but nothing has
+  verified that they measure the same window, and one merged line could mislead. Runs that
+  alternate sources leave gaps in both lines, which [setup](operations/setup.md) §3 records as a
+  limitation. Merging the series waits on evidence that the metrics are equal.
 - **Risk**: plan §4.5 and the implementation disagree on how a failed format or version guard is
   shown. §4.5 lists it under `unavailable`, and the comment in
   `src/lib/ingestors/claude-statusline.ts` says the same, but `UNAVAILABLE_CODES` in
