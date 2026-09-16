@@ -9,7 +9,8 @@
   therefore records `schema_mismatch` and `version_unsupported` as an `error` attempt, and
   `evaluateFreshness` renders `error`, for Codex, DeepSeek, OpenRouter, and the Claude spool alike.
   The divergence predates the Claude poll. It is annotated in §4.5 rather than resolved there,
-  because either direction is a cross-provider change that belongs in its own brief.
+  because either direction is a cross-provider change that belongs in its own brief. The decision
+  is tracked in [#15](https://github.com/baktiaditya/ai-usage-dashboard/issues/15).
 - **Decision**: the Claude usage poll follows the implemented mapping, not §4.5. A review of PR #14
   found that [the poll brief](backlog/ready-for-agent/poll-claude-quota-without-a-session.md)
   required `schema_mismatch` on drift while its acceptance criteria required the card to render
