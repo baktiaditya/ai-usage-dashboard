@@ -113,6 +113,59 @@ gauge exactly like the other two, so the bridge allowlists it and the ingestor
 labels it. This account did not report one, so it simply never appeared — which
 is the intended behaviour, not a gap.
 
+#### Optional usage endpoint — PASSED (live, 2026-09-16)
+
+A second, undocumented Claude source was gated after the status-line gate above,
+because the status line is push-shaped: it answers only while a session is live
+and only after that session's first API response, so the card goes blind exactly
+when nobody is working. `GET https://api.anthropic.com/api/oauth/usage` answers
+with no session running. The plan admits it as an optional, default-off poll
+(§3.1); the implementation contract is the brief
+[poll-claude-quota-without-a-session](../backlog/ready-for-agent/poll-claude-quota-without-a-session.md).
+
+Probed three times with `pnpm run spike:claude-usage`, spaced at least five
+minutes apart, each with no Claude Code session running. All three returned
+`200 OK` with a stable shape. Authentication is a standalone token from
+`claude setup-token`, supplied by the user; no auth file is read.
+
+What the dashboard is specified to consume, values elided:
+
+```
+limits  [ N x {
+    kind       <string>
+    group      <string>
+    percent    <number>     0..100
+    severity   <string>
+    resets_at  <iso8601 | null>
+    scope      null
+    is_active  <boolean>
+  } ]
+```
+
+`limits[]` is a normalised projection over the individual window keys, so it is
+the contract the adapter reads: a new window arrives as another array entry and
+needs no code change.
+
+Three properties of this gate are worth recording because they constrain the
+implementation:
+
+1. **The rate limit escalates and carries no anchor.** A refusal returns `429`
+   with no `Retry-After`, and the penalty climbs 30/60/120/240/300s and can stay
+   at 300s. One request per five minutes is the proven-safe cadence. Never retry.
+2. **The payload carries keys this project does not model.** Beyond the windows
+   and `extra_usage` / `limits` / `spend` / `seven_day_breakdown` /
+   `member_dashboard_available`, the response held twelve further keys with
+   non-descriptive names, one of them carrying a value. They read as canaries, so
+   the probe withholds the names and reports counts only, and this bundle records
+   neither. A change in that count is the drift signal.
+3. **`claude -p "/usage"` is not a substitute.** It consumes no quota, but it
+   renders integer percentages and a reset time that is a rounded relative
+   duration — two runs seconds apart disagreed by a minute. It stays a diagnostic;
+   no value it prints is ever stored.
+
+Not gated, and still unproven: a second machine, a non-Pro plan, and an account
+whose `seven_day_opus` or `seven_day_sonnet` windows carry data.
+
 ### DeepSeek — PASSED (live)
 
 Passed live on 2026-09-14, once `DEEPSEEK_API_KEY` was provisioned in `collector.env`:

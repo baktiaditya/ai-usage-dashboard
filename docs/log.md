@@ -1,5 +1,181 @@
 # Bundle Update Log
 
+## 2026-09-17
+
+- **Risk**: plan §4.5 and the implementation disagree on how a failed format or version guard is
+  shown. §4.5 lists it under `unavailable`, and the comment in
+  `src/lib/ingestors/claude-statusline.ts` says the same, but `UNAVAILABLE_CODES` in
+  `src/lib/errors.ts` holds only `not_configured`, `not_entitled`, and `no_event_yet`. The collector
+  therefore records `schema_mismatch` and `version_unsupported` as an `error` attempt, and
+  `evaluateFreshness` renders `error`, for Codex, DeepSeek, OpenRouter, and the Claude spool alike.
+  The divergence predates the Claude poll. It is annotated in §4.5 rather than resolved there,
+  because either direction is a cross-provider change that belongs in its own brief. The decision
+  is tracked in [#15](https://github.com/baktiaditya/ai-usage-dashboard/issues/15).
+- **Decision**: the Claude usage poll follows the implemented mapping, not §4.5. A review of PR #14
+  found that [the poll brief](backlog/ready-for-agent/poll-claude-quota-without-a-session.md)
+  required `schema_mismatch` on drift while its acceptance criteria required the card to render
+  `unavailable`, which the existing collector cannot produce. Drift now renders `error` when no
+  spool snapshot is usable, and no Claude-specific status mapping is added. This supersedes the
+  2026-09-16 shorthand "render drift as `unavailable`" in plan §3.1.
+- **Decision**: every poll failure falls back to the spool, not only a `429`. A `401`, a transport
+  failure, a timeout, or a drifted shape leaves the spool exactly as valid as a refusal does. When
+  the spool has nothing usable, the composite surfaces the poll's failure code, because the user
+  configured the token and that code is the one that explains the card.
+- **Update**: the brief now states that `src/lib/adapters/http.ts` must be extended, rather than
+  "only if" needed. `HttpGetOptions` accepts no extra headers and `getJsonLossless` hard-codes its
+  `User-Agent`, while the poll requires `anthropic-beta` and a `claude-cli/<version>` agent. It
+  also forbids wrapping the poll in `withBoundedRetry`, since `rate_limited` is a retryable code.
+
+## 2026-09-16
+
+- **Decision**: [the plan](plan/ai-usage-dashboard-implementation-plan.md) now gives a Claude
+  usage refusal conditional, not unconditional, status semantics. The
+  composite falls back to the spool without retrying. A usable spool snapshot produces one
+  successful Claude attempt and ordinary source freshness decides `healthy` or `stale`; without a
+  usable spool the attempt is `error`, and any older snapshot is historical. This replaces the
+  earlier shorthand below that said every refusal degrades to `stale`, which contradicted the
+  canonical latest-attempt precedence.
+- **Design**: [the poll brief](backlog/ready-for-agent/poll-claude-quota-without-a-session.md)
+  specifies that the five-minute Claude usage floor is enforced by an atomic, durable SQLite claim,
+  not by configuration or process memory. The systemd collector is a new oneshot process on every
+  run, while manual refresh runs in the web process; only shared state prevents either path, or two
+  overlapping paths, from calling the endpoint inside the interval. The planned migration `0003`
+  must therefore create singleton `claude_poll_state(last_attempted_at)` alongside the
+  credential-table rebuild; it has not been implemented yet.
+  Claiming happens before the request, so a refusal or crash conservatively spends the interval;
+  a caller that loses the claim reads the spool without polling.
+- **Update**: the hand-run usage probe now validates the contract recorded in
+  [M0 discovery](discovery/m0-discovery.md). It accepts real
+  ISO-8601 offsets without accepting impossible calendar dates, distinguishes missing nullable
+  fields from explicit `null`, maps absent/empty/all-inactive `limits[]` to `not_entitled`, rejects
+  malformed credential JSON and whitespace-only file tokens cleanly, counts withheld names through
+  every array row, and never reads or prints a non-2xx provider body. Focused unit tests cover those
+  boundaries.
+- **Decision**: Claude keeps exactly one collector adapter. A second review found that the brief's
+  two-source design could not be built as written: `src/lib/collector/index.ts` states "one run,
+  one attempt per provider", `getLatestAttempts` partitions by provider alone, and
+  `evaluateFreshness` lets a failed attempt dominate any snapshot. Two adapters both named `claude`
+  would overwrite each other's latest attempt, and a poll refused with `429` would drive the card
+  to `error` on top of a perfectly good spool reading. The poll and the spool are therefore
+  composed behind a single adapter that emits one attempt and one snapshot, with precedence by
+  `observedAt` decided inside it rather than in `src/lib/queries/overview.ts`. `sourceVersion`
+  records which source won; `sourceEventId` stays the spool's event id when the spool wins and is
+  `null` when the poll wins, which is what the partial unique index already expects. The
+  alternative — a source discriminator on attempts and snapshots, with matching partition and
+  freshness keys — was rejected as a large schema change bought for one provider.
+- **Discovery**: `freshnessBudgetMs` keys on the provider, so it cannot tell a polled Claude
+  observation from a spooled one. It needs the source passed in. Widening `PULL_PROVIDERS` to
+  include `claude` was considered and rejected: it would silently change how a spool-only install
+  ages out.
+- **Update**: the same review found the poll was cited as plan §3.2 throughout the bundle. §3.2 is
+  the Dashboard; the poll lives in §3.1 under Claude Code. Corrected in the plan, discovery and
+  this log. The probe count is reconciled to three everywhere, the brief's acceptance criteria now
+  name the credential row and the normalised observations as the two deliberate exceptions to
+  "nothing sensitive in the database" rather than forbidding what the feature exists to do, and
+  [#13](https://github.com/baktiaditya/ai-usage-dashboard/issues/13) has had its body rewritten:
+  it still carried the open questions and the `ready-for-human` path after promotion.
+- **Decision**: the plan's Claude-poll amendment is completed. The first pass amended
+  [the plan](plan/ai-usage-dashboard-implementation-plan.md) §2 and §3.1 only, and code review
+  found three further passages still asserting the pre-amendment world, which left the canonical
+  document contradicting itself and the brief unexecutable.
+  - §3.3 said the collector pulls Codex, DeepSeek and OpenRouter and ingests the Claude spool. It
+    now records the optional poll joining that parallel pull, and states that the five-minute floor
+    belongs to the poll rather than to the timer, so a manual refresh cannot bypass it.
+  - §4.4 said the database stores no OAuth tokens and exactly two API keys. The Claude token from
+    `claude setup-token` is an OAuth token, so that sentence forbade the very thing §3.1 now
+    permits. It now names the token as the single exception — user-supplied, never read from a
+    CLI's auth file — and the prohibition on reading `~/.claude/.credentials.json` is restated
+    unchanged.
+  - §7 said Claude shows quota only when the bridge receives a payload. It now accepts either
+    source, spool by default.
+  - §3.5 gains the optional third key, with the reason it differs in kind: DeepSeek and OpenRouter
+    report nothing without their key, while Claude keeps reporting through the spool, so Settings
+    must say the Claude field is optional or an empty field reads as a broken provider.
+- **Discovery**: widening `CREDENTIAL_PROVIDERS` does not reach the database. The provider column
+  is constrained twice more — a Drizzle `enum` in `src/lib/db/schema.ts` and
+  `CHECK (provider IN ('deepseek', 'openrouter'))` in `drizzle/0002_provider_credentials.sql` —
+  and `readProviderCredentials` in `src/lib/db/credentials.ts` returns a hand-written two-field
+  object rather than following the constant. The brief's impact map claimed the credential store
+  would follow automatically; had it been implemented as written, saving a Claude token would have
+  been refused by the `CHECK`. The brief now carries the migration, the regenerated
+  `migrations.generated.ts`, the read model, and their tests. SQLite cannot alter a `CHECK` in
+  place, so `0003` rebuilds the table and `0002` stays untouched as history.
+- **Update**: the usage-endpoint gate is now recorded in
+  [M0 discovery](discovery/m0-discovery.md), superseding the note in the `Proposed` entry below
+  that deliberately left that document unchanged. That note was right while the source was a
+  proposal; the plan has since accepted it, and
+  [the sync map](../.agents/skills/okf-sync/references/repo-sync-map.md) puts a passing provider
+  gate in discovery. The record withholds the codenamed key names and keeps only their count, which
+  is the drift signal. `pnpm run spike:claude-usage` is also added to the README command table.
+- **Decision**: Claude quota may be polled, as an optional source that is off by default. This
+  amends [the plan](plan/ai-usage-dashboard-implementation-plan.md) §2 and §3.1.
+  - §2 "Structured source first" previously forbade calling internal endpoints with extracted
+    tokens outright. It now carries one narrow exception, for Claude quota only, and only because
+    no documented interface answers while no session is live. The token must be minted
+    deliberately with `claude setup-token`; extracting one from `~/.claude/.credentials.json` stays
+    forbidden, which is what that clause was written to prevent.
+  - §2 "Separate pull and event ingestion" now records that Claude may also be polled.
+  - §3.1 previously ruled `/usage` out as an MVP source. It stays ruled out as a _source_:
+    `claude -p "/usage"` is a diagnostic, and no value it prints is stored, because its percentages
+    are integers and its reset time is a rounded relative duration.
+  - §3.1 gains the optional poll: read the normalised `limits[]` projection, at most one request
+    per five minutes, never retry a refusal, fall back to the spool on refusal, and render drift as
+    `unavailable`. The newer decision above records the exact status when the fallback succeeds or
+    fails. The status-line spool stays the default and the fallback.
+  - Default-off was chosen so that cloning this repository never causes an undocumented Anthropic
+    endpoint to be called without the user opting in.
+  - The codenamed keys the endpoint returns are deliberately not recorded anywhere in this
+    repository. `scripts/spike-claude-oauth-usage.ts` reports them at runtime without hard-coding
+    them, so drift stays visible without the bundle publishing the list.
+- **Discovery**: `CREDENTIAL_PROVIDERS` in `src/lib/domain.ts` is not an internal list.
+  `src/components/settings-dialog.tsx` maps over it, so adding a provider renders a new field in
+  Settings on its own, and `src/app/api/settings/credentials/[provider]/route.ts`,
+  `tests/unit/settings-dialog.test.tsx` and `tests/e2e/settings.spec.ts` all follow it. Widening it
+  for Claude is therefore a browser-visible change that Playwright must cover, and the doc comment
+  above the constant — "Codex and Claude authenticate through their own CLIs and have no key here"
+  — has to be rewritten. The Claude token is also optional in a way the other two are not: the
+  status-line spool keeps reporting quota without it, so the Settings copy must say so. The brief's
+  impact map and testing plan were corrected accordingly; its first version understated both.
+- **Update**: [poll-claude-quota-without-a-session](backlog/ready-for-agent/poll-claude-quota-without-a-session.md)
+  is promoted to `ready-for-agent/` on the decision above, and
+  [#13](https://github.com/baktiaditya/ai-usage-dashboard/issues/13) is relabelled to match.
+  Whether `claude -p "/usage"` calls the same endpoint underneath was probed with `claude --debug`
+  and stayed inconclusive; it no longer blocks anything, because that path is a diagnostic rather
+  than a fallback source.
+
+- **Discovery**: Claude quota can be read without a live Claude Code session. Two pull-shaped
+  sources were probed live on the development machine, and both answered while no session was
+  running.
+  - `GET /api/oauth/usage`, the source Claude Code reads for `/usage`, returned `200 OK` on every
+    probe. Two were run when this entry was first written and a third followed the same day, each
+    at least five minutes apart. Active windows carry `utilization` plus an absolute ISO-8601
+    `resets_at`, and the payload also exposes a normalised `limits[]` projection, per-model
+    breakdown rows, and credits in minor units with an explicit currency and decimal places. The
+    endpoint is undocumented, its upstream issue is labelled `invalid`, and refusals escalate
+    30/60/120/240/300s with no `Retry-After`, so one request per five minutes or slower is the
+    only safe cadence. Its OAuth token expires and is rotated by Claude Code, so a collector that
+    refreshes it races the CLI for the same file.
+  - `claude -p "/usage"` consumes no quota — the `--output-format json` envelope reports zero
+    turns, zero tokens, zero API duration and `local_command: "usage"` — but returns the numbers
+    as human-rendered prose with integer percentages, and its reset time is a rounded relative
+    duration that differed between two runs seconds apart. It is a good health check and a poor
+    data source.
+  - `claude auth status` reports `loggedIn` reliably but `subscriptionType` is `null` on this Pro
+    account, so it cannot confirm plan tier. It also returns an email address and an organisation
+    ID, which must never reach the database or this bundle.
+  - Evidence is shape-only. No quota value, token, email address or account ID was recorded, here
+    or anywhere in the repository.
+  - `scripts/spike-claude-oauth-usage.ts` (`pnpm run spike:claude-usage`) is the gate probe. It
+    sends exactly one request, never retries a refusal, never writes the credentials file, and
+    prints structure with every leaf elided.
+- **Proposed**: [poll-claude-quota-without-a-session](backlog/ready-for-agent/poll-claude-quota-without-a-session.md)
+  files the above as a brief, first in `ready-for-human/` and promoted the same day, tracked by
+  [#13](https://github.com/baktiaditya/ai-usage-dashboard/issues/13). It is blocked on a user decision, because the
+  plan §2 and §3.1 both state that Claude quota arrives via the status line; that contradiction
+  must be resolved in the plan before the brief can be worked. `docs/discovery/m0-discovery.md` is
+  deliberately left unchanged — it records gates for accepted provider contracts, and this source
+  is a proposal, not yet a contract.
+
 ## 2026-09-15
 
 - **Update**: the move to pnpm is delivered in
