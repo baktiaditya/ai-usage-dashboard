@@ -13,6 +13,17 @@ contract. It does not override `docs/plan/ai-usage-dashboard-implementation-plan
 
 Related issue: [#13](https://github.com/baktiaditya/ai-usage-dashboard/issues/13)
 
+> **Revised 2026-09-17: the source changed.** A `claude setup-token` token cannot read
+> `GET /api/oauth/usage` (Candidate A below): the endpoint requires the `user:profile` scope and such
+> a token is inference-only. The implementation on PR #16 therefore reads the
+> `anthropic-ratelimit-unified-5h-*` and `-7d-*` response headers of a one-token Claude Haiku
+> `POST /v1/messages` request, sent only when the status-line spool has no fresh reading. It
+> reports the status line's `five_hour` and `seven_day` windows, so the `limits[]` mapping, the
+> `session` and `weekly_all` labels, and the separate history series below no longer apply. The
+> token, migration, durable five-minute claim, deferral, fallback, and no-retry rules are unchanged.
+> Where this brief and [plan §3.1](../../plan/ai-usage-dashboard-implementation-plan.md) disagree,
+> the plan wins; the 2026-09-17 entries in the [log](../../log.md) record why.
+
 ## Objective
 
 The Claude card reports a current quota reading whether or not a Claude Code session has run

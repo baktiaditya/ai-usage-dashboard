@@ -2,6 +2,31 @@
 
 ## 2026-09-17
 
+- **Discovery**: a `claude setup-token` token cannot read `GET /api/oauth/usage`. Saved from
+  dashboard Settings on 2026-09-17, it got `403`. Public reports (anthropics/claude-code#11985,
+  #22450, #24200) show why: such a token is scoped to `user:inference` only, and the endpoint
+  requires `user:profile`. The 2026-09-16 gate's `200`s most likely came from the spike's fallback
+  to the full-login token in `~/.claude/.credentials.json`, which carries that scope. The poll as
+  built on PR #16 could never have answered with the token setup §3 told users to mint.
+  [M0 discovery](discovery/m0-discovery.md) records the correction.
+- **Decision**: the Claude pull source is now a quota probe, replacing the usage poll on PR #16.
+  It sends `POST /v1/messages` to `claude-haiku-4-5` with one output token and no system prompt,
+  discards the body unread, and reads the `anthropic-ratelimit-unified-5h-*` and `-7d-*`
+  utilisation and reset headers. A live probe with a saved `setup-token` token returned `200` and
+  those headers. Haiku accepts a subscription token without Claude Code's identity prompt, so the
+  probe never impersonates Claude Code. Reading a full-login token out of
+  `~/.claude/.credentials.json` was rejected: it breaks the plan's extraction rule, and refreshing
+  it would race Claude Code's own refresh-token rotation. The probe is real inference and spends a
+  few tokens of subscription usage, which the user accepted. So it runs only when the spool has no
+  reading within the probe's freshness budget; an active session never pays for one. The
+  five-minute floor, durable claim, deferral rule, and fallback semantics are unchanged. Plan §3.1,
+  §3.3, §4.4 and §7 and setup §3 are rewritten for it.
+- **Superseded**: the two earlier 2026-09-17 decisions below, to refuse unlabelled `limits[].kind`
+  values and to keep status-line and polled Claude windows as separate history series. The probe
+  produces the status line's own `five_hour` and `seven_day` windows from the headers that feed the
+  status line, so `session` and `weekly_all` labels are gone and a Claude window is one series again,
+  whichever source observed it. The history legend still shows window labels instead of raw
+  identifiers.
 - **Update**: [the poll brief](backlog/ready-for-agent/poll-claude-quota-without-a-session.md)
   is implemented on branch `feat/poll-claude-quota-without-a-session`, tracked by
   [#13](https://github.com/baktiaditya/ai-usage-dashboard/issues/13). Migration `0003` rebuilds
