@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { buildOverview, findEndedWindows, labelWindow } from '@/lib/queries/overview';
 import { buildCreditHistory, buildQuotaHistory } from '@/lib/queries/history';
 import { recordAttempt, startRun } from '@/lib/db/repository';
+import { CLAUDE_PROBE_SOURCE_VERSION } from '@/lib/domain';
 import type { CreditSnapshot, Provider, QuotaSnapshot } from '@/lib/domain';
 import type { MoneyString } from '@/lib/money';
 import { createTestDb, testConfig } from '../helpers/db';
@@ -392,6 +393,80 @@ describe('quota history', () => {
     const result = buildQuotaHistory(t.db, config, 'codex', '7d', NOW);
     const primary = result.series.find((s) => s.windowKind === 'primary')!;
     expect(primary.points.map((p) => p.day)).toEqual(['2026-09-11', '2026-09-12']);
+  });
+});
+
+describe('quota history labels', () => {
+  function writeSnapshot(snapshot: Omit<QuotaSnapshot, 'kind' | 'collectedAt' | 'schemaVersion'>) {
+    return recordAttempt(t.db, {
+      runId: startRun(t.db, 'scheduled'),
+      provider: snapshot.provider,
+      startedAt: snapshot.observedAt,
+      finishedAt: snapshot.observedAt,
+      retryCount: 0,
+      result: {
+        outcome: 'success',
+        snapshot: {
+          ...snapshot,
+          kind: 'quota',
+          collectedAt: snapshot.observedAt,
+          schemaVersion: 1,
+        },
+      },
+    });
+  }
+
+  const gauge = (bucketId: string, windowKind: string, windowDurationMinutes: number | null) => ({
+    bucketId,
+    windowKind,
+    usedPercent: 40,
+    windowDurationMinutes,
+    resetsAt: null,
+  });
+
+  it('draws a Claude window as one labelled series whichever source observed it', () => {
+    writeSnapshot({
+      provider: 'claude',
+      observedAt: '2026-09-12T01:00:00.000Z',
+      sourceVersion: 'claude-code/2.1.269',
+      usageAllowed: null,
+      limitReachedCode: null,
+      sourceEventId: 'event-0000000001',
+      windows: [gauge('five_hour', 'five_hour', 300), gauge('seven_day', 'seven_day', 10080)],
+    });
+    writeSnapshot({
+      provider: 'claude',
+      observedAt: '2026-09-12T02:00:00.000Z',
+      sourceVersion: CLAUDE_PROBE_SOURCE_VERSION,
+      usageAllowed: null,
+      limitReachedCode: null,
+      sourceEventId: null,
+      windows: [gauge('five_hour', 'five_hour', 300), gauge('seven_day', 'seven_day', 10080)],
+    });
+
+    const result = buildQuotaHistory(t.db, config, 'claude', '7d', NOW);
+    // The probe reads the same headers the status line forwards, so one line per window.
+    expect(result.series.map((s) => s.label)).toEqual(['5 hour', '7 day']);
+    expect(result.series.map((s) => s.points[0]?.samples)).toEqual([2, 2]);
+  });
+
+  it('names a Codex bucket only when two series would otherwise share a label', () => {
+    writeSnapshot({
+      provider: 'codex',
+      observedAt: '2026-09-12T01:00:00.000Z',
+      sourceVersion: 'codex-cli/0.154.0',
+      usageAllowed: true,
+      limitReachedCode: null,
+      sourceEventId: null,
+      windows: [
+        gauge('codex', 'primary', 300),
+        gauge('codex_other', 'primary', 300),
+        gauge('codex', 'secondary', 10080),
+      ],
+    });
+
+    const labels = buildQuotaHistory(t.db, config, 'codex', '7d', NOW).series.map((s) => s.label);
+    expect(labels.sort()).toEqual(['5 hour · codex', '5 hour · codex_other', '7 day']);
   });
 });
 

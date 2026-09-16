@@ -104,6 +104,11 @@ test('history renders a quota chart for a quota provider', async ({ page }) => {
   await expect(page.getByTestId('history-quota-chart')).toContainText('never summed');
   // The daily min/max the API computes is drawn, not discarded.
   await expect(page.getByTestId('history-quota-chart')).toContainText('lowest to highest');
+  // The legend names windows by label, never by raw bucket and window identifiers.
+  const legend = page.getByTestId('history-quota-chart').locator('ul').last();
+  await expect(legend).toContainText('5 hour');
+  await expect(legend).toContainText('7 day');
+  await expect(legend).not.toContainText('codex · primary');
 });
 
 test('history states insufficient data rather than drawing a zero line', async ({ page }) => {

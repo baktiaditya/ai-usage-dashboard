@@ -113,58 +113,95 @@ gauge exactly like the other two, so the bridge allowlists it and the ingestor
 labels it. This account did not report one, so it simply never appeared — which
 is the intended behaviour, not a gap.
 
-#### Optional usage endpoint — PASSED (live, 2026-09-16)
+#### Optional quota probe — PASSED (live, 2026-09-17)
 
-A second, undocumented Claude source was gated after the status-line gate above,
-because the status line is push-shaped: it answers only while a session is live
-and only after that session's first API response, so the card goes blind exactly
-when nobody is working. `GET https://api.anthropic.com/api/oauth/usage` answers
-with no session running. The plan admits it as an optional, default-off poll
-(§3.1); the implementation contract is the brief
+The status line is push-shaped: it answers only while a session is live and only
+after that session's first API response, so the card goes blind exactly when
+nobody is working. The plan admits one pull-shaped source for that gap, an
+optional, default-off probe (§3.1); the implementation contract is the brief
 [poll-claude-quota-without-a-session](../backlog/ready-for-agent/poll-claude-quota-without-a-session.md).
 
-Probed three times with `pnpm run spike:claude-usage`, spaced at least five
-minutes apart, each with no Claude Code session running. All three returned
-`200 OK` with a stable shape. Authentication is a standalone token from
-`claude setup-token`, supplied by the user; no auth file is read.
-
-What the dashboard is specified to consume, values elided:
+Every Messages API response to a subscription token carries the account's
+unified rate-limit state in its headers. Probed once on 2026-09-17 with a
+`claude setup-token` token saved in the development database and no session
+reporting: `POST https://api.anthropic.com/v1/messages`, model `claude-haiku-4-5`,
+`max_tokens: 1`, one character of input, no system prompt, headers
+`anthropic-version: 2023-06-01` and `anthropic-beta: oauth-2025-04-20`, the
+dashboard's own `User-Agent`. It returned `200 OK` with 8 input and 1 output
+tokens billed to the subscription. Header names and value shapes, values elided:
 
 ```
-limits  [ N x {
-    kind       <string>
-    group      <string>
-    percent    <number>     0..100
-    severity   <string>
-    resets_at  <iso8601 | null>
-    scope      null
-    is_active  <boolean>
-  } ]
+anthropic-ratelimit-unified-5h-utilization   <decimal 0..1>
+anthropic-ratelimit-unified-5h-reset         <epoch seconds>
+anthropic-ratelimit-unified-5h-status        allowed
+anthropic-ratelimit-unified-7d-utilization   <decimal 0..1>
+anthropic-ratelimit-unified-7d-reset         <epoch seconds>
+anthropic-ratelimit-unified-7d-status        allowed
+anthropic-ratelimit-unified-status           allowed
+anthropic-ratelimit-unified-reset            <epoch seconds>
+anthropic-ratelimit-unified-representative-claim  five_hour
+anthropic-ratelimit-unified-fallback-percentage   <decimal 0..1>
+anthropic-ratelimit-unified-overage-status   rejected
+anthropic-ratelimit-unified-overage-disabled-reason  org_level_disabled
 ```
 
-`limits[]` is a normalised projection over the individual window keys, so it is
-the contract the adapter reads: a new window arrives as another array entry and
-needs no code change.
+The adapter reads the four `5h`/`7d` utilisation and reset headers only, and
+maps them to the status line's `five_hour` and `seven_day` windows. That mapping
+rests on public reports, not on this probe: Claude Code's status-line
+`rate_limits` are fed from these headers. It is why the two sources share one
+history series. Properties that constrain the implementation:
 
-Three properties of this gate are worth recording because they constrain the
-implementation:
+1. **It costs usage.** The probe is real inference, so it runs only when the
+   spool has no fresh reading, at most once per five minutes.
+2. **Haiku needs no Claude Code identity.** Public reports
+   (anthropics/claude-code#40515) show other models refusing a subscription
+   token unless the first system block is Claude Code's own identity string;
+   Haiku accepts it without. The probe therefore never impersonates Claude Code.
+3. **An exhausted window still reports.** A subscription at its limit is refused
+   with `429` carrying the same headers; that is a reading, not a failure. A
+   `429` without them is `rate_limited`. Not observed live.
+4. **Overage.** This account reported overage disabled, so a probe cannot bill
+   extra usage here. An account with overage enabled is unproven.
 
-1. **The rate limit escalates and carries no anchor.** A refusal returns `429`
-   with no `Retry-After`, and the penalty climbs 30/60/120/240/300s and can stay
-   at 300s. One request per five minutes is the proven-safe cadence. Never retry.
-2. **The payload carries keys this project does not model.** Beyond the windows
-   and `extra_usage` / `limits` / `spend` / `seven_day_breakdown` /
-   `member_dashboard_available`, the response held twelve further keys with
-   non-descriptive names, one of them carrying a value. They read as canaries, so
-   the probe withholds the names and reports counts only, and this bundle records
-   neither. A change in that count is the drift signal.
-3. **`claude -p "/usage"` is not a substitute.** It consumes no quota, but it
-   renders integer percentages and a reset time that is a rounded relative
-   duration — two runs seconds apart disagreed by a minute. It stays a diagnostic;
-   no value it prints is ever stored.
+Not gated, and still unproven: whether a probe sent while idle starts a new
+five-hour window (the probe ran while a window was already open), a second
+machine, and a non-Pro plan.
 
-Not gated, and still unproven: a second machine, a non-Pro plan, and an account
-whose `seven_day_opus` or `seven_day_sonnet` windows carry data.
+The probe depends on one model. `claude-haiku-4-5` is the newest Haiku as of
+2026-09-17, and the only current model public reports show accepting a
+subscription token without Claude Code's identity prompt; `claude-opus-5` and
+`claude-sonnet-5` refuse it (anthropics/claude-code#87420). When Haiku 4.5 is
+retired, the probe fails as `schema_mismatch` and the card falls back to the
+spool until the model is changed. A successor Haiku is not known to share the
+exemption; if it does not, a probe without impersonation stops working and the
+source decision has to be reopened rather than patched.
+
+#### Usage endpoint — SUPERSEDED for `setup-token` tokens (2026-09-17)
+
+`GET https://api.anthropic.com/api/oauth/usage` was gated on 2026-09-16 as the
+poll source. Three probes with `pnpm run spike:claude-usage`, spaced at least
+five minutes apart with no session running, returned `200 OK`, and the record
+said the token came from `claude setup-token`. That attribution does not hold:
+
+- On 2026-09-17 a `claude setup-token` token saved from dashboard Settings got
+  `403` from the endpoint.
+- Public reports agree (anthropics/claude-code#11985, #22450, #24200): a
+  `setup-token` token is scoped to inference only, and the endpoint requires the
+  `user:profile` scope, answering
+  `OAuth token does not meet scope requirement user:profile`.
+- The spike falls back to `~/.claude/.credentials.json` when no token is in its
+  environment, and that full-login token carries `user:profile`. The 2026-09-16
+  `200`s most likely came from it.
+
+The only tokens that can read the endpoint are therefore full-login tokens, which
+the plan forbids the collector to extract, so the poll was replaced by the
+header probe above. What that gate recorded about the endpoint itself stays true
+and is kept for reference: it serves a normalised `limits[]` list (active kinds
+`session` and `weekly_all` on 2026-09-17), escalates refusals with no
+`Retry-After` (a 2026-09-17 `429` did carry one), and carries 12–13
+non-descriptive top-level keys whose names this bundle withholds.
+`claude -p "/usage"` remains a diagnostic only: integer percentages and a
+rounded relative reset.
 
 ### DeepSeek — PASSED (live)
 

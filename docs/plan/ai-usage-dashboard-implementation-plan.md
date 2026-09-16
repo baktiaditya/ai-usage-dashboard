@@ -65,9 +65,9 @@ The dashboard makes no automatic routing decisions in the MVP. It only presents 
 
 - **Localhost-first:** UI and API bind explicitly to `127.0.0.1`; not just checking request headers or addresses.
 - **Quota, counters, and money kept separate:** a quota window is a gauge; `total_usage` is a cumulative counter; a balance is a money value per currency. The three are never summed into a single number.
-- **Structured source first:** use documented APIs/provider interfaces. Do not read tokens from auth files, call internal endpoints with extracted tokens, or parse terminal UI when a structured interface is available. Claude quota carries the single exception, and only because no documented interface answers while no session is live: an optional, default-off poll may call Claude's undocumented usage endpoint with a token the user mints deliberately through `claude setup-token`. It never extracts a token from `~/.claude/.credentials.json`, and terminal UI is still never parsed for a value the dashboard stores.
-- **Separate pull and event ingestion:** Codex, DeepSeek, and OpenRouter can be polled; Claude quota arrives via the status line while Claude is active, and additionally from the optional Claude usage poll when the user has enabled it.
-- **Read-only behavior:** the application only performs read operations. Note: the OpenRouter Management Key remains a powerful administrative credential even though the adapter only calls `GET`.
+- **Structured source first:** use documented APIs/provider interfaces. Do not read tokens from auth files, call internal endpoints with extracted tokens, or parse terminal UI when a structured interface is available. Claude quota carries the single exception, and only because no documented interface answers while no session is live: an optional, default-off probe may send a minimal Messages API request with a token the user mints deliberately through `claude setup-token`, and read the undocumented unified rate-limit headers of its response. It never extracts a token from `~/.claude/.credentials.json`, never presents itself as Claude Code, and terminal UI is still never parsed for a value the dashboard stores.
+- **Separate pull and event ingestion:** Codex, DeepSeek, and OpenRouter can be polled; Claude quota arrives via the status line while Claude is active, and additionally from the optional Claude quota probe when the user has enabled it.
+- **Read-only behavior:** the application only reads provider state, with one exception: the optional Claude quota probe (§3.1) sends `POST /v1/messages`, a real one-token inference request that spends a small amount of the subscription usage it measures. It changes no plan, key, or account setting. Note: the OpenRouter Management Key remains a powerful administrative credential even though the adapter only calls `GET`.
 - **Graceful degradation:** one provider's failure or missing configuration does not fail the other providers.
 - **No raw payload storage:** validate payloads at the boundary, pick the needed fields, then discard the raw payload.
 - **Versioned adapters:** store CLI versions and adapter schema versions alongside snapshots so drift can be diagnosed.
@@ -93,7 +93,7 @@ The dashboard makes no automatic routing decisions in the MVP. It only presents 
 - Configuration integration must preserve any existing status line. If an existing configuration is found later, compose explicitly or fail closed — never overwrite silently.
 - The `rate_limits` field is only expected for Claude.ai Pro/Max accounts (or gateways with spend limits) and only becomes available after the first API response. Since this machine's `subscriptionType` is undetected and no status line exists yet, M0 must still prove the actual payload.
 - Parsing interactive `/status` or `/usage` output is not a source. `claude -p "/usage"` is permitted as a diagnostic only: it consumes no quota, but it renders integer percentages and a reset time that is a rounded relative duration, so no value it prints is ever stored.
-- **Optional usage poll, default off.** When the user supplies a token minted by `claude setup-token`, the collector may additionally poll Claude's undocumented usage endpoint, which answers with no session running. Read the normalised `limits[]` projection rather than the individual window keys, so a new window needs no code change. Send at most one request per five minutes and never retry a refusal: the endpoint escalates its rate limit with no `Retry-After`. Any poll failure — a refusal, a transport failure, or a drifted shape — falls back to the spool; if that produces a snapshot, ordinary freshness rules decide whether it is `healthy` or `stale`. With no usable spool, the attempt is `error` with the poll's failure code, and any older value remains visible only as historical data. A drifted shape never produces a number. The status-line spool stays the default path and the fallback; the poll never replaces it, and the endpoint being undocumented means a shape change is expected rather than exceptional.
+- **Optional quota probe, default off.** When the user supplies a token minted by `claude setup-token`, the collector may send `POST /v1/messages` to Claude Haiku with one output token and no system prompt, and read the `anthropic-ratelimit-unified-5h-*` and `-7d-*` utilisation and reset headers of the response — the same state Claude Code forwards to the status line, so the probe reports the status line's `five_hour` and `seven_day` windows. The response body is discarded unread. The request is real inference: it spends a few tokens of the subscription usage it measures, so it is sent only when the spool has no reading fresher than the probe's own freshness budget, at most once per five minutes, and never retried. A `setup-token` token cannot read `GET /api/oauth/usage`, which requires the `user:profile` scope such a token lacks (2026-09-17 discovery). Any probe failure — a refusal, a transport failure, or a drifted header — falls back to the spool; if that produces a snapshot, ordinary freshness rules decide whether it is `healthy` or `stale`. With no usable spool, the attempt is `error` with the probe's failure code, and any older value remains visible only as historical data. A `429` that still carries the window headers is a reading of an exhausted window, not a failure. A drifted header never produces a number. The status-line spool stays the default path and the fallback; the probe never replaces it, and the headers being undocumented means a change is expected rather than exceptional.
 
 #### DeepSeek
 
@@ -131,12 +131,16 @@ The dashboard makes no automatic routing decisions in the MVP. It only presents 
 - Run that command every 5 minutes via a user-level `systemd` service + timer. Do not rely on in-process Next.js intervals as the primary scheduler.
 - Optionally serve the dashboard itself at boot as a user-level web unit, installed with `--with-web`. See the 2026-09-14 decision in the [log](../log.md).
 - Pull Codex, DeepSeek, and OpenRouter in parallel with independent timeouts; ingest the Claude
-  spool in the same run. When the optional Claude usage poll of §3.1 is configured, it joins that
-  parallel pull and the spool ingest still runs. Its five-minute floor is a property of the poll
-  itself, not of the timer: a manual refresh must not bypass it. Scheduled and manual collection
-  share an atomic, durable claim in SQLite for the last Claude poll attempt. The claim is written
-  before the HTTP request, so failures and process crashes still spend the interval; losing a race
-  skips the poll and continues with the spool.
+  spool in the same run. When the optional Claude quota probe of §3.1 is configured, the spool is
+  read first; a fresh spool reading answers the run and no probe is sent. Otherwise the probe joins
+  that parallel pull. Its five-minute floor is a property of the probe itself, not of the timer: a
+  manual refresh must not bypass it. Scheduled and manual collection share an atomic, durable claim
+  in SQLite for the last Claude probe attempt. The claim is written before the HTTP request, so
+  failures and process crashes still spend the interval; losing a race skips the probe and
+  continues with the spool. A run that loses the claim and has no usable spool observed nothing and
+  records no Claude attempt, so the card keeps the claimant's result — a reading aged by ordinary
+  freshness, its error, or a request still in flight — rather than turning `unavailable` over a
+  probe that run never made. It is the one exception to one attempt per provider per run.
 - Use SQLite WAL mode, `busy_timeout`, short transactions, and unique constraints to handle overlap between collector/manual refresh and the web process.
 - Default retention 90 days. Daily aggregates may be kept longer once their rollup and idempotency rules are tested.
 - Define freshness per source. Initial defaults: a pull source becomes `stale` after three missed intervals; a Claude event also becomes `stale` when the event passes its threshold or `resets_at` has passed.
@@ -267,18 +271,18 @@ Derive success/failure counts from attempts so partial success is auditable and 
 
 #### `claude_poll_state`
 
-Planned for the optional Claude poll; this table is not implemented yet.
+Created by migration `0003` for the optional Claude quota probe (implemented 2026-09-17).
 
 - `id`, constrained to the singleton value `1`
 - `last_attempted_at`, claimed atomically before an HTTP request
 
 This source-specific scheduling state is separate from provider attempts: a composite Claude attempt
-may succeed from the spool after the poll fails, so `collector_attempts` cannot prove when the poll
-was last called. The durable claim is shared by the systemd oneshot and the web process.
+may succeed from the spool after the probe fails, so `collector_attempts` cannot prove when the probe
+was last sent. The durable claim is shared by the systemd oneshot and the web process.
 
 The database stores no account emails, account IDs, full CLI/status-line inputs, full app-server
 responses, or raw API payloads. Under §3.5 it stores the DeepSeek and OpenRouter API keys in
-`provider_credentials`, and — only when the user opts into the §3.1 poll — a Claude token minted
+`provider_credentials`, and — only when the user opts into the §3.1 probe — a Claude token minted
 by `claude setup-token`. That token is the single exception to storing no OAuth token: it is
 supplied by the user, never read out of any CLI's auth file, and the prohibition on reading
 `~/.claude/.credentials.json` stands unchanged.
@@ -351,7 +355,7 @@ The MVP may proceed with unavailable adapters, but acceptance for a given provid
 - One page shows the last known state of all four providers without blocking when one adapter fails or is unconfigured.
 - Codex reads quota via `account/rateLimits/read`; it does not read auth files or parse terminal UI.
 - Claude shows quota only from a validated, still-fresh observation — the status-line spool by
-  default, or the optional §3.1 poll when the user has configured it. With neither, the card shows
+  default, or the optional §3.1 probe when the user has configured it. With neither, the card shows
   `unavailable`/`stale`.
 - DeepSeek shows all per-currency balances without claiming any usage; OpenRouter shows total credits, total usage, and remaining from the official endpoint.
 - All money figures use decimal-safe arithmetic, and every quota window retains its source `usedPercent`, duration, and reset time.

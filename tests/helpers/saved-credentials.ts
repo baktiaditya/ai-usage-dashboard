@@ -34,7 +34,7 @@ export function readSavedCredentials(databasePath: string): ProviderCredentials 
 }
 
 function noKeys(): ProviderCredentials {
-  return { deepseekApiKey: null, openrouterManagementKey: null };
+  return { deepseekApiKey: null, openrouterManagementKey: null, claudeUsageToken: null };
 }
 
 function isMissingCredentialsTable(err: unknown): boolean {

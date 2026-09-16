@@ -1,0 +1,13 @@
+{
+  "_fixture": {
+    "source": "POST https://api.anthropic.com/v1/messages (response headers only)",
+    "sanitized": "Synthetic values throughout. Header names follow the gate recorded in docs/discovery/m0-discovery.md; no live percentage, reset time, request id, or account field is copied.",
+    "important": "Unified headers are present but neither window this adapter reads."
+  },
+  "status": 200,
+  "headers": {
+    "anthropic-ratelimit-unified-status": "allowed",
+    "anthropic-ratelimit-unified-reset": "4093000000",
+    "request-id": "req_elided"
+  }
+}

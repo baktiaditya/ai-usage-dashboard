@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { CLAUDE_PROBE_SOURCE_VERSION } from '@/lib/domain';
 import { evaluateFreshness, maxAgeMs } from '@/lib/freshness';
 import type { StoredAttempt, StoredSnapshot } from '@/lib/db/repository';
 import { testConfig } from '../helpers/db';
@@ -47,14 +48,41 @@ function attempt(overrides: Partial<StoredAttempt> = {}): StoredAttempt {
 describe('freshness budgets', () => {
   it('gives polled sources three missed intervals', () => {
     // 3 missed intervals x 5 minutes.
-    expect(maxAgeMs('codex', config)).toBe(15 * 60_000);
-    expect(maxAgeMs('deepseek', config)).toBe(15 * 60_000);
+    expect(maxAgeMs('codex', 'codex-cli/0.154.0', config)).toBe(15 * 60_000);
+    expect(maxAgeMs('deepseek', 'deepseek-api/user-balance', config)).toBe(15 * 60_000);
   });
 
   it('gives the event-driven source its own, longer budget', () => {
     // Claude only emits while a session is live, so a gap is not a fault.
-    expect(maxAgeMs('claude', config)).toBe(12 * 60 * 60_000);
-    expect(maxAgeMs('claude', config)).toBeGreaterThan(maxAgeMs('codex', config));
+    expect(maxAgeMs('claude', 'claude-code/2.1.269', config)).toBe(12 * 60 * 60_000);
+    expect(maxAgeMs('claude', null, config)).toBe(12 * 60 * 60_000);
+    expect(maxAgeMs('claude', 'claude-code/2.1.269', config)).toBeGreaterThan(
+      maxAgeMs('codex', 'codex-cli/0.154.0', config),
+    );
+  });
+
+  it('keys the Claude budget on the source: a probed reading gets the pull budget', () => {
+    expect(maxAgeMs('claude', CLAUDE_PROBE_SOURCE_VERSION, config)).toBe(15 * 60_000);
+  });
+
+  it('ages a probed Claude reading out after the pull budget, a spooled one after its own', () => {
+    const observedAt = new Date(NOW.getTime() - 20 * 60_000).toISOString();
+    const claude = (sourceVersion: string) =>
+      evaluateFreshness({
+        provider: 'claude',
+        snapshot: snapshot({
+          provider: 'claude',
+          sourceObservedAt: observedAt,
+          sourceVersion,
+          windows: [],
+        }),
+        attempt: attempt({ provider: 'claude' }),
+        config,
+        now: NOW,
+      }).status;
+
+    expect(claude(CLAUDE_PROBE_SOURCE_VERSION)).toBe('stale');
+    expect(claude('claude-code/2.1.269')).toBe('healthy');
   });
 });
 

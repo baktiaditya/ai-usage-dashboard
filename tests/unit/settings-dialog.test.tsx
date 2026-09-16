@@ -56,7 +56,7 @@ interface Call {
 }
 
 function stubApi({
-  statuses = [unsaved('deepseek'), unsaved('openrouter')],
+  statuses = [unsaved('deepseek'), unsaved('openrouter'), unsaved('claude')],
   list = async () => json({ credentials: statuses }),
   save = async (provider: CredentialProvider) => json({ credential: savedNow(provider, 'wxyz') }),
 }: {
@@ -134,7 +134,7 @@ describe('opening and closing', () => {
       'Keys are stored in the local dashboard database and used from the next collection. Use Refresh on a card to collect now.',
     );
 
-    answer(json({ credentials: [unsaved('deepseek'), unsaved('openrouter')] }));
+    answer(json({ credentials: [unsaved('deepseek'), unsaved('openrouter'), unsaved('claude')] }));
     await waitFor(() => expect(screen.queryByTestId('settings-loading')).not.toBeInTheDocument());
     expect(screen.getByTestId('settings-status-deepseek')).toHaveTextContent('Not set');
   });
@@ -147,6 +147,7 @@ describe('statuses', () => {
       statuses: [
         { provider: 'deepseek', configured: true, hint: '1234', updatedAt: fiveMinutesAgo },
         { provider: 'openrouter', configured: true, hint: null, updatedAt: fiveMinutesAgo },
+        unsaved('claude'),
       ],
     });
     await openDialog();
@@ -158,7 +159,8 @@ describe('statuses', () => {
     expect(screen.getByTestId('settings-status-openrouter')).toHaveTextContent(
       /^Saved · updated 5m ago$/,
     );
-    for (const provider of ['deepseek', 'openrouter']) {
+    expect(screen.getByTestId('settings-status-claude')).toHaveTextContent(/^Not set$/);
+    for (const provider of ['deepseek', 'openrouter', 'claude']) {
       const input = screen.getByTestId(`settings-input-${provider}`);
       expect(input).toHaveValue('');
       expect(input).toHaveAttribute('type', 'password');
@@ -180,6 +182,42 @@ describe('statuses', () => {
     expect(link).toHaveAttribute('target', '_blank');
     expect(link).toHaveAttribute('rel', 'noreferrer');
     expect(screen.queryByTestId('settings-remove-deepseek')).not.toBeInTheDocument();
+  });
+
+  it('renders every credential field, in order, the Claude token last', async () => {
+    stubApi();
+    const { dialog } = await openDialog();
+
+    expect(
+      within(dialog)
+        .getAllByTestId(/^settings-input-/)
+        .map((input) => input.getAttribute('data-testid')),
+    ).toEqual(['settings-input-deepseek', 'settings-input-openrouter', 'settings-input-claude']);
+  });
+
+  it('says the Claude token is optional, and describes the field with that help', async () => {
+    stubApi();
+    const { dialog } = await openDialog();
+
+    const input = within(dialog).getByLabelText('Claude Token (optional)');
+    expect(input).toHaveAttribute('data-testid', 'settings-input-claude');
+    expect(input).toHaveAccessibleDescription(
+      expect.stringContaining(
+        'Optional. Claude still reports quota through the status line without it.',
+      ),
+    );
+    expect(input).toHaveAccessibleDescription(expect.stringContaining('Not set'));
+    expect(dialog).toHaveTextContent('claude setup-token');
+    // The probe spends subscription usage, so the help must say so.
+    expect(dialog).toHaveTextContent('Each request counts toward your Claude usage.');
+    expect(dialog).toHaveTextContent('Removing the token here does not revoke it.');
+    // The other fields keep their descriptions.
+    expect(within(dialog).getByLabelText('DeepSeek API Key')).toHaveAccessibleDescription(
+      'Not set',
+    );
+    expect(within(dialog).getByLabelText('OpenRouter Management Key')).toHaveAccessibleDescription(
+      expect.stringContaining('Must be a Management key'),
+    );
   });
 });
 
@@ -217,7 +255,7 @@ describe('saving', () => {
     expect(screen.getByTestId('settings-status-openrouter')).toHaveTextContent('Saved ••••wxyz');
 
     // The GET was sent before the save, so its "Not set" is stale.
-    answer(json({ credentials: [unsaved('deepseek'), unsaved('openrouter')] }));
+    answer(json({ credentials: [unsaved('deepseek'), unsaved('openrouter'), unsaved('claude')] }));
     await waitFor(() => expect(screen.queryByTestId('settings-loading')).not.toBeInTheDocument());
     expect(screen.getByTestId('settings-status-openrouter')).toHaveTextContent('Saved ••••wxyz');
     expect(screen.getByTestId('settings-status-deepseek')).toHaveTextContent('Not set');
@@ -265,6 +303,20 @@ describe('saving', () => {
       expect(JSON.stringify(spy.mock.calls)).not.toContain(KEY.slice(0, -4));
     }
     expect(window.location.href).not.toContain(KEY.slice(0, -4));
+  });
+
+  it('saves a Claude token through the same PUT as the other keys', async () => {
+    const calls = stubApi();
+    const { user } = await openDialog();
+
+    await user.type(screen.getByTestId('settings-input-claude'), KEY);
+    await user.click(screen.getByTestId('settings-save'));
+
+    expect(await screen.findByTestId('settings-success')).toHaveTextContent('Saved.');
+    expect(calls.filter((c) => c.method !== 'GET')).toEqual([
+      { url: '/api/settings/credentials/claude', method: 'PUT', body: { secret: KEY } },
+    ]);
+    expect(screen.getByTestId('settings-status-claude')).toHaveTextContent('Saved ••••wxyz');
   });
 });
 

@@ -115,9 +115,18 @@ export const creditBalances = sqliteTable(
  * means no key is saved. Read only through `src/lib/db/credentials.ts`.
  */
 export const providerCredentials = sqliteTable('provider_credentials', {
-  provider: text('provider', { enum: ['deepseek', 'openrouter'] }).primaryKey(),
+  provider: text('provider', { enum: ['deepseek', 'openrouter', 'claude'] }).primaryKey(),
   secret: text('secret').notNull(),
   updatedAt: text('updated_at').notNull(),
+});
+
+/**
+ * Singleton (`id = 1`) recording the last claimed Claude quota probe. Written
+ * only through `claimClaudePoll` in `src/lib/db/repository.ts`.
+ */
+export const claudePollState = sqliteTable('claude_poll_state', {
+  id: integer('id').primaryKey(),
+  lastAttemptedAt: text('last_attempted_at').notNull(),
 });
 
 export const schemaMigrations = sqliteTable('schema_migrations', {

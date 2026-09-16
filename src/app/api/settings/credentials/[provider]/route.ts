@@ -18,6 +18,7 @@ import {
   saveProviderCredential,
 } from '@/lib/db/credentials';
 import { isCredentialProvider } from '@/lib/domain';
+import type { CredentialProvider } from '@/lib/domain';
 import { safeErrorMessage } from '@/lib/redact';
 import { db } from '@/lib/server/db';
 import { requireSameOrigin } from '@/lib/server/security';
@@ -38,13 +39,13 @@ function failure(status: number, code: string, message: string): NextResponse {
 }
 
 const INVALID_PROVIDER = () =>
-  failure(400, 'invalid_provider', 'Keys can be saved only for DeepSeek and OpenRouter.');
+  failure(400, 'invalid_provider', 'Keys can be saved only for DeepSeek, OpenRouter, and Claude.');
 
 /** Checks shared by both methods, in order: origin first, then the provider. */
 async function guard(
   request: NextRequest,
   context: RouteContext,
-): Promise<{ response: NextResponse } | { provider: 'deepseek' | 'openrouter' }> {
+): Promise<{ response: NextResponse } | { provider: CredentialProvider }> {
   const origin = requireSameOrigin(request, getConfig());
   if (!origin.ok) return { response: failure(origin.status, origin.code, origin.message) };
   const { provider } = await context.params;

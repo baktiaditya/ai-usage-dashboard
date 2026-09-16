@@ -2,6 +2,70 @@
 
 ## 2026-09-17
 
+- **Update**: plan §2's read-only principle now names the Claude quota probe as its one
+  exception. The probe's `POST /v1/messages` is real inference that spends subscription usage, so
+  "only performs read operations" was no longer true. Found in PR #16 review.
+- **Discovery**: a `claude setup-token` token cannot read `GET /api/oauth/usage`. Saved from
+  dashboard Settings on 2026-09-17, it got `403`. Public reports (anthropics/claude-code#11985,
+  #22450, #24200) show why: such a token is scoped to `user:inference` only, and the endpoint
+  requires `user:profile`. The 2026-09-16 gate's `200`s most likely came from the spike's fallback
+  to the full-login token in `~/.claude/.credentials.json`, which carries that scope. The poll as
+  built on PR #16 could never have answered with the token setup §3 told users to mint.
+  [M0 discovery](discovery/m0-discovery.md) records the correction.
+- **Decision**: the Claude pull source is now a quota probe, replacing the usage poll on PR #16.
+  It sends `POST /v1/messages` to `claude-haiku-4-5` with one output token and no system prompt,
+  discards the body unread, and reads the `anthropic-ratelimit-unified-5h-*` and `-7d-*`
+  utilisation and reset headers. A live probe with a saved `setup-token` token returned `200` and
+  those headers. Haiku accepts a subscription token without Claude Code's identity prompt, so the
+  probe never impersonates Claude Code. Reading a full-login token out of
+  `~/.claude/.credentials.json` was rejected: it breaks the plan's extraction rule, and refreshing
+  it would race Claude Code's own refresh-token rotation. The probe is real inference and spends a
+  few tokens of subscription usage, which the user accepted. So it runs only when the spool has no
+  reading within the probe's freshness budget; an active session never pays for one. The
+  five-minute floor, durable claim, deferral rule, and fallback semantics are unchanged. Plan §3.1,
+  §3.3, §4.4 and §7 and setup §3 are rewritten for it.
+- **Superseded**: the two earlier 2026-09-17 decisions below, to refuse unlabelled `limits[].kind`
+  values and to keep status-line and polled Claude windows as separate history series. The probe
+  produces the status line's own `five_hour` and `seven_day` windows from the headers that feed the
+  status line, so `session` and `weekly_all` labels are gone and a Claude window is one series again,
+  whichever source observed it. The history legend still shows window labels instead of raw
+  identifiers.
+- **Update**: [the poll brief](backlog/ready-for-agent/poll-claude-quota-without-a-session.md)
+  is implemented on branch `feat/poll-claude-quota-without-a-session`, tracked by
+  [#13](https://github.com/baktiaditya/ai-usage-dashboard/issues/13). Migration `0003` rebuilds
+  `provider_credentials` with `claude` in its `CHECK` and creates the `claude_poll_state` singleton
+  that plan §4.4 now describes as implemented. `src/lib/adapters/claude-usage.ts` holds the poll and
+  the single composite Claude adapter. Freshness now keys the Claude budget on the snapshot's
+  `sourceVersion`, and [setup](operations/setup.md) §3 documents enabling the poll and the whole
+  token lifecycle. The brief stays in `ready-for-agent/` until the change is merged and deployed.
+- **Decision**: a `limits[].kind` without a label is refused in the adapter, not rendered. The
+  brief left the choice open between labelling and refusing. Refusing there keeps an undocumented
+  internal name out of the database, the history legend, and the advisory subject, not only the
+  card. A payload whose active limits all carry unknown kinds is `schema_mismatch`, because
+  `not_entitled` would misstate an account that does have limits. The two kinds seen live, `session`
+  and `weekly_all`, read as window names and are labelled `Session` and `Weekly, all models`.
+- **Discovery**: one re-probe with `--show-limit-kinds` returned 13 unrecognised top-level keys
+  instead of the 12 recorded on 2026-09-16, one still carrying a value. The drift signal fired on a
+  field the adapter does not read. Recorded as a count in
+  [M0 discovery](discovery/m0-discovery.md); the names stay withheld.
+- **Decision**: a run that loses the poll claim and has no usable spool records no Claude attempt.
+  The first implementation let it record the spool's `no_event_yet`, so with a token saved and no
+  bridge, a **Refresh** inside the five-minute interval — or a scheduled run landing just under it
+  from start-up jitter — turned a fresh polled reading `unavailable`. Pre-merge review of PR #16
+  ruled that out, because it defeats the point of polling. Any row that run could write would be a
+  verdict about a poll it never made, and since the loser starts later it would also mask the
+  claimant's result, including a request still in flight. The adapter now throws
+  `CollectionDeferred`, the collector records nothing and reports the provider as `deferred`, and
+  the card keeps the claimant's reading, aged by the polled budget, or its error. It reads
+  `unavailable` only when no poll result exists. This amends plan §3.3 and is the one exception to
+  "one run, one attempt per provider"; the brief's criterion that `getLatestAttempts` sees one
+  Claude row per run holds for every run that polled or read a usable spool.
+- **Decision**: history keeps status-line and polled Claude windows as separate series, labelled
+  `(status line)` and `(usage poll)`, and no longer prints raw bucket and window identifiers in the
+  legend. `session` is not mapped onto `five_hour`: the names look equivalent, but nothing has
+  verified that they measure the same window, and one merged line could mislead. Runs that
+  alternate sources leave gaps in both lines, which [setup](operations/setup.md) §3 records as a
+  limitation. Merging the series waits on evidence that the metrics are equal.
 - **Risk**: plan §4.5 and the implementation disagree on how a failed format or version guard is
   shown. §4.5 lists it under `unavailable`, and the comment in
   `src/lib/ingestors/claude-statusline.ts` says the same, but `UNAVAILABLE_CODES` in

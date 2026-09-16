@@ -200,7 +200,7 @@ export function buildOverview(db: Db, config: AppConfig, now: Date = new Date())
       sourceObservedAt: snapshot?.sourceObservedAt ?? null,
       lastSuccessfulCollectionAt: lastSuccess.get(provider) ?? null,
       dataAgeMs: freshness.dataAgeMs,
-      freshnessBudgetMs: maxAgeMs(provider, config),
+      freshnessBudgetMs: maxAgeMs(provider, snapshot?.sourceVersion ?? null, config),
       sourceVersion: snapshot?.sourceVersion ?? null,
       schemaVersion: snapshot?.schemaVersion ?? null,
       windows,

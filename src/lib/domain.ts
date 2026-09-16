@@ -25,10 +25,13 @@ export function isProvider(v: string): v is Provider {
 }
 
 /**
- * Providers whose key is saved in dashboard Settings (plan §3.5). Codex and
- * Claude authenticate through their own CLIs and have no key here.
+ * Providers whose key is saved in dashboard Settings (plan §3.5). DeepSeek and
+ * OpenRouter report nothing without theirs. The Claude token is optional and
+ * belongs to a source, not the provider: it only enables the quota probe of plan
+ * §3.1, and Claude keeps reporting through the status-line spool without it.
+ * Codex authenticates through its own CLI and has no key here.
  */
-export const CREDENTIAL_PROVIDERS = ['deepseek', 'openrouter'] as const;
+export const CREDENTIAL_PROVIDERS = ['deepseek', 'openrouter', 'claude'] as const;
 export type CredentialProvider = (typeof CREDENTIAL_PROVIDERS)[number];
 
 export function isCredentialProvider(value: string): value is CredentialProvider {
@@ -46,6 +49,14 @@ export interface CredentialStatus {
   readonly hint: string | null;
   readonly updatedAt: string | null;
 }
+
+/**
+ * `sourceVersion` of a Claude observation read by the optional quota probe
+ * (plan §3.1): the rate-limit headers of a minimal Messages API request. A
+ * status-line observation carries `claude-code/<version>` instead, which is how
+ * freshness tells the two sources apart.
+ */
+export const CLAUDE_PROBE_SOURCE_VERSION = 'claude-api/ratelimit-headers';
 
 export const PROVIDER_LABELS: Record<Provider, string> = {
   codex: 'Codex',
@@ -168,6 +179,12 @@ export type CollectionResult =
   | {
       readonly outcome: 'unavailable' | 'error';
       readonly failure: CollectionFailure;
+      readonly retryCount: number;
+    }
+  | {
+      /** Nothing observed and another run owns the answer; never persisted. */
+      readonly outcome: 'deferred';
+      readonly reason: string;
       readonly retryCount: number;
     };
 

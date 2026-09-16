@@ -26,7 +26,11 @@ export interface SettingsDialogProps {
 const FIELD_LABELS: Record<CredentialProvider, string> = {
   deepseek: 'DeepSeek API Key',
   openrouter: 'OpenRouter Management Key',
+  claude: 'Claude Token (optional)',
 };
+
+/** Fields that render a help paragraph, which their input must reference. */
+const HAS_HELP: ReadonlySet<CredentialProvider> = new Set(['openrouter', 'claude']);
 
 const UNREACHABLE = 'Could not reach the local dashboard server.';
 
@@ -115,6 +119,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const headingId = useId();
   const deepseekInput = useRef<HTMLInputElement>(null);
   const openrouterInput = useRef<HTMLInputElement>(null);
+  const claudeInput = useRef<HTMLInputElement>(null);
 
   if (!isMounted) return null;
 
@@ -145,7 +150,11 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
           >
             <SettingsForm
               headingId={headingId}
-              inputRefs={{ deepseek: deepseekInput, openrouter: openrouterInput }}
+              inputRefs={{
+                deepseek: deepseekInput,
+                openrouter: openrouterInput,
+                claude: claudeInput,
+              }}
               onClose={() => onOpenChange(false)}
             />
             {/* shadcn/ui's corner close button, last in tab order, level with the heading. */}
@@ -182,6 +191,7 @@ function SettingsForm({
   const [values, setValues] = useState<Record<CredentialProvider, string>>({
     deepseek: '',
     openrouter: '',
+    claude: '',
   });
   const [pending, setPending] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -310,6 +320,14 @@ function SettingsForm({
                   Create a Management key
                 </a>
               </p>
+            ) : provider === 'claude' ? (
+              <p id={helpId} className="text-muted-foreground text-xs">
+                Optional. Claude still reports quota through the status line without it. With a
+                token from <code>claude setup-token</code>, the collector also reads quota when no
+                session is reporting, by sending a one-token Claude Haiku request at most once every
+                five minutes. Each request counts toward your Claude usage. Removing the token here
+                does not revoke it.
+              </p>
             ) : null}
             <input
               ref={inputRefs[provider]}
@@ -323,7 +341,7 @@ function SettingsForm({
                 const next = event.target.value;
                 setValues((prev) => ({ ...prev, [provider]: next }));
               }}
-              aria-describedby={provider === 'openrouter' ? `${helpId} ${statusId}` : statusId}
+              aria-describedby={HAS_HELP.has(provider) ? `${helpId} ${statusId}` : statusId}
               data-testid={`settings-input-${provider}`}
               className="border-border bg-background w-full rounded-lg border px-3 py-1.5 text-sm"
             />

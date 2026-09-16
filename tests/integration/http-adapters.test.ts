@@ -1,8 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
+import {
+  CLAUDE_PROBE_ANTHROPIC_VERSION,
+  CLAUDE_PROBE_OAUTH_BETA,
+  probeClaudeQuota,
+} from '@/lib/adapters/claude-usage';
 import { createDeepseekAdapter } from '@/lib/adapters/deepseek';
+import { buildRequestHeaders } from '@/lib/adapters/http';
 import { createOpenrouterAdapter } from '@/lib/adapters/openrouter';
 import { CollectionError } from '@/lib/errors';
-import { fixtureText } from '../helpers/fixtures';
+import { fixtureJson, fixtureText } from '../helpers/fixtures';
 
 function jsonResponse(body: string, status = 200): Response {
   return new Response(body, { status, headers: { 'Content-Type': 'application/json' } });
@@ -58,6 +64,76 @@ describe('credential handling', () => {
     const { impl, calls } = capturingFetch(fixtureText('deepseek', 'valid-single-currency'));
     await createDeepseekAdapter({ apiKey: 'k', fetchImpl: impl }).collect(signal());
     expect((calls[0]?.init as RequestInit).redirect).toBe('error');
+  });
+});
+
+describe('request headers', () => {
+  // The exact set each provider sent before the Claude probe extended the helper.
+  const unchanged = (key: string) => ({
+    Authorization: `Bearer ${key}`,
+    Accept: 'application/json',
+    'User-Agent': 'ai-usage-dashboard/0.1.0',
+  });
+
+  it('sends DeepSeek exactly the headers it sent before', async () => {
+    const { impl, calls } = capturingFetch(fixtureText('deepseek', 'valid-single-currency'));
+    await createDeepseekAdapter({ apiKey: 'sk-fake-ds', fetchImpl: impl }).collect(signal());
+    expect(calls[0]?.init?.headers).toStrictEqual(unchanged('sk-fake-ds'));
+  });
+
+  it('sends OpenRouter exactly the headers it sent before', async () => {
+    const { impl, calls } = capturingFetch(fixtureText('openrouter', 'valid'));
+    await createOpenrouterAdapter({ managementKey: 'sk-or-fake', fetchImpl: impl }).collect(
+      signal(),
+    );
+    expect(calls[0]?.init?.headers).toStrictEqual(unchanged('sk-or-fake'));
+  });
+
+  it('sends the Claude probe its API headers under the dashboard user agent', async () => {
+    const calls: { url: string; init: RequestInit | undefined }[] = [];
+    const { headers } = fixtureJson('claude-probe', 'valid') as { headers: Record<string, string> };
+    const impl = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      calls.push({ url: String(url), init });
+      return new Response(null, { status: 200, headers });
+    });
+    await probeClaudeQuota({ token: 'sk-ant-oat01-fake', fetchImpl: impl }, signal());
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.url).toBe('https://api.anthropic.com/v1/messages');
+    expect(calls[0]?.url).not.toContain('fake');
+    expect(calls[0]?.init?.method).toBe('POST');
+    expect(calls[0]?.init?.headers).toStrictEqual({
+      Authorization: 'Bearer sk-ant-oat01-fake',
+      Accept: 'application/json',
+      'User-Agent': 'ai-usage-dashboard/0.1.0',
+      'Content-Type': 'application/json',
+      'anthropic-version': CLAUDE_PROBE_ANTHROPIC_VERSION,
+      'anthropic-beta': CLAUDE_PROBE_OAUTH_BETA,
+    });
+  });
+
+  it('overrides a default header case-insensitively instead of sending both', () => {
+    expect(buildRequestHeaders('k', { 'user-agent': 'other/1' })).toStrictEqual({
+      Authorization: 'Bearer k',
+      Accept: 'application/json',
+      'User-Agent': 'other/1',
+    });
+  });
+
+  it('never lets an extra header replace the Authorization derived from the token', () => {
+    for (const name of ['Authorization', 'authorization', 'AUTHORIZATION']) {
+      expect(() => buildRequestHeaders('k', { [name]: 'Bearer stolen' })).toThrow(/Authorization/);
+    }
+  });
+
+  it('never retries a refused Claude probe', async () => {
+    for (const status of [429, 500, 401]) {
+      const { impl, calls } = capturingFetch('{}', status);
+      await expect(
+        probeClaudeQuota({ token: 'sk-ant-oat01-fake', fetchImpl: impl }, signal()),
+      ).rejects.toBeInstanceOf(CollectionError);
+      expect(calls).toHaveLength(1);
+    }
   });
 });
 
