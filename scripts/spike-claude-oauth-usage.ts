@@ -76,12 +76,40 @@ const KNOWN_WINDOWS = [
 ] as const;
 
 const ISO_8601 = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/;
+
+/**
+ * Is this an instant that actually exists?
+ *
+ * `Date.parse` is not enough on its own: it silently rolls an impossible
+ * calendar date forward, so `2026-02-31T00:00:00Z` becomes 3 March and passes.
+ * A reset time that moves three days when it is read is worse than one that is
+ * rejected, so the parsed value has to round-trip back to the same date.
+ */
+function isRealInstant(value: string): boolean {
+  if (!ISO_8601.test(value)) return false;
+  const ms = Date.parse(value);
+  if (Number.isNaN(ms)) return false;
+  return new Date(ms).toISOString().slice(0, 10) === value.slice(0, 10);
+}
 const EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/;
 
 type Options = {
   credentialsPath: string;
   tokenEnvName: string;
   timeoutMs: number;
+  /**
+   * Print the `kind` and `group` values of `limits[]`, which the shape block
+   * elides like every other leaf.
+   *
+   * This is the single, deliberate exception to "every leaf elided", and it is
+   * opt-in because the probe cannot know in advance that these two fields are
+   * safe. They name the window a limit applies to, so they should read like
+   * `five_hour`; an adapter needs them to label a gauge, and there is no other
+   * way to learn them. Read the output before copying anything into the
+   * repository: a value that reads as a codename rather than a window name is
+   * one this repository does not publish.
+   */
+  showLimitKinds: boolean;
 };
 
 type TokenSource = {
@@ -97,12 +125,17 @@ function parseArgs(argv: string[]): Options | number {
     credentialsPath: join(homedir(), '.claude', '.credentials.json'),
     tokenEnvName: 'CLAUDE_OAUTH_TOKEN',
     timeoutMs: 20_000,
+    showLimitKinds: false,
   };
 
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === '--') continue;
     if (arg === '--help' || arg === '-h') return usage(0);
+    if (arg === '--show-limit-kinds') {
+      options.showLimitKinds = true;
+      continue;
+    }
 
     const value = argv[i + 1];
     if (arg === '--credentials') {
@@ -136,6 +169,9 @@ function usage(code: number, message?: string): number {
       '  --credentials <path>  credentials file to read (default ~/.claude/.credentials.json)',
       '  --token-env <NAME>    environment variable holding a token (default CLAUDE_OAUTH_TOKEN)',
       '  --timeout <ms>        request timeout (default 20000)',
+      '  --show-limit-kinds    also print limits[].kind and .group, which the shape',
+      '                        block elides. Needed to label a polled window; read',
+      '                        the output before copying any value into the repo.',
       '',
       'A token from `claude setup-token` in the environment is preferred: it is',
       'long-lived and standalone, so the probe never races Claude Code for the',
@@ -190,7 +226,12 @@ function resolveToken(options: Options): TokenSource | null {
  * pasting into the discovery record: it proves the field set without ever
  * disclosing a percentage, a credit balance, or an account identifier.
  */
-function describeShape(value: unknown, indent = '  '): string {
+function describeShape(
+  value: unknown,
+  known: ReadonlySet<string>,
+  counter: { n: number },
+  indent = '  ',
+): string {
   if (value === null) return 'null';
   if (typeof value === 'number') return '<number>';
   if (typeof value === 'boolean') return '<boolean>';
@@ -198,15 +239,18 @@ function describeShape(value: unknown, indent = '  '): string {
 
   if (Array.isArray(value)) {
     if (value.length === 0) return '[]';
-    return `[ ${value.length} x ${describeShape(value[0], `${indent}  `)} ]`;
+    return `[ ${value.length} x ${describeShape(value[0], known, counter, `${indent}  `)} ]`;
   }
 
   if (typeof value === 'object') {
-    const entries = Object.entries(value as Record<string, unknown>);
+    const entries = Object.entries(value as Record<string, unknown>).map(
+      ([key, child]) => [known.has(key) ? key : `<withheld ${(counter.n += 1)}>`, child] as const,
+    );
     if (entries.length === 0) return '{}';
     const width = Math.max(...entries.map(([key]) => key.length));
     const lines = entries.map(
-      ([key, child]) => `${indent}${key.padEnd(width)}  ${describeShape(child, `${indent}  `)}`,
+      ([key, child]) =>
+        `${indent}${key.padEnd(width)}  ${describeShape(child, known, counter, `${indent}  `)}`,
     );
     return `{\n${lines.join('\n')}\n${indent.slice(2)}}`;
   }
@@ -215,24 +259,61 @@ function describeShape(value: unknown, indent = '  '): string {
 }
 
 /**
- * Replace every top-level key this probe does not recognise with a positional
- * placeholder. Those keys read as canaries and this repository does not publish
- * them — but their structure is exactly what makes the shape block evidence, so
- * the value's shape survives and only the name is dropped. Without this the
- * block below printed the names in full while the summary claimed they were
- * withheld.
+ * Every field name this probe understands, at any depth.
+ *
+ * The payload's own vocabulary is the allowlist. Anything outside it is
+ * withheld by name when the shape is printed, because the endpoint carries keys
+ * with non-descriptive names that read as canaries and this repository does not
+ * publish them. A flat set rather than a per-structure one is deliberate: a
+ * known field name is safe to print wherever it appears, and a name nobody
+ * recognises is worth withholding wherever it appears.
  */
-function withheldKeys(
-  record: Record<string, unknown>,
-  known: ReadonlySet<string>,
-): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  let withheld = 0;
-  for (const [key, value] of Object.entries(record)) {
-    out[known.has(key) ? key : `<withheld ${(withheld += 1)}>`] = value;
-  }
-  return out;
-}
+const KNOWN_FIELDS: ReadonlySet<string> = new Set([
+  // Window members.
+  'utilization',
+  'resets_at',
+  'limit_dollars',
+  'used_dollars',
+  'remaining_dollars',
+  'locked_reason',
+  // `extra_usage`.
+  'is_enabled',
+  'monthly_limit',
+  'used_credits',
+  'currency',
+  'decimal_places',
+  'disabled_reason',
+  'user_disabled',
+  'spend_limit_reached',
+  'credits_ever_enabled',
+  'daily',
+  'weekly',
+  // `limits[]`.
+  'kind',
+  'group',
+  'percent',
+  'severity',
+  'scope',
+  'is_active',
+  // `spend` and `spend.used`.
+  'used',
+  'limit',
+  'enabled',
+  'cap',
+  'balance',
+  'auto_reload',
+  'disclaimer',
+  'can_purchase_credits',
+  'can_toggle',
+  'amount_minor',
+  'exponent',
+  // `seven_day_breakdown` and its rows.
+  'as_of',
+  'window_started_at',
+  'rows',
+  'key',
+  'display_name',
+]);
 
 /** Contract assertions. Each returns a problem string, or null when satisfied. */
 function checkContract(payload: Record<string, unknown>): string[] {
@@ -261,10 +342,10 @@ function checkContract(payload: Record<string, unknown>): string[] {
       problems.push(`${name}.utilization is outside 0..100`);
     }
     if (resetsAt !== null && resetsAt !== undefined) {
-      if (typeof resetsAt !== 'string' || !ISO_8601.test(resetsAt)) {
-        problems.push(`${name}.resets_at is not an ISO-8601 string`);
-      } else if (Number.isNaN(Date.parse(resetsAt))) {
-        problems.push(`${name}.resets_at does not parse as a date`);
+      if (typeof resetsAt !== 'string') {
+        problems.push(`${name}.resets_at is not a string`);
+      } else if (!isRealInstant(resetsAt)) {
+        problems.push(`${name}.resets_at is not a real ISO-8601 instant`);
       }
     }
   }
@@ -295,18 +376,25 @@ function checkContract(payload: Record<string, unknown>): string[] {
       if (typeof row['is_active'] !== 'boolean') {
         problems.push(`${at}.is_active is not a boolean`);
       }
-      for (const key of ['kind', 'group', 'severity']) {
-        if (typeof row[key] !== 'string') problems.push(`${at}.${key} is not a string`);
+      // `kind` names the window and is the one field that must always be there.
+      if (typeof row['kind'] !== 'string') problems.push(`${at}.kind is not a string`);
+      if (typeof row['severity'] !== 'string') problems.push(`${at}.severity is not a string`);
+      // `group` and `scope` are nullable — the adapter's bucket id is specified
+      // to omit them when null, so demanding a string here would fail the probe
+      // on a payload the dashboard handles correctly. They must stay scalar
+      // though: an object would silently become "[object Object]" in a key.
+      for (const key of ['group', 'scope']) {
+        const value = row[key];
+        if (value !== null && value !== undefined && typeof value !== 'string') {
+          problems.push(`${at}.${key} is neither null nor a string`);
+        }
       }
       const resetsAt = row['resets_at'];
       if (resetsAt !== null && resetsAt !== undefined) {
-        // The pattern alone accepts `2026-99-99T99:99:99`. The adapter turns this
-        // field into a reset time, so it has to be a date, not a date-shaped
-        // string.
-        if (typeof resetsAt !== 'string' || !ISO_8601.test(resetsAt)) {
-          problems.push(`${at}.resets_at is neither null nor an ISO-8601 string`);
-        } else if (Number.isNaN(Date.parse(resetsAt))) {
-          problems.push(`${at}.resets_at does not parse as a date`);
+        if (typeof resetsAt !== 'string') {
+          problems.push(`${at}.resets_at is neither null nor a string`);
+        } else if (!isRealInstant(resetsAt)) {
+          problems.push(`${at}.resets_at is not a real ISO-8601 instant`);
         }
       }
     });
@@ -432,18 +520,36 @@ async function main(): Promise<number> {
 
   const record = payload as Record<string, unknown>;
 
-  const known = new Set<string>([...KNOWN_WINDOWS, ...KNOWN_STRUCTURES]);
+  const known = new Set<string>([...KNOWN_WINDOWS, ...KNOWN_STRUCTURES, ...KNOWN_FIELDS]);
+  const withheld = { n: 0 };
 
   out.write('\nshape (values elided, unrecognised names withheld — this block is the evidence)\n');
-  out.write(`${describeShape(withheldKeys(record, known))}\n`);
+  out.write(`${describeShape(record, known, withheld)}\n`);
 
+  if (options.showLimitKinds) {
+    const limits = Array.isArray(record['limits']) ? (record['limits'] as unknown[]) : [];
+    const pairs = limits.map((entry) => {
+      const row = (entry ?? {}) as Record<string, unknown>;
+      const kind = typeof row['kind'] === 'string' ? row['kind'] : '<not a string>';
+      const group = typeof row['group'] === 'string' ? row['group'] : String(row['group']);
+      return `  kind=${kind} group=${group}`;
+    });
+    out.write('\nlimits[] identities (the one leaf this probe will print on request)\n');
+    out.write(`${pairs.join('\n')}\n`);
+    out.write('Copy a value into WINDOW_LABELS only if it reads as a window name.\n');
+  }
+
+  // Two different numbers, because they answer two different questions. The
+  // top-level count is the drift signal for a new window or structure; the
+  // total counts every withheld name at any depth, and must agree with the
+  // `<withheld N>` placeholders above or one of them is lying.
   const unrecognised = Object.keys(record).filter((key) => !known.has(key));
-  if (unrecognised.length > 0) {
-    // The names are withheld on purpose: they read as canaries, and this
-    // repository does not publish them. The counts still expose drift.
+  if (withheld.n > 0) {
+    // The names themselves are withheld on purpose: they read as canaries, and
+    // this repository does not publish them. The counts still expose drift.
     const carrying = unrecognised.filter((key) => record[key] !== null).length;
-    out.write(`\nkeys this probe does not recognise: ${unrecognised.length}`);
-    out.write(` (${carrying} carrying a value, names withheld)\n`);
+    out.write(`\nkeys this probe does not recognise: ${unrecognised.length} at the top level`);
+    out.write(` (${carrying} carrying a value), ${withheld.n} in total, names withheld\n`);
   }
 
   const structures = KNOWN_STRUCTURES.filter((key) => key in record);
