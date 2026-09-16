@@ -180,32 +180,64 @@ All closed on 2026-09-16.
 6. Add `src/lib/adapters/claude-usage.ts`. It sends one `GET` to the usage endpoint through the
    shared helper in `src/lib/adapters/http.ts`, with `Authorization: Bearer <token>`,
    `anthropic-beta: oauth-2025-04-20`, `Accept: application/json`, and a `claude-cli/<version>`
-   user agent. It parses the `limits[]` array — `{ kind, group, percent, severity, resets_at,
-scope, is_active }` — and maps each active entry to a `QuotaWindow` from `src/lib/domain.ts`.
-   Ignore the individual window keys, so a new window needs no code change.
-7. Reuse the failure vocabulary already in `src/lib/errors.ts`, exactly as
+   user agent. It reads the `limits[]` array and maps each entry to a `QuotaWindow` from
+   `src/lib/domain.ts`, field by field as the next step specifies. Ignore the individual window
+   keys, so a new window needs no code change.
+7. The mapping from a `limits[]` entry to a `QuotaWindow` is specified field by field, because
+   `quota_windows` enforces `UNIQUE (snapshot_id, bucket_id, window_kind)` and a guessed identity
+   would let two windows collapse into one row.
+   - Skip every entry whose `is_active` is `false`. An inactive limit is not a gauge.
+   - `windowKind` is `kind`, verbatim.
+   - `bucketId` is `kind` when `group` and `scope` are both null, otherwise those fields joined
+     with `:` in the order `kind:group:scope`, omitting the null ones. It must be derived only
+     from fields that identify the window, never from array position. If two surviving entries
+     produce the same `bucketId`, raise `schema_mismatch` and discard the whole snapshot rather
+     than let the unique constraint decide which one survives.
+   - `usedPercent` is `percent`. The probe already asserts it is finite and within 0..100, which
+     is also what the column's `CHECK` requires.
+   - `resetsAt` is `resets_at` verbatim. **It is already an ISO-8601 string here**, unlike the
+     status-line spool, which carries Unix epoch seconds. An adapter written by copying
+     `src/lib/ingestors/claude-statusline.ts` would pass it through `epochSecondsToIso` and
+     produce a date in 1970. Convert nothing.
+   - `windowDurationMinutes` is always `null`. `limits[]` states no duration, and inferring one
+     from the name of a window is exactly the guess §3.1 of the plan forbids. Two consequences
+     both already have working code: `labelWindow` in `src/lib/queries/overview.ts` falls back to
+     `WINDOW_LABELS[windowKind]`, and `findEndedWindows` skips a window with no known length, so
+     a polled window never produces an "ended window" note. The spool's `spend_limit` already
+     ships with a null duration, so neither path is new.
+   - `severity` and `scope` are read for identity and drift only; neither is stored. `severity` is
+     a presentation hint the dashboard computes for itself from `usedPercent`.
+   - A `200` whose `limits[]` is absent, empty, or entirely inactive is `not_entitled`, the same
+     vocabulary `spoolEventToSnapshot` already uses when no window survives its filter.
+8. Add the observed `kind` values to `WINDOW_LABELS` in `src/lib/queries/overview.ts`. The gate
+   recorded shape only, so those values are deliberately **not** in this bundle and have to be
+   captured during implementation — run the probe once and read them there. Decide the fallback
+   explicitly before writing the adapter: today an unlabelled `windowKind` renders as its own raw
+   string, which would put an undocumented API's internal name in the browser. Either label it or
+   refuse to render it; do not let it through by default.
+9. Reuse the failure vocabulary already in `src/lib/errors.ts`, exactly as
    `src/lib/ingestors/claude-statusline.ts` does: `schema_mismatch` on a drifted shape,
    `version_unsupported` on an adapter schema bump. Do not invent a second vocabulary.
-8. Treat `429` as "keep the last good observation": the adapter surfaces a distinct error the
-   collector records without clearing the previous snapshot, so the card reads `stale` rather than
-   failing. Never retry, and never sleep-and-retry inside one collection run.
-9. Wire the adapter into `src/lib/collector/index.ts` alongside the other pull sources. It must
-   skip cleanly, not fail, when no Claude token is configured — the same shape as a missing
-   DeepSeek key today.
-10. In `src/lib/config.ts`, add the poll's cadence with a hard floor of five minutes, and reject a
+10. Treat `429` as "keep the last good observation": the adapter surfaces a distinct error the
+    collector records without clearing the previous snapshot, so the card reads `stale` rather than
+    failing. Never retry, and never sleep-and-retry inside one collection run.
+11. Wire the adapter into `src/lib/collector/index.ts` alongside the other pull sources. It must
+    skip cleanly, not fail, when no Claude token is configured — the same shape as a missing
+    DeepSeek key today.
+12. In `src/lib/config.ts`, add the poll's cadence with a hard floor of five minutes, and reject a
     shorter value at load time rather than silently clamping it. The floor belongs to the poll, not
     to the collector timer, so a manual refresh cannot bypass it either.
-11. In `src/lib/freshness.ts`, give a polled Claude observation the pull budget
+13. In `src/lib/freshness.ts`, give a polled Claude observation the pull budget
     (`pullMissedIntervals` x `collectIntervalMinutes`). Leave `claudeEventMaxAgeMinutes` in place —
     it still governs the spool, which remains the default path.
-12. Precedence: when both a poll and a spool observation are fresh, the more recent `observedAt`
+14. Precedence: when both a poll and a spool observation are fresh, the more recent `observedAt`
     wins, and the card carries one reason string. The card must never show two disagreeing Claude
     readings.
-13. Keep `scripts/spike-claude-oauth-usage.ts` as the hand-run gate probe, and add a live check to
+15. Keep `scripts/spike-claude-oauth-usage.ts` as the hand-run gate probe, and add a live check to
     `tests/live/live-smoke.test.ts` that skips when no token is configured. Its key source is
     `tests/helpers/saved-credentials.ts`, which reads the database directly and needs the new
     column value exposed.
-14. Document the whole token lifecycle in `docs/operations/setup.md`, not just how to mint one. A
+16. Document the whole token lifecycle in `docs/operations/setup.md`, not just how to mint one. A
     key kept in plaintext needs a stated way to kill it, and the obvious guess is wrong: removing
     the key in Settings deletes only the dashboard's local copy, because the application never
     creates, modifies, or deletes credentials at the provider (plan §3.5 and §10). The token stays
@@ -242,7 +274,7 @@ Verified against `src/`, `drizzle/`, and `tests/` on 2026-09-16.
 | `src/lib/collector/index.ts`                           | run the poll in the parallel pull phase; skip when unconfigured        |
 | `src/lib/config.ts`                                    | poll cadence with a five-minute floor, rejected below it               |
 | `src/lib/freshness.ts`                                 | pull budget for a polled Claude observation                            |
-| `src/lib/queries/overview.ts`                          | precedence between poll and spool for the Claude card                  |
+| `src/lib/queries/overview.ts`                          | poll-versus-spool precedence; `WINDOW_LABELS` for the polled kinds     |
 | `src/components/settings-dialog.tsx`                   | maps `CREDENTIAL_PROVIDERS`; add label, optional-key copy, aria branch |
 | `src/app/api/settings/credentials/[provider]/route.ts` | validates via `isCredentialProvider`; the union widens the route       |
 | `tests/integration/credentials.test.ts`                | save, read, and redact a Claude token round-trip                       |
@@ -282,6 +314,12 @@ that trace before widening the union, in case it has gained consumers since.
       Claude source, and nothing calls the endpoint.
 - [ ] A `429` renders the last good observation as `stale` and issues no retry.
 - [ ] A response whose shape has drifted renders `unavailable`, never a confidently wrong number.
+- [ ] Two `limits[]` entries that would produce the same `bucketId` raise `schema_mismatch` and
+      discard the snapshot, rather than reaching the unique constraint on `quota_windows`.
+- [ ] A polled window's `resetsAt` matches the `resets_at` the endpoint sent, to the second. A
+      window dated in 1970 means the epoch conversion from the spool path was copied in.
+- [ ] Every rendered Claude window carries a label from `WINDOW_LABELS`; no raw `kind` string
+      from the endpoint reaches the browser.
 - [ ] A cadence below five minutes is rejected at configuration load, not clamped.
 - [ ] A fresh poll and a fresh spool event never produce two disagreeing Claude readings.
 - [ ] The Settings dialog renders a Claude field whose copy says the token is optional, and
