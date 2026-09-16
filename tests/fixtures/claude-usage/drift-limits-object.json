@@ -1,4 +1,0 @@
-{
-  "_fixture": { "sanitized": "Synthetic drift: limits is an object, not an array." },
-  "limits": { "session": { "percent": 10 } }
-}

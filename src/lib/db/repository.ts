@@ -163,13 +163,13 @@ function intToBool(v: number | null): boolean | null {
 const CANONICAL_UTC_ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 
 /**
- * Atomically claim the next permitted Claude usage poll.
+ * Atomically claim the next permitted Claude quota probe.
  *
  * Returns true, and records `attemptedAt`, only when no poll was claimed within
  * `intervalMs` before it. One `INSERT … ON CONFLICT … DO UPDATE … WHERE`
  * statement decides and writes together; a read followed by a write would let
  * the scheduled collector and a manual refresh both see an old claim and both
- * call the endpoint. The caller claims *before* its request, so a refusal, a
+ * send a probe. The caller claims *before* its request, so a refusal, a
  * network failure, or a crash still spends the interval.
  *
  * Timestamps must be canonical UTC ISO-8601 (`Date#toISOString`), which is what
@@ -412,7 +412,6 @@ export interface QuotaHistoryPoint {
   readonly windowKind: string;
   readonly usedPercent: number;
   readonly windowDurationMinutes: number | null;
-  readonly sourceVersion: string;
 }
 
 /** Raw quota observations in a window, oldest first. Aggregation happens above. */
@@ -428,7 +427,6 @@ export function getQuotaHistory(
       windowKind: quotaWindows.windowKind,
       usedPercent: quotaWindows.usedPercent,
       windowDurationMinutes: quotaWindows.windowDurationMinutes,
-      sourceVersion: providerSnapshots.sourceVersion,
     })
     .from(quotaWindows)
     .innerJoin(providerSnapshots, eq(quotaWindows.snapshotId, providerSnapshots.id))

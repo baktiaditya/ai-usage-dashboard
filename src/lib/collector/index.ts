@@ -17,6 +17,7 @@
  *     answer, so a row from it would only mask that run's result.
  */
 import type { AppConfig } from '../config';
+import { CLAUDE_PROBE_SOURCE_VERSION } from '../domain';
 import type { CollectContext, CollectionResult, Provider, ProviderAdapter } from '../domain';
 import { CollectionDeferred, CollectionError, isRetryable, isUnavailable } from '../errors';
 import type { ErrorCode } from '../errors';
@@ -24,6 +25,7 @@ import { createClaudeAdapter } from '../adapters/claude-usage';
 import { createCodexAdapter } from '../adapters/codex';
 import { createDeepseekAdapter } from '../adapters/deepseek';
 import { createOpenrouterAdapter } from '../adapters/openrouter';
+import { maxAgeMs } from '../freshness';
 import type { Db } from '../db/client';
 import { readProviderCredentials } from '../db/credentials';
 import type { ProviderCredentials } from '../db/credentials';
@@ -42,7 +44,7 @@ import { silentLogger } from '../logger';
 
 /**
  * Exactly one adapter per provider. Claude's is a composite of the optional
- * usage poll and the status-line spool, never a second adapter named `claude`:
+ * quota probe and the status-line spool, never a second adapter named `claude`:
  * attempts are partitioned by provider alone, so two would overwrite each
  * other's latest row.
  */
@@ -60,6 +62,9 @@ export function buildAdapters(
       // collector is a fresh process every run, and manual refresh shares it.
       claimPoll: (attemptedAt) =>
         claimClaudePoll(db, attemptedAt, config.claudePollIntervalMinutes * 60_000),
+      // A spool reading that would still be fresh as a probe reading answers the
+      // run; the probe spends quota only when no session is reporting.
+      spoolFreshMs: maxAgeMs('claude', CLAUDE_PROBE_SOURCE_VERSION, config),
     }),
     createDeepseekAdapter({ apiKey: keys.deepseekApiKey }),
     createOpenrouterAdapter({ managementKey: keys.openrouterManagementKey }),

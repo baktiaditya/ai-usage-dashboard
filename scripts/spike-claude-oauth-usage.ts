@@ -42,7 +42,6 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { displayPath } from '../src/lib/paths';
-import { ISO_8601_INSTANT as ISO_8601, isRealInstant } from '../src/lib/time';
 import { safeErrorMessage } from '../src/lib/redact';
 
 const USAGE_URL = 'https://api.anthropic.com/api/oauth/usage';
@@ -77,9 +76,40 @@ const KNOWN_WINDOWS = [
   'seven_day_oauth_apps',
 ] as const;
 
-/** The shared validator the adapter uses too, re-exported for this probe's tests. */
-export { isRealInstant };
+const ISO_8601 =
+  /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,9})?(Z|([+-])(\d{2}):(\d{2}))$/;
 
+/**
+ * Is this an instant that actually exists?
+ *
+ * `Date.parse` is not enough on its own: it silently rolls an impossible
+ * calendar date forward, so `2026-02-31T00:00:00Z` becomes 3 March and passes.
+ * A reset time that moves three days when it is read is worse than one that is
+ * rejected. Validate the written calendar components before parsing, without
+ * comparing its local date to UTC — a legitimate offset may cross midnight.
+ */
+export function isRealInstant(value: string): boolean {
+  const match = ISO_8601.exec(value);
+  if (!match) return false;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const hour = Number(match[4]);
+  const minute = Number(match[5]);
+  const second = Number(match[6]);
+  const offsetHour = match[8] ? Number(match[9]) : 0;
+  const offsetMinute = match[8] ? Number(match[10]) : 0;
+
+  if (month < 1 || month > 12) return false;
+  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const daysInMonth = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  if (day < 1 || day > daysInMonth[month - 1]!) return false;
+  if (hour > 23 || minute > 59 || second > 59) return false;
+  if (offsetHour > 23 || offsetMinute > 59) return false;
+
+  return !Number.isNaN(Date.parse(value));
+}
 const EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/;
 
 type Options = {

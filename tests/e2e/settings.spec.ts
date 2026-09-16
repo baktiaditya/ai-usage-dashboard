@@ -276,7 +276,7 @@ test('the optional Claude token field says it is optional, saves, and is reachab
   await expect(input).toHaveValue('');
   await expect(page.getByTestId('settings-status-claude')).toHaveText('Not set');
   await expect(input).toHaveAccessibleDescription(
-    /^Optional\. Claude still reports quota through the status line without it\..*claude setup-token.*Removing it here does not revoke it\. Not set$/,
+    /^Optional\. Claude still reports quota through the status line without it\..*claude setup-token.*Each request counts toward your Claude usage\. Removing the token here does not revoke it\. Not set$/,
   );
 
   // The third field may push the footer below the fold on a phone; the panel

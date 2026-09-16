@@ -121,7 +121,7 @@ export const providerCredentials = sqliteTable('provider_credentials', {
 });
 
 /**
- * Singleton (`id = 1`) recording the last claimed Claude usage poll. Written
+ * Singleton (`id = 1`) recording the last claimed Claude quota probe. Written
  * only through `claimClaudePoll` in `src/lib/db/repository.ts`.
  */
 export const claudePollState = sqliteTable('claude_poll_state', {

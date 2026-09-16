@@ -15,7 +15,7 @@
  * see what was true before the failure — clearly labelled with its age.
  */
 import type { AppConfig } from './config';
-import { CLAUDE_USAGE_SOURCE_VERSION } from './domain';
+import { CLAUDE_PROBE_SOURCE_VERSION } from './domain';
 import type { CardStatus, Provider } from './domain';
 import type { StoredAttempt, StoredSnapshot } from './db/repository';
 import { ageMs, hasPassed } from './time';
@@ -23,7 +23,7 @@ import { ageMs, hasPassed } from './time';
 /**
  * Providers the collector always polls. Claude is not one of them: its spool is
  * event-driven and has its own budget, and only an observation from the
- * optional usage poll is judged as a pull. Adding `claude` here would silently
+ * optional quota probe is judged as a pull. Adding `claude` here would silently
  * shorten how long a spool-only install stays fresh.
  */
 const PULL_PROVIDERS: ReadonlySet<Provider> = new Set(['codex', 'deepseek', 'openrouter']);
@@ -57,7 +57,7 @@ export function maxAgeMs(
   sourceVersion: string | null,
   config: AppConfig,
 ): number {
-  const polled = provider === 'claude' && sourceVersion === CLAUDE_USAGE_SOURCE_VERSION;
+  const polled = provider === 'claude' && sourceVersion === CLAUDE_PROBE_SOURCE_VERSION;
   if (PULL_PROVIDERS.has(provider) || polled) {
     return config.freshness.pullMissedIntervals * config.collectIntervalMinutes * 60_000;
   }

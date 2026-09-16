@@ -99,7 +99,7 @@ const numericEnv = (fallback: number, min: number, max: number) =>
     .transform((v) => (v === undefined || v === '' ? fallback : Number(v)))
     .pipe(z.number().int().min(min).max(max));
 
-/** Plan §3.1: never poll the Claude usage endpoint more often than this. */
+/** Plan §3.1: never send the Claude quota probe more often than this. */
 export const CLAUDE_POLL_MIN_INTERVAL_MINUTES = 5;
 
 const envSchema = z.object({
@@ -109,8 +109,9 @@ const envSchema = z.object({
   AUD_PORT: numericEnv(3838, 1, 65535),
   AUD_RETENTION_DAYS: numericEnv(90, 1, 3650),
   AUD_COLLECT_INTERVAL_MINUTES: numericEnv(5, 1, 1440),
-  // The Claude usage endpoint escalates refusals with no Retry-After, so five
-  // minutes is a hard floor: a shorter value is rejected here, never clamped.
+  // Each Claude quota probe spends a little of the subscription usage it
+  // measures, so five minutes is a hard floor: a shorter value is rejected
+  // here, never clamped.
   AUD_CLAUDE_POLL_INTERVAL_MINUTES: numericEnv(
     CLAUDE_POLL_MIN_INTERVAL_MINUTES,
     CLAUDE_POLL_MIN_INTERVAL_MINUTES,
@@ -142,7 +143,7 @@ export interface AppConfig {
   readonly retentionDays: number;
   readonly collectIntervalMinutes: number;
   /**
-   * Minimum spacing between Claude usage poll requests, shared by every process
+   * Minimum spacing between Claude quota probes, shared by every process
    * through the durable claim in `claude_poll_state`. Never below five.
    */
   readonly claudePollIntervalMinutes: number;
@@ -163,7 +164,7 @@ export interface AppConfig {
     /**
      * A Claude status-line event only arrives while a session is live, so it
      * can legitimately be much older than a poll without being wrong. It still
-     * goes stale once the observed window has reset. A polled Claude
+     * goes stale once the observed window has reset. A probed Claude
      * observation uses the pull budget instead.
      */
     readonly claudeEventMaxAgeMinutes: number;

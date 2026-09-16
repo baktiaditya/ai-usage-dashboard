@@ -14,7 +14,6 @@
  *     never called usage.
  */
 import type { AppConfig } from '../config';
-import { CLAUDE_USAGE_SOURCE_VERSION } from '../domain';
 import type { Provider } from '../domain';
 import type { Db } from '../db/client';
 import { getCreditBaselineBefore, getCreditHistory, getQuotaHistory } from '../db/repository';
@@ -47,9 +46,9 @@ export interface QuotaSeries {
   readonly bucketId: string;
   readonly windowKind: string;
   /**
-   * What the chart shows for this series. Claude series name their source, so a
-   * status-line window and a polled one are never drawn as one line: nobody has
-   * shown that `five_hour` and `session` measure the same window.
+   * What the chart shows for this series: the window's label, never its raw
+   * bucket or kind. A Claude window is one series whichever source observed it,
+   * because the status line and the quota probe report the same headers.
    */
   readonly label: string;
   readonly points: readonly QuotaSeriesPoint[];
@@ -131,23 +130,21 @@ export function buildQuotaHistory(
     };
   }
 
-  // Group by source and window, then by local calendar day. Rows arrive oldest
-  // first, so the last row seen for a series carries its current duration.
+  // Group by window, then by local calendar day. Rows arrive oldest first, so
+  // the last row seen for a series carries its current duration.
   const bySeries = new Map<
     string,
     { bucketId: string; windowKind: string; label: string; days: Map<string, number[]> }
   >();
   for (const row of rows) {
-    const source = sourceLabel(provider, row.sourceVersion);
-    const key = [source ?? '', row.bucketId, row.windowKind].join('\u0000');
-    const window = labelWindow({ ...row, resetsAt: null });
+    const key = [row.bucketId, row.windowKind].join('\u0000');
     const entry = bySeries.get(key) ?? {
       bucketId: row.bucketId,
       windowKind: row.windowKind,
       label: '',
       days: new Map<string, number[]>(),
     };
-    entry.label = source ? `${window} (${source})` : window;
+    entry.label = labelWindow({ ...row, resetsAt: null });
     const day = localDayKey(row.observedAt, config.timezone);
     const samples = entry.days.get(day) ?? [];
     samples.push(row.usedPercent);
@@ -156,7 +153,7 @@ export function buildQuotaHistory(
   }
 
   // Two Codex buckets can both be "5 hour"; their own bucket name tells them
-  // apart. Claude labels never collide, and its bucket ids are never shown.
+  // apart. Claude's window labels are unique, so its bucket ids are never shown.
   const labelCounts = new Map<string, number>();
   for (const { label } of bySeries.values()) {
     labelCounts.set(label, (labelCounts.get(label) ?? 0) + 1);
@@ -193,12 +190,6 @@ export function buildQuotaHistory(
     availability: { available: true },
     series,
   };
-}
-
-/** Claude's two sources are named; every other provider has one source. */
-function sourceLabel(provider: Provider, sourceVersion: string): string | null {
-  if (provider !== 'claude') return null;
-  return sourceVersion === CLAUDE_USAGE_SOURCE_VERSION ? 'usage poll' : 'status line';
 }
 
 export function buildCreditHistory(

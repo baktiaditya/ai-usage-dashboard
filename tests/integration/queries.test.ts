@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { buildOverview, findEndedWindows, labelWindow } from '@/lib/queries/overview';
 import { buildCreditHistory, buildQuotaHistory } from '@/lib/queries/history';
 import { recordAttempt, startRun } from '@/lib/db/repository';
-import { CLAUDE_USAGE_SOURCE_VERSION } from '@/lib/domain';
+import { CLAUDE_PROBE_SOURCE_VERSION } from '@/lib/domain';
 import type { CreditSnapshot, Provider, QuotaSnapshot } from '@/lib/domain';
 import type { MoneyString } from '@/lib/money';
 import { createTestDb, testConfig } from '../helpers/db';
@@ -424,7 +424,7 @@ describe('quota history labels', () => {
     resetsAt: null,
   });
 
-  it('keeps status-line and polled Claude windows as separate, source-labelled series', () => {
+  it('draws a Claude window as one labelled series whichever source observed it', () => {
     writeSnapshot({
       provider: 'claude',
       observedAt: '2026-09-12T01:00:00.000Z',
@@ -437,28 +437,17 @@ describe('quota history labels', () => {
     writeSnapshot({
       provider: 'claude',
       observedAt: '2026-09-12T02:00:00.000Z',
-      sourceVersion: CLAUDE_USAGE_SOURCE_VERSION,
+      sourceVersion: CLAUDE_PROBE_SOURCE_VERSION,
       usageAllowed: null,
       limitReachedCode: null,
       sourceEventId: null,
-      windows: [
-        gauge('session:session', 'session', null),
-        gauge('weekly_all:weekly', 'weekly_all', null),
-      ],
+      windows: [gauge('five_hour', 'five_hour', 300), gauge('seven_day', 'seven_day', 10080)],
     });
 
     const result = buildQuotaHistory(t.db, config, 'claude', '7d', NOW);
-    // Not merged: nothing has shown `five_hour` and `session` measure one window.
-    expect(result.series.map((s) => s.label).sort()).toEqual([
-      '5 hour (status line)',
-      '7 day (status line)',
-      'Session (usage poll)',
-      'Weekly, all models (usage poll)',
-    ]);
-    // No label carries the endpoint's own identifiers.
-    for (const s of result.series) {
-      expect(s.label).not.toMatch(/session:|weekly_all|weekly:/);
-    }
+    // The probe reads the same headers the status line forwards, so one line per window.
+    expect(result.series.map((s) => s.label)).toEqual(['5 hour', '7 day']);
+    expect(result.series.map((s) => s.points[0]?.samples)).toEqual([2, 2]);
   });
 
   it('names a Codex bucket only when two series would otherwise share a label', () => {

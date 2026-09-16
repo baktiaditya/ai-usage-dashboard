@@ -1,0 +1,23 @@
+{
+  "_fixture": {
+    "source": "POST https://api.anthropic.com/v1/messages (response headers only)",
+    "sanitized": "Synthetic values throughout. Header names follow the gate recorded in docs/discovery/m0-discovery.md; no live percentage, reset time, request id, or account field is copied.",
+    "important": "A subscription at its limit is refused with 429 and still reports its windows."
+  },
+  "status": 429,
+  "headers": {
+    "anthropic-ratelimit-unified-5h-utilization": "1.0",
+    "anthropic-ratelimit-unified-5h-reset": "4093000000",
+    "anthropic-ratelimit-unified-5h-status": "rejected",
+    "anthropic-ratelimit-unified-7d-utilization": "0.48",
+    "anthropic-ratelimit-unified-7d-reset": "4093400000",
+    "anthropic-ratelimit-unified-7d-status": "allowed",
+    "anthropic-ratelimit-unified-status": "rejected",
+    "anthropic-ratelimit-unified-reset": "4093000000",
+    "anthropic-ratelimit-unified-representative-claim": "five_hour",
+    "anthropic-ratelimit-unified-fallback-percentage": "0.77",
+    "anthropic-ratelimit-unified-overage-status": "rejected",
+    "anthropic-ratelimit-unified-overage-disabled-reason": "org_level_disabled",
+    "request-id": "req_elided"
+  }
+}

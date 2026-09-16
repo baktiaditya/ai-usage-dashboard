@@ -21,13 +21,13 @@ import { openDb } from '@/lib/db/client';
 import { removeProviderCredential, saveProviderCredential } from '@/lib/db/credentials';
 import { CollectionDeferred, CollectionError } from '@/lib/errors';
 import type { ErrorCode } from '@/lib/errors';
-import { CLAUDE_USAGE_SOURCE_VERSION } from '@/lib/domain';
+import { CLAUDE_PROBE_SOURCE_VERSION } from '@/lib/domain';
 import type { ProviderAdapter, Provider, QuotaSnapshot } from '@/lib/domain';
 import { claimClaudePoll, getLatestAttempts, getLatestSnapshots } from '@/lib/db/repository';
 import type { Logger } from '@/lib/logger';
 import { buildOverview } from '@/lib/queries/overview';
 import { createTestDb, testConfig } from '../helpers/db';
-import { fixtureText } from '../helpers/fixtures';
+import { fixtureJson, fixtureText } from '../helpers/fixtures';
 import type { TestDb } from '../helpers/db';
 
 let t: TestDb;
@@ -518,16 +518,19 @@ describe('credentials come from the database', () => {
   });
 });
 
-describe('Claude usage poll through the collector', () => {
+describe('Claude quota probe through the collector', () => {
   // Shaped like a setup token, but not one.
   const CLAUDE_TOKEN = 'sk-ant-oat01-fake-collector-token-0000';
   let upstream: ReturnType<typeof vi.fn>;
   let claudeConfig: ReturnType<typeof testConfig>;
 
-  const respond = (status: number, body = fixtureText('claude-usage', 'valid'), delayMs = 0) =>
+  const probeHeaders = (name: string) =>
+    (fixtureJson('claude-probe', name) as { headers: Record<string, string> }).headers;
+
+  const respond = (status: number, fixture = 'valid', delayMs = 0) =>
     vi.fn(async () => {
       if (delayMs) await new Promise((r) => setTimeout(r, delayMs));
-      return new Response(body, { status, headers: { 'Content-Type': 'application/json' } });
+      return new Response('{"content":"elided"}', { status, headers: probeHeaders(fixture) });
     });
 
   function stubUpstream(fn: ReturnType<typeof vi.fn>): void {
@@ -535,9 +538,14 @@ describe('Claude usage poll through the collector', () => {
     vi.stubGlobal('fetch', upstream);
   }
 
-  function writeSpool(): void {
+  /** The fixture event is long past, so by default it never answers a run by itself. */
+  function writeSpool(observedAt?: string): void {
     mkdirSync(dirname(claudeConfig.spoolPath), { recursive: true });
-    writeFileSync(claudeConfig.spoolPath, fixtureText('claude', 'valid-spool'));
+    const event = JSON.parse(fixtureText('claude', 'valid-spool')) as Record<string, unknown>;
+    writeFileSync(
+      claudeConfig.spoolPath,
+      JSON.stringify(observedAt ? { ...event, observedAt } : event),
+    );
   }
 
   const run = (trigger: 'scheduled' | 'manual' = 'scheduled', db = t.db) =>
@@ -557,7 +565,7 @@ describe('Claude usage poll through the collector', () => {
     vi.unstubAllGlobals();
   });
 
-  it('with no token saved, reads only the spool and never calls or claims the endpoint', async () => {
+  it('with no token saved, reads only the spool and never probes or claims', async () => {
     const summary = await run();
 
     expect(summary.attempts).toEqual([
@@ -584,21 +592,35 @@ describe('Claude usage poll through the collector', () => {
     const card = claudeCard();
     expect(card).toMatchObject({
       status: 'healthy',
-      sourceVersion: CLAUDE_USAGE_SOURCE_VERSION,
-      // A polled observation gets the pull budget, not the 12-hour event budget.
+      sourceVersion: CLAUDE_PROBE_SOURCE_VERSION,
+      // A probed observation gets the pull budget, not the 12-hour event budget.
       freshnessBudgetMs: 15 * 60_000,
       endedWindows: [],
     });
-    expect(card?.windows.map((w) => w.label)).toEqual(['Session', 'Weekly, all models']);
+    expect(card?.windows.map((w) => w.label)).toEqual(['5 hour', '7 day']);
     expect(card?.windows.map((w) => w.resetsAt)).toEqual([
-      '2099-09-17T09:00:00.123456+00:00',
-      '2099-09-21T03:00:00+07:00',
+      '2099-09-13T16:26:40.000Z',
+      '2099-09-18T07:33:20.000Z',
     ]);
+  });
+
+  it('with a token, sends no probe and takes no claim while a session is reporting', async () => {
+    saveProviderCredential(t.db, 'claude', CLAUDE_TOKEN);
+    writeSpool(new Date(Date.now() - 60_000).toISOString());
+
+    for (const trigger of ['scheduled', 'manual'] as const) {
+      expect((await run(trigger)).attempts).toEqual([
+        { provider: 'claude', outcome: 'success', code: null },
+      ]);
+    }
+    expect(upstream).not.toHaveBeenCalled();
+    expect(t.db.$client.prepare('SELECT COUNT(*) FROM claude_poll_state').pluck().get()).toBe(0);
+    expect(getLatestSnapshots(t.db).get('claude')?.sourceVersion).toBe('claude-code/2.1.269');
   });
 
   it('makes at most one request when scheduled and manual collections overlap', async () => {
     saveProviderCredential(t.db, 'claude', CLAUDE_TOKEN);
-    stubUpstream(respond(200, fixtureText('claude-usage', 'valid'), 200));
+    stubUpstream(respond(200, 'valid', 200));
     writeSpool();
     const web = openDb({ path: t.path });
     try {
@@ -618,7 +640,7 @@ describe('Claude usage poll through the collector', () => {
 
   it('spends the interval on a 429: no retry, success from the spool, no second request', async () => {
     saveProviderCredential(t.db, 'claude', CLAUDE_TOKEN);
-    stubUpstream(respond(429, '{"error":"elided"}'));
+    stubUpstream(respond(429, 'no-unified-headers'));
     writeSpool();
 
     const first = await run();
@@ -635,9 +657,9 @@ describe('Claude usage poll through the collector', () => {
     expect(upstream).toHaveBeenCalledTimes(1);
   });
 
-  it('records error with the poll code when a 429 has no usable spool to fall back on', async () => {
+  it('records error with the probe code when a 429 has no usable spool to fall back on', async () => {
     saveProviderCredential(t.db, 'claude', CLAUDE_TOKEN);
-    stubUpstream(respond(429, '{"error":"elided"}'));
+    stubUpstream(respond(429, 'no-unified-headers'));
 
     expect((await run()).attempts).toEqual([
       { provider: 'claude', outcome: 'error', code: 'rate_limited' },
@@ -648,7 +670,7 @@ describe('Claude usage poll through the collector', () => {
 
   it('records schema_mismatch and renders error on drift without a usable spool', async () => {
     saveProviderCredential(t.db, 'claude', CLAUDE_TOKEN);
-    stubUpstream(respond(200, fixtureText('claude-usage', 'drift-duplicate-identity')));
+    stubUpstream(respond(200, 'drift-utilization-percent'));
 
     expect((await run()).attempts).toEqual([
       { provider: 'claude', outcome: 'error', code: 'schema_mismatch' },
@@ -661,16 +683,16 @@ describe('Claude usage poll through the collector', () => {
     });
   });
 
-  it('writes one attempt and at most one snapshot when both sources are fresh', async () => {
+  it('writes one attempt and at most one snapshot when both sources answer', async () => {
     saveProviderCredential(t.db, 'claude', CLAUDE_TOKEN);
     writeSpool();
 
     await run();
     expect(claudeRows('collector_attempts')).toBe(1);
     expect(claudeRows('provider_snapshots')).toBe(1);
-    expect(getLatestSnapshots(t.db).get('claude')?.sourceVersion).toBe(CLAUDE_USAGE_SOURCE_VERSION);
+    expect(getLatestSnapshots(t.db).get('claude')?.sourceVersion).toBe(CLAUDE_PROBE_SOURCE_VERSION);
 
-    // Inside the interval the poll is skipped; the unchanged spool event is
+    // Inside the interval the probe is skipped; the unchanged spool event is
     // written once and then deduplicated.
     await run('manual');
     await run('manual');
@@ -687,10 +709,10 @@ describe('Claude usage poll through the collector', () => {
         )
         .all();
 
-    it('keeps a stored poll reading healthy and lets it age, with no request and no new row', async () => {
+    it('keeps a stored probe reading healthy and lets it age, with no request and no new row', async () => {
       saveProviderCredential(t.db, 'claude', CLAUDE_TOKEN);
       await run('scheduled');
-      const polledAt = claudeCard()?.sourceObservedAt;
+      const probedAt = claudeCard()?.sourceObservedAt;
       expect(upstream).toHaveBeenCalledTimes(1);
 
       // A manual refresh and a narrowly early scheduled run both lose the claim.
@@ -703,23 +725,23 @@ describe('Claude usage poll through the collector', () => {
       expect(upstream).toHaveBeenCalledTimes(1);
       expect(claudeAttempts()).toEqual([{ outcome: 'success', error_code: null }]);
       expect(claudeRows('provider_snapshots')).toBe(1);
-      expect(claudeCard()).toMatchObject({ status: 'healthy', sourceObservedAt: polledAt });
+      expect(claudeCard()).toMatchObject({ status: 'healthy', sourceObservedAt: probedAt });
 
       // Age still applies: past the pull budget the same reading is stale, not current.
-      const later = new Date(Date.parse(polledAt!) + 16 * 60_000);
+      const later = new Date(Date.parse(probedAt!) + 16 * 60_000);
       expect(
         buildOverview(t.db, claudeConfig, later).cards.find((c) => c.provider === 'claude'),
-      ).toMatchObject({ status: 'stale', sourceObservedAt: polledAt });
+      ).toMatchObject({ status: 'stale', sourceObservedAt: probedAt });
     });
 
-    it('does not mask the claimant while its poll is still in flight, nor after it lands', async () => {
+    it('does not mask the claimant while its probe is still in flight, nor after it lands', async () => {
       saveProviderCredential(t.db, 'claude', CLAUDE_TOKEN);
       let release: () => void = () => {};
       const gate = new Promise<void>((resolve) => (release = resolve));
       stubUpstream(
         vi.fn(async () => {
           await gate;
-          return new Response(fixtureText('claude-usage', 'valid'), { status: 200 });
+          return new Response(null, { status: 200, headers: probeHeaders('valid') });
         }),
       );
       const web = openDb({ path: t.path });
@@ -740,7 +762,7 @@ describe('Claude usage poll through the collector', () => {
         ]);
         expect(claudeCard()).toMatchObject({
           status: 'healthy',
-          sourceVersion: CLAUDE_USAGE_SOURCE_VERSION,
+          sourceVersion: CLAUDE_PROBE_SOURCE_VERSION,
         });
         expect(upstream).toHaveBeenCalledTimes(1);
       } finally {
@@ -751,7 +773,7 @@ describe('Claude usage poll through the collector', () => {
 
     it('keeps the claimant’s failure as the card state instead of hiding it', async () => {
       saveProviderCredential(t.db, 'claude', CLAUDE_TOKEN);
-      stubUpstream(respond(429, '{"error":"elided"}'));
+      stubUpstream(respond(429, 'no-unified-headers'));
       await run('scheduled');
       await run('manual');
 
@@ -763,7 +785,7 @@ describe('Claude usage poll through the collector', () => {
       expect(upstream).toHaveBeenCalledTimes(1);
     });
 
-    it('stays unavailable when no poll result exists at all', async () => {
+    it('stays unavailable when no probe result exists at all', async () => {
       saveProviderCredential(t.db, 'claude', CLAUDE_TOKEN);
       // A claim left by a run that crashed before recording anything.
       claimClaudePoll(t.db, new Date().toISOString(), 5 * 60_000);
@@ -791,7 +813,7 @@ describe('Claude usage poll through the collector', () => {
     };
     for (const status of [200, 401]) {
       t.db.$client.exec('DELETE FROM claude_poll_state');
-      stubUpstream(respond(status, status === 200 ? undefined : '{"error":"elided"}'));
+      stubUpstream(respond(status, status === 200 ? 'valid' : 'no-unified-headers'));
       await collectOnce({
         db: t.db,
         config: claudeConfig,
@@ -803,6 +825,6 @@ describe('Claude usage poll through the collector', () => {
     const logged = lines.join('\n');
     expect(logged).toContain('auth_rejected');
     expect(logged).not.toContain('fake-collector-token');
-    expect(logged).not.toMatch(/12\.5|\b48\b|session:session/);
+    expect(logged).not.toMatch(/12\.5|\b48\b|4093000000|2099-/);
   });
 });

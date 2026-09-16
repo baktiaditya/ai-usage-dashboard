@@ -27,7 +27,7 @@ export function isProvider(v: string): v is Provider {
 /**
  * Providers whose key is saved in dashboard Settings (plan §3.5). DeepSeek and
  * OpenRouter report nothing without theirs. The Claude token is optional and
- * belongs to a source, not the provider: it only enables the usage poll of plan
+ * belongs to a source, not the provider: it only enables the quota probe of plan
  * §3.1, and Claude keeps reporting through the status-line spool without it.
  * Codex authenticates through its own CLI and has no key here.
  */
@@ -51,11 +51,12 @@ export interface CredentialStatus {
 }
 
 /**
- * `sourceVersion` of a Claude observation read from the optional usage poll
- * (plan §3.1). A status-line observation carries `claude-code/<version>`
- * instead, which is how freshness tells the two sources apart.
+ * `sourceVersion` of a Claude observation read by the optional quota probe
+ * (plan §3.1): the rate-limit headers of a minimal Messages API request. A
+ * status-line observation carries `claude-code/<version>` instead, which is how
+ * freshness tells the two sources apart.
  */
-export const CLAUDE_USAGE_SOURCE_VERSION = 'claude-api/oauth-usage';
+export const CLAUDE_PROBE_SOURCE_VERSION = 'claude-api/ratelimit-headers';
 
 export const PROVIDER_LABELS: Record<Provider, string> = {
   codex: 'Codex',

@@ -20,7 +20,7 @@ import { providerCredentials } from './schema';
 export interface ProviderCredentials {
   readonly deepseekApiKey: string | null;
   readonly openrouterManagementKey: string | null;
-  /** Optional: a `claude setup-token` token that enables the Claude usage poll. */
+  /** Optional: a `claude setup-token` token that enables the Claude quota probe. */
   readonly claudeUsageToken: string | null;
 }
 

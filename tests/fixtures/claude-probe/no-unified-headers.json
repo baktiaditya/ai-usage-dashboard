@@ -1,0 +1,11 @@
+{
+  "_fixture": {
+    "source": "POST https://api.anthropic.com/v1/messages (response headers only)",
+    "sanitized": "Synthetic values throughout. Header names follow the gate recorded in docs/discovery/m0-discovery.md; no live percentage, reset time, request id, or account field is copied.",
+    "important": "A response with no subscription rate-limit headers: not a subscription token."
+  },
+  "status": 200,
+  "headers": {
+    "request-id": "req_elided"
+  }
+}

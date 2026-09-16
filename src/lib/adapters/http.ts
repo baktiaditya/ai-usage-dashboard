@@ -1,5 +1,5 @@
 /**
- * Shared HTTP plumbing for the credit adapters and the Claude usage poll.
+ * Shared HTTP plumbing for the credit adapters and the Claude quota probe.
  *
  * Responses are read as *text* and handed to `parseJsonLossless`, never to
  * `response.json()`. That is the whole point: `response.json()` would convert
@@ -33,7 +33,7 @@ export interface HttpGetOptions {
 const DEFAULT_USER_AGENT = 'ai-usage-dashboard/0.1.0';
 
 /**
- * The request headers for one GET. Names are matched case-insensitively, so an
+ * The request headers for one request. Names are matched case-insensitively, so an
  * override replaces the default instead of sending both, and an
  * `authorization` spelled any way is refused rather than silently merged.
  */
@@ -70,30 +70,18 @@ export async function getJsonLossless(options: HttpGetOptions): Promise<unknown>
   // Built before any timer or listener, so a refused header throws cleanly
   // instead of being reported as a network failure.
   const headers = buildRequestHeaders(options.bearerToken, options.headers);
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(new Error('timeout')), options.timeoutMs);
-  const onOuterAbort = () => controller.abort(new Error('aborted'));
-  // An already-aborted signal never dispatches `abort` again, so a listener
-  // alone would let a request start after its budget is gone.
-  if (options.signal?.aborted) onOuterAbort();
-  else options.signal?.addEventListener('abort', onOuterAbort, { once: true });
-
-  try {
-    if (controller.signal.aborted) {
-      throw new CollectionError('timeout', 'request budget was exhausted before it started');
-    }
-
+  return withRequestBudget(options, async (signal) => {
     let response: Response;
     try {
       response = await doFetch(options.url, {
         method: 'GET',
         headers,
-        signal: controller.signal,
+        signal,
         redirect: 'error',
         cache: 'no-store',
       });
     } catch (err) {
-      throw transportError(err, controller.signal);
+      throw transportError(err, signal);
     }
 
     if (!response.ok) {
@@ -107,7 +95,7 @@ export async function getJsonLossless(options: HttpGetOptions): Promise<unknown>
     try {
       text = await response.text();
     } catch (err) {
-      throw transportError(err, controller.signal);
+      throw transportError(err, signal);
     }
 
     try {
@@ -115,6 +103,76 @@ export async function getJsonLossless(options: HttpGetOptions): Promise<unknown>
     } catch {
       throw new CollectionError('schema_mismatch', 'response body was not valid JSON');
     }
+  });
+}
+
+export interface HttpPostOptions extends HttpGetOptions {
+  /** Serialised as the JSON request body. */
+  readonly body: unknown;
+}
+
+/** What a header-only read keeps of a response: never its body. */
+export interface HeaderResponse {
+  readonly status: number;
+  readonly headers: Headers;
+}
+
+/**
+ * POST a JSON body and return the status and headers, whatever the status.
+ *
+ * For a source whose answer is in the response headers. The body is cancelled
+ * unread, so nothing the provider wrote back — including an error message that
+ * might echo the request — reaches this process's logs or storage. Classifying
+ * the status is the caller's job, because a refusal can still carry the headers
+ * it wants. Transport failures and timeouts throw as they do for a GET.
+ */
+export async function postJsonForHeaders(options: HttpPostOptions): Promise<HeaderResponse> {
+  const doFetch = options.fetchImpl ?? fetch;
+  const headers = buildRequestHeaders(options.bearerToken, {
+    'Content-Type': 'application/json',
+    ...options.headers,
+  });
+  const body = JSON.stringify(options.body);
+  return withRequestBudget(options, async (signal) => {
+    let response: Response;
+    try {
+      response = await doFetch(options.url, {
+        method: 'POST',
+        headers,
+        body,
+        signal,
+        redirect: 'error',
+        cache: 'no-store',
+      });
+    } catch (err) {
+      throw transportError(err, signal);
+    }
+    void response.body?.cancel().catch(() => undefined);
+    return { status: response.status, headers: response.headers };
+  });
+}
+
+/**
+ * Run one request under the caller's signal and its own timeout, combined, and
+ * release both when it settles.
+ */
+async function withRequestBudget<T>(
+  options: Pick<HttpGetOptions, 'timeoutMs' | 'signal'>,
+  run: (signal: AbortSignal) => Promise<T>,
+): Promise<T> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(new Error('timeout')), options.timeoutMs);
+  const onOuterAbort = () => controller.abort(new Error('aborted'));
+  // An already-aborted signal never dispatches `abort` again, so a listener
+  // alone would let a request start after its budget is gone.
+  if (options.signal?.aborted) onOuterAbort();
+  else options.signal?.addEventListener('abort', onOuterAbort, { once: true });
+
+  try {
+    if (controller.signal.aborted) {
+      throw new CollectionError('timeout', 'request budget was exhausted before it started');
+    }
+    return await run(controller.signal);
   } finally {
     clearTimeout(timer);
     options.signal?.removeEventListener('abort', onOuterAbort);

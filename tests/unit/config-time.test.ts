@@ -25,7 +25,7 @@ describe('configuration', () => {
     expect(c.retentionDays).toBe(90);
   });
 
-  it('polls Claude usage no more often than every five minutes by default', () => {
+  it('probes Claude quota no more often than every five minutes by default', () => {
     expect(loadConfig({}).claudePollIntervalMinutes).toBe(5);
     expect(loadConfig({ AUD_CLAUDE_POLL_INTERVAL_MINUTES: '' }).claudePollIntervalMinutes).toBe(5);
     expect(loadConfig({ AUD_CLAUDE_POLL_INTERVAL_MINUTES: '15' }).claudePollIntervalMinutes).toBe(
@@ -33,7 +33,7 @@ describe('configuration', () => {
     );
   });
 
-  it('rejects a Claude poll interval below the five-minute floor instead of clamping it', () => {
+  it('rejects a Claude probe interval below the five-minute floor instead of clamping it', () => {
     for (const value of ['4', '0', '-5', '4.9', 'five']) {
       expect(() => loadConfig({ AUD_CLAUDE_POLL_INTERVAL_MINUTES: value }), value).toThrow(
         ConfigError,

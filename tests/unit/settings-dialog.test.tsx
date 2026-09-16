@@ -208,7 +208,9 @@ describe('statuses', () => {
     );
     expect(input).toHaveAccessibleDescription(expect.stringContaining('Not set'));
     expect(dialog).toHaveTextContent('claude setup-token');
-    expect(dialog).toHaveTextContent('Removing it here does not revoke it.');
+    // The probe spends subscription usage, so the help must say so.
+    expect(dialog).toHaveTextContent('Each request counts toward your Claude usage.');
+    expect(dialog).toHaveTextContent('Removing the token here does not revoke it.');
     // The other fields keep their descriptions.
     expect(within(dialog).getByLabelText('DeepSeek API Key')).toHaveAccessibleDescription(
       'Not set',

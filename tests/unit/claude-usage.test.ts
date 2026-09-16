@@ -3,27 +3,54 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  CLAUDE_USAGE_OAUTH_BETA,
-  CLAUDE_USAGE_URL,
-  CLAUDE_USAGE_USER_AGENT,
-  CLAUDE_USAGE_WINDOW_KINDS,
-  claudeUsageBucketId,
+  CLAUDE_PROBE_ANTHROPIC_VERSION,
+  CLAUDE_PROBE_BODY,
+  CLAUDE_PROBE_OAUTH_BETA,
+  CLAUDE_PROBE_URL,
+  CLAUDE_PROBE_WINDOWS,
   createClaudeAdapter,
-  normalizeClaudeUsageResponse,
+  normalizeClaudeRateLimitHeaders,
 } from '@/lib/adapters/claude-usage';
-import { CLAUDE_USAGE_SOURCE_VERSION } from '@/lib/domain';
+import { CLAUDE_PROBE_SOURCE_VERSION } from '@/lib/domain';
 import type { QuotaSnapshot } from '@/lib/domain';
 import { CollectionDeferred, CollectionError } from '@/lib/errors';
 import { createClaudeIngestor } from '@/lib/ingestors/claude-statusline';
 import { labelWindow } from '@/lib/queries/overview';
-import { fixtureLossless, fixtureText } from '../helpers/fixtures';
+import { fixtureJson, fixtureText } from '../helpers/fixtures';
 
 const OBSERVED_AT = '2026-09-17T01:00:00.000Z';
 // Shaped like a setup token, but not one.
 const TOKEN = 'sk-ant-oat01-fake-unit-token-0000';
+const U = 'anthropic-ratelimit-unified-';
+const FIXTURES = [
+  'valid',
+  'limit-reached',
+  'no-unified-headers',
+  'drift-no-known-window',
+  'drift-utilization-percent',
+  'drift-missing-reset',
+  'drift-reset-iso',
+];
+// Older than the probe budget below, so it never answers a run by itself.
+const STALE_SPOOL = '2026-09-16T00:00:00.000Z';
+const FRESH_MS = 15 * 60_000;
 
-function normalize(name: string): QuotaSnapshot {
-  return normalizeClaudeUsageResponse(fixtureLossless('claude-usage', name), OBSERVED_AT);
+interface ProbeFixture {
+  readonly status: number;
+  readonly headers: Record<string, string>;
+}
+
+function fixture(name: string): ProbeFixture {
+  return fixtureJson('claude-probe', name) as ProbeFixture;
+}
+
+function normalize(name: string, override: Record<string, string | null> = {}): QuotaSnapshot {
+  const headers = new Headers(fixture(name).headers);
+  for (const [key, value] of Object.entries(override)) {
+    if (value === null) headers.delete(key);
+    else headers.set(key, value);
+  }
+  return normalizeClaudeRateLimitHeaders(headers, OBSERVED_AT);
 }
 
 function codeOf(fn: () => unknown): string | undefined {
@@ -35,143 +62,119 @@ function codeOf(fn: () => unknown): string | undefined {
   return undefined;
 }
 
-describe('limits[] mapping', () => {
-  it('maps each active limit field by field, and reads nothing else', () => {
+describe('rate-limit header mapping', () => {
+  it('maps the five-hour and seven-day headers onto the status line windows', () => {
     const snap = normalize('valid');
 
     expect(snap).toMatchObject({
       kind: 'quota',
       provider: 'claude',
       observedAt: OBSERVED_AT,
-      sourceVersion: CLAUDE_USAGE_SOURCE_VERSION,
-      // Polled observations are never deduplicated.
+      sourceVersion: CLAUDE_PROBE_SOURCE_VERSION,
+      // Probed observations are never deduplicated.
       sourceEventId: null,
       usageAllowed: null,
       limitReachedCode: null,
     });
-    // The window keys say 77; limits[] is the contract, so they are ignored.
     expect(snap.windows).toEqual([
       {
-        bucketId: 'session:session',
-        windowKind: 'session',
+        bucketId: 'five_hour',
+        windowKind: 'five_hour',
         usedPercent: 12.5,
-        windowDurationMinutes: null,
-        resetsAt: '2099-09-17T09:00:00.123456+00:00',
+        windowDurationMinutes: 300,
+        resetsAt: '2099-09-13T16:26:40.000Z',
       },
       {
-        bucketId: 'weekly_all:weekly',
-        windowKind: 'weekly_all',
+        bucketId: 'seven_day',
+        windowKind: 'seven_day',
         usedPercent: 48,
-        windowDurationMinutes: null,
-        resetsAt: '2099-09-21T03:00:00+07:00',
+        windowDurationMinutes: 10_080,
+        resetsAt: '2099-09-18T07:33:20.000Z',
       },
     ]);
   });
 
-  it('keeps resets_at to the second, never through an epoch conversion', () => {
-    for (const w of normalize('valid').windows) {
-      expect(w.resetsAt).not.toBeNull();
-      expect(new Date(w.resetsAt as string).getUTCFullYear()).toBe(2099);
+  it('labels every window it produces, so no raw kind is rendered', () => {
+    for (const [, kind] of CLAUDE_PROBE_WINDOWS) {
+      expect(
+        labelWindow({
+          bucketId: kind,
+          windowKind: kind,
+          usedPercent: 0,
+          windowDurationMinutes: null,
+          resetsAt: null,
+        }),
+      ).not.toBe(kind);
     }
-    const [session, weekly] = normalize('valid').windows;
-    expect(Date.parse(session!.resetsAt!)).toBe(Date.parse('2099-09-17T09:00:00.123Z'));
-    expect(new Date(weekly!.resetsAt!).toISOString()).toBe('2099-09-20T20:00:00.000Z');
-  });
-
-  it('derives the bucket id from identity fields only, omitting nulls', () => {
-    expect(claudeUsageBucketId('session', null, null)).toBe('session');
-    expect(claudeUsageBucketId('session', 'session', null)).toBe('session:session');
-    expect(claudeUsageBucketId('weekly_all', null, 'org')).toBe('weekly_all:org');
-    expect(claudeUsageBucketId('weekly_all', 'weekly', 'org')).toBe('weekly_all:weekly:org');
-  });
-
-  it('carries nothing from the payload beyond the validated gauges', () => {
-    const serialized = JSON.stringify(normalize('valid'));
-    for (const unmodelled of ['unmodelled_example_key', 'extra_usage', 'severity', 'USD', '77']) {
-      expect(serialized).not.toContain(unmodelled);
-    }
-  });
-
-  it.each(['no-limits', 'empty-limits', 'all-inactive'])('reports %s as not_entitled', (name) => {
-    expect(codeOf(() => normalize(name))).toBe('not_entitled');
-  });
-
-  it.each(['drift-percent-string', 'drift-limits-object', 'drift-unknown-kind'])(
-    'refuses %s as schema_mismatch, never producing a number',
-    (name) => {
-      expect(codeOf(() => normalize(name))).toBe('schema_mismatch');
-    },
-  );
-
-  it('raises schema_mismatch when two limits would share a bucket id', () => {
-    expect(codeOf(() => normalize('drift-duplicate-identity'))).toBe('schema_mismatch');
   });
 
   it.each([
-    ['a non-object payload', []],
-    ['a percent above 100', { limits: [{ ...active(), percent: 100.5 }] }],
-    ['a negative percent', { limits: [{ ...active(), percent: -1 }] }],
-    ['an impossible reset date', { limits: [{ ...active(), resets_at: '2026-02-31T00:00:00Z' }] }],
-    ['epoch seconds as the reset time', { limits: [{ ...active(), resets_at: 1789606800 }] }],
-    ['a missing group', { limits: [omit(active(), 'group')] }],
-    ['a non-string severity', { limits: [{ ...active(), severity: 3 }] }],
-    ['a non-boolean is_active', { limits: [{ ...active(), is_active: 'yes' }] }],
-  ])('refuses %s as schema_mismatch', (_name, payload) => {
-    expect(codeOf(() => normalizeClaudeUsageResponse(payload, OBSERVED_AT))).toBe(
-      'schema_mismatch',
-    );
+    ['0', 0],
+    ['0.07', 7],
+    ['0.123456', 12.3456],
+    ['1', 100],
+    ['1.0', 100],
+  ])('shifts the fraction %s to exactly %s percent', (value, percent) => {
+    const snap = normalize('valid', { [`${U}5h-utilization`]: value });
+    expect(snap.windows[0]?.usedPercent).toBe(percent);
   });
 
-  it('never names a value or an unrecognised kind in a drift message', () => {
-    const cases = [
-      { limits: [{ ...active(), percent: 123.456 }] },
-      fixtureLossless('claude-usage', 'drift-unknown-kind'),
-    ];
-    for (const payload of cases) {
-      try {
-        normalizeClaudeUsageResponse(payload, OBSERVED_AT);
-        expect.unreachable('should have thrown');
-      } catch (err) {
-        expect((err as Error).message).not.toMatch(/123|renamed_window/);
-      }
+  it('keeps a plan that reports only one window', () => {
+    const snap = normalize('valid', { [`${U}7d-utilization`]: null, [`${U}7d-reset`]: null });
+    expect(snap.windows.map((w) => w.windowKind)).toEqual(['five_hour']);
+  });
+
+  it('reads a subscription at its limit as a reading of 100 percent', () => {
+    expect(normalize('limit-reached').windows[0]?.usedPercent).toBe(100);
+  });
+
+  it('carries nothing from the headers beyond the validated gauges', () => {
+    // `collectedAt` is the wall clock, which may contain any digits.
+    const serialized = JSON.stringify({ ...normalize('valid'), collectedAt: null });
+    for (const unread of ['77', 'req_elided', 'org_level_disabled', 'rejected', 'allowed']) {
+      expect(serialized).not.toContain(unread);
     }
   });
 
-  it('refuses a kind it cannot label but keeps the labelled ones beside it', () => {
-    const snap = normalizeClaudeUsageResponse(
-      { limits: [active(), { ...active(), kind: 'renamed_window', group: null }] },
-      OBSERVED_AT,
-    );
-    expect(snap.windows.map((w) => w.windowKind)).toEqual(['session']);
+  it('reports a response with no subscription rate-limit headers as not_entitled', () => {
+    expect(codeOf(() => normalize('no-unified-headers'))).toBe('not_entitled');
   });
 
-  it('has a WINDOW_LABELS entry for every kind it accepts, so no raw kind is rendered', () => {
-    for (const kind of CLAUDE_USAGE_WINDOW_KINDS) {
-      const label = labelWindow({
-        bucketId: kind,
-        windowKind: kind,
-        usedPercent: 0,
-        windowDurationMinutes: null,
-        resetsAt: null,
-      });
-      expect(label).not.toBe(kind);
+  it.each([
+    'drift-no-known-window',
+    'drift-utilization-percent',
+    'drift-missing-reset',
+    'drift-reset-iso',
+  ])('refuses %s as schema_mismatch, never producing a number', (name) => {
+    expect(codeOf(() => normalize(name))).toBe('schema_mismatch');
+  });
+
+  it.each([
+    ['a negative utilization', { [`${U}5h-utilization`]: '-0.1' }],
+    ['a utilization above 1', { [`${U}5h-utilization`]: '1.01' }],
+    ['a non-numeric utilization', { [`${U}5h-utilization`]: 'high' }],
+    ['a utilization without its reset', { [`${U}5h-reset`]: null }],
+    ['a reset without its utilization', { [`${U}5h-utilization`]: null }],
+    ['a reset in milliseconds', { [`${U}5h-reset`]: '4093000000000' }],
+    ['a reset past 2100', { [`${U}5h-reset`]: '99999999999' }],
+  ])('refuses %s as schema_mismatch', (_name, override) => {
+    expect(codeOf(() => normalize('valid', override))).toBe('schema_mismatch');
+  });
+
+  it('never names a header value in a drift message', () => {
+    try {
+      normalize('valid', { [`${U}5h-utilization`]: '123.456' });
+      expect.unreachable('should have thrown');
+    } catch (err) {
+      expect((err as Error).message).not.toMatch(/123/);
     }
   });
 });
 
 describe('sanitised fixtures', () => {
   it('are marked sanitised and carry no token, email, or account identifier', () => {
-    for (const name of [
-      'valid',
-      'no-limits',
-      'empty-limits',
-      'all-inactive',
-      'drift-percent-string',
-      'drift-duplicate-identity',
-      'drift-unknown-kind',
-      'drift-limits-object',
-    ]) {
-      const text = fixtureText('claude-usage', name);
+    for (const name of FIXTURES) {
+      const text = fixtureText('claude-probe', name);
       expect(JSON.parse(text)).toHaveProperty('_fixture.sanitized');
       expect(text).not.toMatch(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/);
       expect(text).not.toMatch(/sk-ant-|Bearer|org[_-]?id|account[_-]?id|uuid/i);
@@ -184,7 +187,7 @@ describe('composite Claude adapter', () => {
   let spoolPath: string;
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), 'aud-claude-usage-'));
+    dir = mkdtempSync(join(tmpdir(), 'aud-claude-probe-'));
     spoolPath = join(dir, 'claude-statusline.json');
   });
   afterEach(() => {
@@ -196,9 +199,14 @@ describe('composite Claude adapter', () => {
     writeFileSync(spoolPath, JSON.stringify({ ...event, observedAt }));
   }
 
-  function fetchReturning(status: number, body = fixtureText('claude-usage', 'valid')) {
+  function fetchReturning(name = 'valid', status?: number) {
+    const { status: fixtureStatus, headers } = fixture(name);
     return vi.fn(async (_url: string | URL | Request, _init?: RequestInit) => {
-      return new Response(body, { status, headers: { 'Content-Type': 'application/json' } });
+      // The body is never read; a sentinel proves it.
+      return new Response('{"content":"elided-body-sentinel"}', {
+        status: status ?? fixtureStatus,
+        headers,
+      });
     });
   }
 
@@ -211,6 +219,7 @@ describe('composite Claude adapter', () => {
       spoolPath,
       usageToken: options.token === undefined ? TOKEN : options.token,
       claimPoll: options.claim ?? (() => true),
+      spoolFreshMs: FRESH_MS,
       ...(options.fetchImpl ? { fetchImpl: options.fetchImpl as unknown as typeof fetch } : {}),
     });
   }
@@ -218,13 +227,13 @@ describe('composite Claude adapter', () => {
   const signal = () => new AbortController().signal;
 
   it('is exactly the spool ingestor when no token is saved, and never claims or fetches', async () => {
-    const fetchImpl = fetchReturning(200);
+    const fetchImpl = fetchReturning();
     const claim = vi.fn(() => true);
     const composite = adapter({ token: null, fetchImpl, claim });
     const ingestor = createClaudeIngestor({ spoolPath });
 
     expect({ ...composite, collect: undefined }).toEqual({ ...ingestor, collect: undefined });
-    writeSpool('2026-09-17T00:00:00.000Z');
+    writeSpool(STALE_SPOOL);
     const [a, b] = [await composite.collect(signal()), await ingestor.collect(signal())];
     expect({ ...a, collectedAt: null }).toEqual({ ...b, collectedAt: null });
 
@@ -234,28 +243,58 @@ describe('composite Claude adapter', () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
-  it('sends one GET with the Claude headers, the token only as a bearer header', async () => {
-    const fetchImpl = fetchReturning(200);
+  it('sends one minimal Haiku POST, the token only as a bearer header, with no Claude Code identity', async () => {
+    const fetchImpl = fetchReturning();
     await adapter({ fetchImpl }).collect(signal());
 
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     const [url, init] = fetchImpl.mock.calls[0]!;
-    expect(String(url)).toBe(CLAUDE_USAGE_URL);
-    expect(init?.method).toBe('GET');
+    expect(String(url)).toBe(CLAUDE_PROBE_URL);
+    expect(init?.method).toBe('POST');
     expect(init?.redirect).toBe('error');
     expect(init?.headers).toEqual({
       Authorization: `Bearer ${TOKEN}`,
       Accept: 'application/json',
-      'User-Agent': CLAUDE_USAGE_USER_AGENT,
-      'anthropic-beta': CLAUDE_USAGE_OAUTH_BETA,
+      'User-Agent': 'ai-usage-dashboard/0.1.0',
+      'Content-Type': 'application/json',
+      'anthropic-version': CLAUDE_PROBE_ANTHROPIC_VERSION,
+      'anthropic-beta': CLAUDE_PROBE_OAUTH_BETA,
     });
+    const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+    expect(body).toEqual(CLAUDE_PROBE_BODY);
+    expect(body).toEqual({
+      model: 'claude-haiku-4-5',
+      max_tokens: 1,
+      messages: [{ role: 'user', content: '.' }],
+    });
+    expect(String(init?.body)).not.toMatch(/system|Claude Code/);
   });
 
-  it('claims before it requests, and skips the poll when the claim is lost', async () => {
+  it('never probes while the status line has a fresh reading', async () => {
+    writeSpool(new Date(Date.now() - 60_000).toISOString());
+    const fetchImpl = fetchReturning();
+    const claim = vi.fn(() => true);
+    const snap = await adapter({ fetchImpl, claim }).collect(signal());
+
+    expect(snap.sourceVersion).toBe('claude-code/2.1.269');
+    expect(claim).not.toHaveBeenCalled();
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('probes once the status line reading is older than the probe budget', async () => {
+    writeSpool(new Date(Date.now() - FRESH_MS - 60_000).toISOString());
+    const fetchImpl = fetchReturning();
+    const snap = await adapter({ fetchImpl }).collect(signal());
+
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(snap.sourceVersion).toBe(CLAUDE_PROBE_SOURCE_VERSION);
+  });
+
+  it('claims before it requests, and skips the probe when the claim is lost', async () => {
     const order: string[] = [];
     const fetchImpl = vi.fn(async () => {
       order.push('fetch');
-      return new Response(fixtureText('claude-usage', 'valid'), { status: 200 });
+      return new Response(null, { status: 200, headers: fixture('valid').headers });
     });
     await adapter({
       fetchImpl: fetchImpl as never,
@@ -266,16 +305,16 @@ describe('composite Claude adapter', () => {
     }).collect(signal());
     expect(order).toEqual(['claim', 'fetch']);
 
-    writeSpool('2026-09-17T00:00:00.000Z');
+    writeSpool(STALE_SPOOL);
     const lost = vi.fn();
     const snap = await adapter({ fetchImpl: lost as never, claim: () => false }).collect(signal());
     expect(lost).not.toHaveBeenCalled();
     expect(snap.sourceVersion).toBe('claude-code/2.1.269');
   });
 
-  it('treats a claim that throws as lost, rather than polling unclaimed', async () => {
-    writeSpool('2026-09-17T00:00:00.000Z');
-    const fetchImpl = fetchReturning(200);
+  it('treats a claim that throws as lost, rather than probing unclaimed', async () => {
+    writeSpool(STALE_SPOOL);
+    const fetchImpl = fetchReturning();
     const snap = await adapter({
       fetchImpl,
       claim: () => {
@@ -287,28 +326,27 @@ describe('composite Claude adapter', () => {
   });
 
   it('prefers the newer observation when both sources answer', async () => {
-    // A spool event from the past loses to a poll made now.
-    writeSpool('2026-09-16T00:00:00.000Z');
-    const polled = await adapter({ fetchImpl: fetchReturning(200) }).collect(signal());
-    expect(polled.sourceVersion).toBe(CLAUDE_USAGE_SOURCE_VERSION);
-    expect(polled.sourceEventId).toBeNull();
+    // A stale spool event loses to a probe made now.
+    writeSpool(STALE_SPOOL);
+    const probed = await adapter({ fetchImpl: fetchReturning() }).collect(signal());
+    expect(probed.sourceVersion).toBe(CLAUDE_PROBE_SOURCE_VERSION);
+    expect(probed.sourceEventId).toBeNull();
+  });
 
-    // A spool event stamped after the poll wins, keeping its event id for dedup.
-    const future = new Date(Date.now() + 60_000).toISOString();
-    writeSpool(future);
-    const spooled = await adapter({ fetchImpl: fetchReturning(200) }).collect(signal());
-    expect(spooled.sourceVersion).toBe('claude-code/2.1.269');
-    expect(spooled.sourceEventId).toBe('84cfbc12ad55ba41d052809be0ae4564');
+  it('records a 429 that still reports its windows as a reading', async () => {
+    const snap = await adapter({ fetchImpl: fetchReturning('limit-reached') }).collect(signal());
+    expect(snap.windows[0]?.usedPercent).toBe(100);
   });
 
   it.each([
-    ['a 429', 429, 'rate_limited'],
-    ['a 401', 401, 'auth_rejected'],
-    ['a 5xx', 503, 'upstream_error'],
-  ])('falls back to the spool on %s without retrying', async (_name, status, code) => {
-    const fetchImpl = fetchReturning(status, '{"error":"elided"}');
+    ['a 429 with no windows', 'no-unified-headers', 429, 'rate_limited'],
+    ['a 401', 'no-unified-headers', 401, 'auth_rejected'],
+    ['a 403', 'no-unified-headers', 403, 'insufficient_scope'],
+    ['a 5xx', 'no-unified-headers', 503, 'upstream_error'],
+  ])('falls back to the spool on %s without retrying', async (_name, name, status, code) => {
+    const fetchImpl = fetchReturning(name, status);
 
-    writeSpool('2026-09-16T00:00:00.000Z');
+    writeSpool(STALE_SPOOL);
     const snap = await adapter({ fetchImpl }).collect(signal());
     expect(snap.sourceVersion).toBe('claude-code/2.1.269');
     expect(fetchImpl).toHaveBeenCalledTimes(1);
@@ -318,8 +356,19 @@ describe('composite Claude adapter', () => {
     expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 
+  it('never reads or echoes the response body, even on a refusal', async () => {
+    const fetchImpl = fetchReturning('no-unified-headers', 400);
+    try {
+      await adapter({ fetchImpl }).collect(signal());
+      expect.unreachable('should have thrown');
+    } catch (err) {
+      expect((err as Error).message).not.toContain('elided-body-sentinel');
+      expect((err as Error).message).not.toContain(TOKEN);
+    }
+  });
+
   it('falls back to the spool on a network error or timeout', async () => {
-    writeSpool('2026-09-16T00:00:00.000Z');
+    writeSpool(STALE_SPOOL);
     const network = vi.fn(async () => {
       throw new TypeError('fetch failed');
     });
@@ -334,14 +383,14 @@ describe('composite Claude adapter', () => {
     const aborted = new AbortController();
     aborted.abort();
     await expect(
-      adapter({ fetchImpl: fetchReturning(200) }).collect(aborted.signal),
+      adapter({ fetchImpl: fetchReturning() }).collect(aborted.signal),
     ).rejects.toMatchObject({ code: 'timeout' });
   });
 
   it('falls back to the spool on drift, and otherwise surfaces schema_mismatch', async () => {
-    const drift = fetchReturning(200, fixtureText('claude-usage', 'drift-duplicate-identity'));
+    const drift = fetchReturning('drift-utilization-percent');
 
-    writeSpool('2026-09-16T00:00:00.000Z');
+    writeSpool(STALE_SPOOL);
     const snap = await adapter({ fetchImpl: drift }).collect(signal());
     expect(snap.sourceVersion).toBe('claude-code/2.1.269');
 
@@ -359,7 +408,7 @@ describe('composite Claude adapter', () => {
   });
 
   it('defers, rather than recording a verdict, when it lost the claim and the spool is unusable', async () => {
-    const fetchImpl = fetchReturning(200);
+    const fetchImpl = fetchReturning();
     const lost = adapter({ fetchImpl, claim: () => false });
 
     // No spool file at all.
@@ -379,33 +428,18 @@ describe('composite Claude adapter', () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
-  it('never defers a run that did poll: its own failure is the answer', async () => {
-    const refused = adapter({ fetchImpl: fetchReturning(429, '{}'), claim: () => true });
+  it('never defers a run that did probe: its own failure is the answer', async () => {
+    const refused = adapter({
+      fetchImpl: fetchReturning('no-unified-headers', 429),
+      claim: () => true,
+    });
     await expect(refused.collect(signal())).rejects.toBeInstanceOf(CollectionError);
   });
 
-  it('leaves room in its budget for a spool read after a slow poll', () => {
+  it('leaves room in its budget for a spool read and a slow probe', () => {
     const composite = adapter({});
     expect(composite.timeoutMs).toBeGreaterThan(
-      10_000 + createClaudeIngestor({ spoolPath }).timeoutMs,
+      15_000 + createClaudeIngestor({ spoolPath }).timeoutMs,
     );
   });
 });
-
-function active(): Record<string, unknown> {
-  return {
-    kind: 'session',
-    group: 'session',
-    percent: 10,
-    severity: 'normal',
-    resets_at: '2026-09-17T09:00:00+00:00',
-    scope: null,
-    is_active: true,
-  };
-}
-
-function omit(row: Record<string, unknown>, key: string): Record<string, unknown> {
-  const copy = { ...row };
-  delete copy[key];
-  return copy;
-}

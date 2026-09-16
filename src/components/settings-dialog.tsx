@@ -322,10 +322,11 @@ function SettingsForm({
               </p>
             ) : provider === 'claude' ? (
               <p id={helpId} className="text-muted-foreground text-xs">
-                Optional. Claude still reports quota through the status line without it. A token
-                from <code>claude setup-token</code> also lets the collector read quota when no
-                session is running, at most once every five minutes. Removing it here does not
-                revoke it.
+                Optional. Claude still reports quota through the status line without it. With a
+                token from <code>claude setup-token</code>, the collector also reads quota when no
+                session is reporting, by sending a one-token Claude Haiku request at most once every
+                five minutes. Each request counts toward your Claude usage. Removing the token here
+                does not revoke it.
               </p>
             ) : null}
             <input

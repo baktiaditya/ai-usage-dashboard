@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CLAUDE_USAGE_SOURCE_VERSION } from '@/lib/domain';
+import { CLAUDE_PROBE_SOURCE_VERSION } from '@/lib/domain';
 import { evaluateFreshness, maxAgeMs } from '@/lib/freshness';
 import type { StoredAttempt, StoredSnapshot } from '@/lib/db/repository';
 import { testConfig } from '../helpers/db';
@@ -61,11 +61,11 @@ describe('freshness budgets', () => {
     );
   });
 
-  it('keys the Claude budget on the source: a polled reading gets the pull budget', () => {
-    expect(maxAgeMs('claude', CLAUDE_USAGE_SOURCE_VERSION, config)).toBe(15 * 60_000);
+  it('keys the Claude budget on the source: a probed reading gets the pull budget', () => {
+    expect(maxAgeMs('claude', CLAUDE_PROBE_SOURCE_VERSION, config)).toBe(15 * 60_000);
   });
 
-  it('ages a polled Claude reading out after the pull budget, a spooled one after its own', () => {
+  it('ages a probed Claude reading out after the pull budget, a spooled one after its own', () => {
     const observedAt = new Date(NOW.getTime() - 20 * 60_000).toISOString();
     const claude = (sourceVersion: string) =>
       evaluateFreshness({
@@ -81,7 +81,7 @@ describe('freshness budgets', () => {
         now: NOW,
       }).status;
 
-    expect(claude(CLAUDE_USAGE_SOURCE_VERSION)).toBe('stale');
+    expect(claude(CLAUDE_PROBE_SOURCE_VERSION)).toBe('stale');
     expect(claude('claude-code/2.1.269')).toBe('healthy');
   });
 });

@@ -12,7 +12,7 @@
  * balance is exactly the kind of thing that must not end up in the repository.
  */
 import { describe, expect, it } from 'vitest';
-import { CLAUDE_USAGE_WINDOW_KINDS, pollClaudeUsage } from '@/lib/adapters/claude-usage';
+import { CLAUDE_PROBE_WINDOWS, probeClaudeQuota } from '@/lib/adapters/claude-usage';
 import { createCodexAdapter } from '@/lib/adapters/codex';
 import { createDeepseekAdapter } from '@/lib/adapters/deepseek';
 import { createOpenrouterAdapter } from '@/lib/adapters/openrouter';
@@ -20,7 +20,7 @@ import { createClaudeIngestor } from '@/lib/ingestors/claude-statusline';
 import { loadConfig } from '@/lib/config';
 import { openDb } from '@/lib/db/client';
 import { claimClaudePoll } from '@/lib/db/repository';
-import { CLAUDE_USAGE_SOURCE_VERSION } from '@/lib/domain';
+import { CLAUDE_PROBE_SOURCE_VERSION } from '@/lib/domain';
 import { loadCollectorEnvFile } from '@/lib/env-file';
 import { nowIso } from '@/lib/time';
 import { readSavedCredentials } from '../helpers/saved-credentials';
@@ -115,10 +115,11 @@ describeWhen(saved.openrouterManagementKey !== null)('live: openrouter credits',
   }, 30_000);
 });
 
-describeWhen(saved.claudeUsageToken !== null)('live: claude usage poll', () => {
-  it('answers limits[] without a live session, through the shared cadence claim', async (ctx) => {
-    // The endpoint escalates refusals, so this check spends the same durable
-    // claim as the collector and skips rather than polling inside the interval.
+describeWhen(saved.claudeUsageToken !== null)('live: claude quota probe', () => {
+  it('reads the rate-limit headers without a live session, through the shared claim', async (ctx) => {
+    // Each probe spends a little subscription usage, so this check takes the same
+    // durable claim as the collector and skips rather than probing inside the
+    // interval.
     const database = openDb({ path: config.databasePath, migrate: false });
     let claimed: boolean;
     try {
@@ -127,26 +128,26 @@ describeWhen(saved.claudeUsageToken !== null)('live: claude usage poll', () => {
       database.$client.close();
     }
     if (!claimed) {
-      ctx.skip('the Claude usage endpoint was polled inside the interval; try again later');
+      ctx.skip('the Claude quota probe ran inside the interval; try again later');
       return;
     }
 
-    const snap = await pollClaudeUsage(
+    const snap = await probeClaudeQuota(
       { token: saved.claudeUsageToken as string, timeoutMs: 20_000 },
       signal(),
     );
 
     expect(snap.provider).toBe('claude');
-    expect(snap.sourceVersion).toBe(CLAUDE_USAGE_SOURCE_VERSION);
+    expect(snap.sourceVersion).toBe(CLAUDE_PROBE_SOURCE_VERSION);
     expect(snap.sourceEventId).toBeNull();
     expect(snap.windows.length).toBeGreaterThan(0);
     for (const w of snap.windows) {
       // Shape only: the value itself is never asserted or printed.
-      expect(CLAUDE_USAGE_WINDOW_KINDS.has(w.windowKind)).toBe(true);
+      expect(CLAUDE_PROBE_WINDOWS.map(([, kind]) => kind)).toContain(w.windowKind);
       expect(w.usedPercent).toBeGreaterThanOrEqual(0);
       expect(w.usedPercent).toBeLessThanOrEqual(100);
-      expect(w.windowDurationMinutes).toBeNull();
-      if (w.resetsAt !== null) expect(Date.parse(w.resetsAt)).toBeGreaterThan(Date.UTC(2020, 0, 1));
+      expect(w.windowDurationMinutes).not.toBeNull();
+      expect(Date.parse(w.resetsAt as string)).toBeGreaterThan(Date.now() - 60_000);
     }
     expect(JSON.stringify(snap)).not.toMatch(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/);
   }, 30_000);
