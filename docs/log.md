@@ -2,6 +2,9 @@
 
 ## 2026-09-17
 
+- **Update**: plan §2's read-only principle now names the Claude quota probe as its one
+  exception. The probe's `POST /v1/messages` is real inference that spends subscription usage, so
+  "only performs read operations" was no longer true. Found in PR #16 review.
 - **Discovery**: a `claude setup-token` token cannot read `GET /api/oauth/usage`. Saved from
   dashboard Settings on 2026-09-17, it got `403`. Public reports (anthropics/claude-code#11985,
   #22450, #24200) show why: such a token is scoped to `user:inference` only, and the endpoint
