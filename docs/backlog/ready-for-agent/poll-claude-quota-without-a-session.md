@@ -38,8 +38,8 @@ free of cost, and the choice between them is a real trade-off rather than a clea
 
 The endpoint Claude Code itself reads for `/usage`. It answers with no session running.
 
-Probed twice, five minutes apart, with `scripts/spike-claude-oauth-usage.ts`. Both probes returned
-`200 OK`; the second confirmed that cadence does not trip the rate limiter. Active windows carry a
+Probed three times with `scripts/spike-claude-oauth-usage.ts`, each at least five minutes apart.
+All three returned `200 OK`, which is what establishes that cadence as safe. Active windows carry a
 uniform structure:
 
 ```
@@ -210,34 +210,60 @@ All closed on 2026-09-16.
    - A `200` whose `limits[]` is absent, empty, or entirely inactive is `not_entitled`, the same
      vocabulary `spoolEventToSnapshot` already uses when no window survives its filter.
 8. Add the observed `kind` values to `WINDOW_LABELS` in `src/lib/queries/overview.ts`. The gate
-   recorded shape only, so those values are deliberately **not** in this bundle and have to be
-   captured during implementation — run the probe once and read them there. Decide the fallback
-   explicitly before writing the adapter: today an unlabelled `windowKind` renders as its own raw
-   string, which would put an undocumented API's internal name in the browser. Either label it or
-   refuse to render it; do not let it through by default.
+   recorded shape only, so those values are deliberately **not** in this bundle. The shape block
+   elides them like every other leaf, so capture them with
+   `pnpm run spike:claude-usage -- --show-limit-kinds`, the one opt-in exception the probe makes.
+   Read that output before copying anything into the repository: a value that reads as a codename
+   rather than a window name is one this repository does not publish, so label it locally and
+   leave it out of the bundle. Decide the fallback explicitly before writing the adapter: today an
+   unlabelled `windowKind` renders as its own raw string, which would put an undocumented API's
+   internal name in the browser. Either label it or refuse to render it; never let it through by
+   default.
 9. Reuse the failure vocabulary already in `src/lib/errors.ts`, exactly as
    `src/lib/ingestors/claude-statusline.ts` does: `schema_mismatch` on a drifted shape,
    `version_unsupported` on an adapter schema bump. Do not invent a second vocabulary.
-10. Treat `429` as "keep the last good observation": the adapter surfaces a distinct error the
-    collector records without clearing the previous snapshot, so the card reads `stale` rather than
-    failing. Never retry, and never sleep-and-retry inside one collection run.
-11. Wire the adapter into `src/lib/collector/index.ts` alongside the other pull sources. It must
-    skip cleanly, not fail, when no Claude token is configured — the same shape as a missing
-    DeepSeek key today.
+10. **Claude stays one adapter, not two.** The collector's stated invariant is "one run, one
+    attempt per provider" (`src/lib/collector/index.ts`), `getLatestAttempts` in
+    `src/lib/db/repository.ts` partitions by provider alone, and `evaluateFreshness` in
+    `src/lib/freshness.ts` lets a failed attempt dominate any snapshot. Registering a second
+    adapter named `claude` would therefore break all three: the two attempts would overwrite each
+    other's latest row, and a poll that got a `429` would drive the card to `error` while a
+    perfectly good spool reading sat underneath it. So compose instead of adding: `buildAdapters`
+    keeps returning exactly one Claude entry, and that entry tries the poll first and falls back
+    to the spool, emitting a single attempt and a single snapshot.
+    - Precedence lives inside the composite, not in `src/lib/queries/overview.ts`. When both
+      sources answer, the more recent `observedAt` wins. The card can then never show two
+      disagreeing Claude readings, because only one ever reaches the database.
+    - `sourceVersion` records which source won, so the diagnostics panel can say so without a new
+      column.
+    - `sourceEventId` stays the spool's event id when the spool wins, preserving today's dedup,
+      and is `null` when the poll wins, so polled observations are never deduplicated. That is
+      exactly what the partial unique index in `0000_initial.sql` already expects.
+    - With no token configured the composite is the spool ingestor and nothing else, which is how
+      the "byte-for-byte unchanged" criterion below is met.
+11. `429` means "keep the last good observation", and the composite is what makes that true. A
+    refused poll is not an error the collector records; it is a reason to fall back to the spool.
+    The attempt then succeeds on spool data and ordinary freshness rules apply.
+    - When the poll is refused **and** the spool has nothing to offer, the attempt does fail, and
+      `evaluateFreshness` will render `error` rather than `stale`. Say so plainly in the card's
+      reason string instead of pretending otherwise: `stale` is what the user sees when a previous
+      snapshot exists, which is the common case, not a guarantee.
+    - Never retry, and never sleep-and-retry inside one collection run.
 12. In `src/lib/config.ts`, add the poll's cadence with a hard floor of five minutes, and reject a
     shorter value at load time rather than silently clamping it. The floor belongs to the poll, not
     to the collector timer, so a manual refresh cannot bypass it either.
-13. In `src/lib/freshness.ts`, give a polled Claude observation the pull budget
-    (`pullMissedIntervals` x `collectIntervalMinutes`). Leave `claudeEventMaxAgeMinutes` in place —
-    it still governs the spool, which remains the default path.
-14. Precedence: when both a poll and a spool observation are fresh, the more recent `observedAt`
-    wins, and the card carries one reason string. The card must never show two disagreeing Claude
-    readings.
-15. Keep `scripts/spike-claude-oauth-usage.ts` as the hand-run gate probe, and add a live check to
+13. `src/lib/freshness.ts` keys its budget on the provider, not on the source: `PULL_PROVIDERS`
+    holds `codex`, `deepseek` and `openrouter`, and everything else gets
+    `claudeEventMaxAgeMinutes`. Since the composite emits one Claude snapshot whose source varies
+    run to run, `freshnessBudgetMs` needs the source too, not just the provider. Pass it, and give
+    a polled observation the pull budget (`pullMissedIntervals` x `collectIntervalMinutes`) while
+    a spool observation keeps `claudeEventMaxAgeMinutes`. Do not widen `PULL_PROVIDERS` to include
+    `claude`: that would silently change how a spool-only install ages out.
+14. Keep `scripts/spike-claude-oauth-usage.ts` as the hand-run gate probe, and add a live check to
     `tests/live/live-smoke.test.ts` that skips when no token is configured. Its key source is
     `tests/helpers/saved-credentials.ts`, which reads the database directly and needs the new
     column value exposed.
-16. Document the whole token lifecycle in `docs/operations/setup.md`, not just how to mint one. A
+15. Document the whole token lifecycle in `docs/operations/setup.md`, not just how to mint one. A
     key kept in plaintext needs a stated way to kill it, and the obvious guess is wrong: removing
     the key in Settings deletes only the dashboard's local copy, because the application never
     creates, modifies, or deletes credentials at the provider (plan §3.5 and §10). The token stays
@@ -271,10 +297,10 @@ Verified against `src/`, `drizzle/`, and `tests/` on 2026-09-16.
 | `src/lib/domain.ts`                                    | add `claude` to `CREDENTIAL_PROVIDERS`; rewrite the false doc comment  |
 | `src/lib/adapters/claude-usage.ts`                     | new pull adapter reading `limits[]`                                    |
 | `src/lib/adapters/http.ts`                             | reuse; extend only if headers cannot be passed today                   |
-| `src/lib/collector/index.ts`                           | run the poll in the parallel pull phase; skip when unconfigured        |
+| `src/lib/collector/index.ts`                           | one composite Claude adapter, never a second one named `claude`        |
 | `src/lib/config.ts`                                    | poll cadence with a five-minute floor, rejected below it               |
-| `src/lib/freshness.ts`                                 | pull budget for a polled Claude observation                            |
-| `src/lib/queries/overview.ts`                          | poll-versus-spool precedence; `WINDOW_LABELS` for the polled kinds     |
+| `src/lib/freshness.ts`                                 | budget keyed on source, not provider alone; poll gets the pull budget  |
+| `src/lib/queries/overview.ts`                          | `WINDOW_LABELS` entries for the polled window kinds                    |
 | `src/components/settings-dialog.tsx`                   | maps `CREDENTIAL_PROVIDERS`; add label, optional-key copy, aria branch |
 | `src/app/api/settings/credentials/[provider]/route.ts` | validates via `isCredentialProvider`; the union widens the route       |
 | `tests/integration/credentials.test.ts`                | save, read, and redact a Claude token round-trip                       |
@@ -321,11 +347,19 @@ that trace before widening the union, in case it has gained consumers since.
 - [ ] Every rendered Claude window carries a label from `WINDOW_LABELS`; no raw `kind` string
       from the endpoint reaches the browser.
 - [ ] A cadence below five minutes is rejected at configuration load, not clamped.
-- [ ] A fresh poll and a fresh spool event never produce two disagreeing Claude readings.
+- [ ] A fresh poll and a fresh spool event never produce two disagreeing Claude readings, because
+      one collection run writes exactly one Claude attempt and one Claude snapshot.
+- [ ] A refused poll with a usable spool reading records a successful attempt on spool data, not
+      an error. `getLatestAttempts` still sees one `claude` row per run.
 - [ ] The Settings dialog renders a Claude field whose copy says the token is optional, and
       leaving it empty changes nothing about how the Claude card behaves today.
-- [ ] No token, email address, organisation ID, quota value, or codenamed key appears in the
-      database, the repository, or any log line.
+- [ ] Two things the design requires are the explicit exceptions to the rule below, and nothing
+      else is: the authorised credential row holding the Claude token in `provider_credentials`,
+      and normalised quota observations in `provider_snapshots` / `quota_windows`. Both are the
+      point of the feature; the plan permits the first at §4.4 and has always stored the second.
+- [ ] Beyond those two, no token, email address, organisation ID, raw payload, or codenamed key
+      appears in the database, and none of them — the quota values included — appears in the
+      repository or in any log line.
 - [ ] Fixtures under `tests/fixtures/` carry no real value and are marked sanitised.
 - [ ] `pnpm run db:migrate` applies `0003` to a database that already holds DeepSeek and OpenRouter
       rows, keeps both rows, and is a no-op when run a second time.

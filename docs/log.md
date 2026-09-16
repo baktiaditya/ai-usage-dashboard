@@ -2,6 +2,29 @@
 
 ## 2026-09-16
 
+- **Decision**: Claude keeps exactly one collector adapter. A second review found that the brief's
+  two-source design could not be built as written: `src/lib/collector/index.ts` states "one run,
+  one attempt per provider", `getLatestAttempts` partitions by provider alone, and
+  `evaluateFreshness` lets a failed attempt dominate any snapshot. Two adapters both named `claude`
+  would overwrite each other's latest attempt, and a poll refused with `429` would drive the card
+  to `error` on top of a perfectly good spool reading. The poll and the spool are therefore
+  composed behind a single adapter that emits one attempt and one snapshot, with precedence by
+  `observedAt` decided inside it rather than in `src/lib/queries/overview.ts`. `sourceVersion`
+  records which source won; `sourceEventId` stays the spool's event id when the spool wins and is
+  `null` when the poll wins, which is what the partial unique index already expects. The
+  alternative — a source discriminator on attempts and snapshots, with matching partition and
+  freshness keys — was rejected as a large schema change bought for one provider.
+- **Discovery**: `freshnessBudgetMs` keys on the provider, so it cannot tell a polled Claude
+  observation from a spooled one. It needs the source passed in. Widening `PULL_PROVIDERS` to
+  include `claude` was considered and rejected: it would silently change how a spool-only install
+  ages out.
+- **Update**: the same review found the poll was cited as plan §3.2 throughout the bundle. §3.2 is
+  the Dashboard; the poll lives in §3.1 under Claude Code. Corrected in the plan, discovery and
+  this log. The probe count is reconciled to three everywhere, the brief's acceptance criteria now
+  name the credential row and the normalised observations as the two deliberate exceptions to
+  "nothing sensitive in the database" rather than forbidding what the feature exists to do, and
+  [#13](https://github.com/baktiaditya/ai-usage-dashboard/issues/13) has had its body rewritten:
+  it still carried the open questions and the `ready-for-human` path after promotion.
 - **Decision**: the plan's Claude-poll amendment is completed. The first pass amended
   [the plan](plan/ai-usage-dashboard-implementation-plan.md) §2 and §3.1 only, and code review
   found three further passages still asserting the pre-amendment world, which left the canonical
@@ -10,7 +33,7 @@
     now records the optional poll joining that parallel pull, and states that the five-minute floor
     belongs to the poll rather than to the timer, so a manual refresh cannot bypass it.
   - §4.4 said the database stores no OAuth tokens and exactly two API keys. The Claude token from
-    `claude setup-token` is an OAuth token, so that sentence forbade the very thing §3.2 now
+    `claude setup-token` is an OAuth token, so that sentence forbade the very thing §3.1 now
     permits. It now names the token as the single exception — user-supplied, never read from a
     CLI's auth file — and the prohibition on reading `~/.claude/.credentials.json` is restated
     unchanged.
@@ -73,8 +96,9 @@
 - **Discovery**: Claude quota can be read without a live Claude Code session. Two pull-shaped
   sources were probed live on the development machine, and both answered while no session was
   running.
-  - `GET /api/oauth/usage`, the source Claude Code reads for `/usage`, returned `200 OK` on two
-    probes five minutes apart. Active windows carry `utilization` plus an absolute ISO-8601
+  - `GET /api/oauth/usage`, the source Claude Code reads for `/usage`, returned `200 OK` on every
+    probe. Two were run when this entry was first written and a third followed the same day, each
+    at least five minutes apart. Active windows carry `utilization` plus an absolute ISO-8601
     `resets_at`, and the payload also exposes a normalised `limits[]` projection, per-model
     breakdown rows, and credits in minor units with an explicit currency and decimal places. The
     endpoint is undocumented, its upstream issue is labelled `invalid`, and refusals escalate

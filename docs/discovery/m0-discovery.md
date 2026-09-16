@@ -120,7 +120,7 @@ because the status line is push-shaped: it answers only while a session is live
 and only after that session's first API response, so the card goes blind exactly
 when nobody is working. `GET https://api.anthropic.com/api/oauth/usage` answers
 with no session running. The plan admits it as an optional, default-off poll
-(§3.2); the implementation contract is the brief
+(§3.1); the implementation contract is the brief
 [poll-claude-quota-without-a-session](../backlog/ready-for-agent/poll-claude-quota-without-a-session.md).
 
 Probed three times with `pnpm run spike:claude-usage`, spaced at least five
