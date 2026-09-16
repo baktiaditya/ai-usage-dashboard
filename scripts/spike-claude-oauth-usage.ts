@@ -41,7 +41,7 @@ import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { displayPath } from '../src/lib/paths';
-import { safeErrorMessage } from '../src/lib/redact';
+import { redactText, safeErrorMessage } from '../src/lib/redact';
 
 const USAGE_URL = 'https://api.anthropic.com/api/oauth/usage';
 
@@ -214,17 +214,37 @@ function describeShape(value: unknown, indent = '  '): string {
   return '<unknown>';
 }
 
+/**
+ * Replace every top-level key this probe does not recognise with a positional
+ * placeholder. Those keys read as canaries and this repository does not publish
+ * them — but their structure is exactly what makes the shape block evidence, so
+ * the value's shape survives and only the name is dropped. Without this the
+ * block below printed the names in full while the summary claimed they were
+ * withheld.
+ */
+function withheldKeys(
+  record: Record<string, unknown>,
+  known: ReadonlySet<string>,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  let withheld = 0;
+  for (const [key, value] of Object.entries(record)) {
+    out[known.has(key) ? key : `<withheld ${(withheld += 1)}>`] = value;
+  }
+  return out;
+}
+
 /** Contract assertions. Each returns a problem string, or null when satisfied. */
 function checkContract(payload: Record<string, unknown>): string[] {
   const problems: string[] = [];
 
+  // The adapter is specified to read `limits[]` and to ignore the individual
+  // window keys, so the absence of any one of them — `five_hour` included — is
+  // not a failure. Gating on a shape nothing consumes would fail the probe for a
+  // drift the dashboard is designed to survive. They are still validated when
+  // present: a window that changed type is evidence the contract moved, and the
+  // output reports which ones carried data.
   const present = KNOWN_WINDOWS.filter((name) => name in payload);
-  if (present.length === 0) {
-    problems.push(`payload carries none of the expected windows (${KNOWN_WINDOWS.join(', ')})`);
-  }
-  if (!('five_hour' in payload)) {
-    problems.push("`five_hour` is absent — the 5-hour gauge is the dashboard's primary window");
-  }
 
   for (const name of present) {
     const window = payload[name];
@@ -279,8 +299,15 @@ function checkContract(payload: Record<string, unknown>): string[] {
         if (typeof row[key] !== 'string') problems.push(`${at}.${key} is not a string`);
       }
       const resetsAt = row['resets_at'];
-      if (resetsAt !== null && (typeof resetsAt !== 'string' || !ISO_8601.test(resetsAt))) {
-        problems.push(`${at}.resets_at is neither null nor an ISO-8601 string`);
+      if (resetsAt !== null && resetsAt !== undefined) {
+        // The pattern alone accepts `2026-99-99T99:99:99`. The adapter turns this
+        // field into a reset time, so it has to be a date, not a date-shaped
+        // string.
+        if (typeof resetsAt !== 'string' || !ISO_8601.test(resetsAt)) {
+          problems.push(`${at}.resets_at is neither null nor an ISO-8601 string`);
+        } else if (Number.isNaN(Date.parse(resetsAt))) {
+          problems.push(`${at}.resets_at does not parse as a date`);
+        }
       }
     });
   }
@@ -377,7 +404,11 @@ async function main(): Promise<number> {
   }
 
   if (!response.ok) {
-    const body = (await response.text()).slice(0, 300);
+    // An upstream error body is free text from outside this process, so it goes
+    // through the same redaction boundary as every other diagnostic the project
+    // emits. Printing it raw would have been the one place this script broke the
+    // contract it exists to defend.
+    const body = redactText((await response.text()).slice(0, 300));
     const hint =
       response.status === 401 || response.status === 403
         ? '\n  A plain ANTHROPIC_API_KEY does not work here; this needs a subscription OAuth token.'
@@ -401,10 +432,11 @@ async function main(): Promise<number> {
 
   const record = payload as Record<string, unknown>;
 
-  out.write('\nshape (values elided — this block is the evidence)\n');
-  out.write(`${describeShape(record)}\n`);
-
   const known = new Set<string>([...KNOWN_WINDOWS, ...KNOWN_STRUCTURES]);
+
+  out.write('\nshape (values elided, unrecognised names withheld — this block is the evidence)\n');
+  out.write(`${describeShape(withheldKeys(record, known))}\n`);
+
   const unrecognised = Object.keys(record).filter((key) => !known.has(key));
   if (unrecognised.length > 0) {
     // The names are withheld on purpose: they read as canaries, and this
