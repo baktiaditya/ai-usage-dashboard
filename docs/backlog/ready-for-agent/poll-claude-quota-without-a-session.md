@@ -205,6 +205,26 @@ scope, is_active }` — and maps each active entry to a `QuotaWindow` from `src/
     `tests/live/live-smoke.test.ts` that skips when no token is configured. Its key source is
     `tests/helpers/saved-credentials.ts`, which reads the database directly and needs the new
     column value exposed.
+14. Document the whole token lifecycle in `docs/operations/setup.md`, not just how to mint one. A
+    key kept in plaintext needs a stated way to kill it, and the obvious guess is wrong: removing
+    the key in Settings deletes only the dashboard's local copy, because the application never
+    creates, modifies, or deletes credentials at the provider (plan §3.5 and §10). The token stays
+    valid upstream until it is revoked there.
+    - Mint: `claude setup-token`, then paste the token into the Claude field in dashboard Settings.
+      It is never placed in `collector.env`, an environment variable, or `.env.local`, which is the
+      same rule the other two keys already follow.
+    - Revoke: claude.ai → Settings → Claude Code, one authorisation at a time. There is no CLI
+      path; `claude setup-token` only mints, and `claude auth logout` ends the interactive session
+      rather than the standalone token. The Anthropic Console key page does not list these tokens
+      at all — it owns organisation API keys, a different mechanism.
+    - Verify the revocation, because a revocation that silently does nothing is worse than none.
+      Run the probe against the old token with the credentials fallback disabled:
+      `CLAUDE_OAUTH_TOKEN=<old> pnpm run spike:claude-usage -- --credentials /nonexistent`.
+      A dead token answers `401` with `OAuth access token is invalid`. The `--credentials` override
+      is not optional: without it the probe falls back to `~/.claude/.credentials.json` and reports
+      the live session's `200 OK`, which reads as a failed revocation when nothing is wrong.
+      Verified on 2026-09-16 against a token revoked through that page.
+    - Also remove the key from dashboard Settings, so the database stops holding a dead secret.
 
 ## Files Touched
 
@@ -233,7 +253,7 @@ Verified against `src/`, `drizzle/`, and `tests/` on 2026-09-16.
 | `tests/e2e/settings.spec.ts`                           | covers the Settings dialog; update for the third field                 |
 | `tests/live/live-smoke.test.ts`                        | live check that skips without a token                                  |
 | `tests/fixtures/`                                      | sanitised endpoint fixtures, values replaced                           |
-| `docs/operations/setup.md`                             | token provisioning and how to enable the poll                          |
+| `docs/operations/setup.md`                             | token mint, revoke, revocation check, and how to enable the poll       |
 
 `docs/discovery/m0-discovery.md` and `README.md` are absent because they are already done: the
 usage-endpoint gate was recorded in discovery and the `spike:claude-usage` row was added to the
@@ -277,6 +297,8 @@ that trace before widening the union, in case it has gained consumers since.
       `drizzle/*.sql`.
 - [ ] `pnpm run db:backup` followed by `pnpm run db:restore` still passes the schema guard in
       `src/lib/db/backup.ts` after the migration.
+- [ ] Setup states that removing the key in Settings does not revoke it upstream, and gives the
+      revocation path and the check that proves it worked.
 
 ## Testing
 
