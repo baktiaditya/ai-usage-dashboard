@@ -230,7 +230,8 @@ All closed on 2026-09-16.
     other's latest row, and a poll that got a `429` would drive the card to `error` while a
     perfectly good spool reading sat underneath it. So compose instead of adding: `buildAdapters`
     keeps returning exactly one Claude entry, and that entry tries the poll first and falls back
-    to the spool, emitting a single attempt and a single snapshot.
+    to the spool, emitting one attempt and at most one new snapshot (an unchanged spool event is
+    deduplicated as today).
     - Precedence lives inside the composite, not in `src/lib/queries/overview.ts`. When both
       sources answer, the more recent `observedAt` wins. The card can then never show two
       disagreeing Claude readings, because only one ever reaches the database.
@@ -241,17 +242,30 @@ All closed on 2026-09-16.
       exactly what the partial unique index in `0000_initial.sql` already expects.
     - With no token configured the composite is the spool ingestor and nothing else, which is how
       the "byte-for-byte unchanged" criterion below is met.
-11. `429` means "keep the last good observation", and the composite is what makes that true. A
-    refused poll is not an error the collector records; it is a reason to fall back to the spool.
-    The attempt then succeeds on spool data and ordinary freshness rules apply.
-    - When the poll is refused **and** the spool has nothing to offer, the attempt does fail, and
-      `evaluateFreshness` will render `error` rather than `stale`. Say so plainly in the card's
-      reason string instead of pretending otherwise: `stale` is what the user sees when a previous
-      snapshot exists, which is the common case, not a guarantee.
+11. A `429` never retries and falls back to the spool. When the spool produces a snapshot, the
+    composite emits one successful attempt on that snapshot and ordinary source freshness decides
+    whether the card is `healthy` or `stale`. When the spool has nothing usable, the composite
+    emits an error; `evaluateFreshness` then renders `error`, and any older snapshot remains visible
+    only as historical data. Do not special-case that failed attempt into `stale`, because canonical
+    status precedence says the latest error wins.
     - Never retry, and never sleep-and-retry inside one collection run.
-12. In `src/lib/config.ts`, add the poll's cadence with a hard floor of five minutes, and reject a
-    shorter value at load time rather than silently clamping it. The floor belongs to the poll, not
-    to the collector timer, so a manual refresh cannot bypass it either.
+12. Enforce the poll cadence across processes, not just in configuration. In
+    `drizzle/0003_claude_usage_token.sql`, create a singleton `claude_poll_state` table with the
+    exact shape `id INTEGER PRIMARY KEY CHECK (id = 1), last_attempted_at TEXT NOT NULL`. Add the
+    matching Drizzle schema and `claimClaudePoll(db, attemptedAt, intervalMs): boolean` repository
+    operation. Use one `INSERT ... ON CONFLICT (id) DO UPDATE ... WHERE last_attempted_at <= ?`
+    statement with a cutoff computed from the configured interval and return whether SQLite
+    changed a row; separate read-then-write statements race. Store canonical UTC ISO timestamps
+    so SQLite text comparison preserves time order.
+    The collector supplies the database-bound claim to the composite adapter rather than making
+    the HTTP adapter own SQLite. Claim **before** starting the request: a `429`, network failure, or
+    process crash still spends the interval, which is the safe side of an escalating limiter. A
+    scheduled collector and a manual refresh share the same database, so only one wins when they
+    overlap; a loser skips the poll and continues through the spool path. Add
+    `AUD_CLAUDE_POLL_INTERVAL_MINUTES` to `src/lib/config.ts`, defaulting to five with a hard floor
+    of five, and reject a shorter value at load time rather than silently clamping it. In-memory
+    timestamps and the existing refresh limiter are insufficient: the systemd unit is a fresh
+    oneshot process, and the web limiter permits more than one refresh inside five minutes.
 13. `src/lib/freshness.ts` keys its budget on the provider, not on the source: `PULL_PROVIDERS`
     holds `codex`, `deepseek` and `openrouter`, and everything else gets
     `claudeEventMaxAgeMinutes`. Since the composite emits one Claude snapshot whose source varies
@@ -278,7 +292,8 @@ All closed on 2026-09-16.
     - Verify the revocation, because a revocation that silently does nothing is worse than none.
       Run the probe against the old token with the credentials fallback disabled:
       `CLAUDE_OAUTH_TOKEN=<old> pnpm run spike:claude-usage -- --credentials /nonexistent`.
-      A dead token answers `401` with `OAuth access token is invalid`. The `--credentials` override
+      A dead token answers `401`; the probe deliberately discards the provider body, so the status
+      is the proof. The `--credentials` override
       is not optional: without it the probe falls back to `~/.claude/.credentials.json` and reports
       the live session's `200 OK`, which reads as a failed revocation when nothing is wrong.
       Verified on 2026-09-16 against a token revoked through that page.
@@ -290,10 +305,11 @@ Verified against `src/`, `drizzle/`, and `tests/` on 2026-09-16.
 
 | Path                                                   | Change                                                                 |
 | ------------------------------------------------------ | ---------------------------------------------------------------------- |
-| `drizzle/0003_claude_usage_token.sql`                  | new; rebuild `provider_credentials` with the widened provider check    |
-| `src/lib/db/schema.ts`                                 | widen the `enum` on `providerCredentials.provider`                     |
+| `drizzle/0003_claude_usage_token.sql`                  | rebuild credentials; create durable singleton `claude_poll_state`      |
+| `src/lib/db/schema.ts`                                 | widen credentials; model the Claude poll-state singleton               |
 | `src/lib/db/migrations.generated.ts`                   | regenerate via `pnpm run db:build-migrations`; never hand-edit         |
 | `src/lib/db/credentials.ts`                            | third field on `ProviderCredentials` and `readProviderCredentials`     |
+| `src/lib/db/repository.ts`                             | atomically claim the next permitted Claude poll attempt                |
 | `src/lib/domain.ts`                                    | add `claude` to `CREDENTIAL_PROVIDERS`; rewrite the false doc comment  |
 | `src/lib/adapters/claude-usage.ts`                     | new pull adapter reading `limits[]`                                    |
 | `src/lib/adapters/http.ts`                             | reuse; extend only if headers cannot be passed today                   |
@@ -338,7 +354,8 @@ that trace before widening the union, in case it has gained consumers since.
       Claude Code session has run inside the event freshness budget.
 - [ ] With no token configured, behaviour is byte-for-byte what it is today: the spool is the only
       Claude source, and nothing calls the endpoint.
-- [ ] A `429` renders the last good observation as `stale` and issues no retry.
+- [ ] A `429` issues no retry. With a usable spool snapshot the attempt succeeds from the spool and
+      ordinary freshness decides `healthy`/`stale`; without one the attempt is `error`.
 - [ ] A response whose shape has drifted renders `unavailable`, never a confidently wrong number.
 - [ ] Two `limits[]` entries that would produce the same `bucketId` raise `schema_mismatch` and
       discard the snapshot, rather than reaching the unique constraint on `quota_windows`.
@@ -347,8 +364,10 @@ that trace before widening the union, in case it has gained consumers since.
 - [ ] Every rendered Claude window carries a label from `WINDOW_LABELS`; no raw `kind` string
       from the endpoint reaches the browser.
 - [ ] A cadence below five minutes is rejected at configuration load, not clamped.
+- [ ] Scheduled and manual collections share the durable cadence claim. Two overlapping calls make
+      at most one HTTP request, and a failed request still blocks another claim for the interval.
 - [ ] A fresh poll and a fresh spool event never produce two disagreeing Claude readings, because
-      one collection run writes exactly one Claude attempt and one Claude snapshot.
+      one collection run writes exactly one Claude attempt and at most one new Claude snapshot.
 - [ ] A refused poll with a usable spool reading records a successful attempt on spool data, not
       an error. `getLatestAttempts` still sees one `claude` row per run.
 - [ ] The Settings dialog renders a Claude field whose copy says the token is optional, and
@@ -375,8 +394,9 @@ that trace before widening the union, in case it has gained consumers since.
 ## Testing
 
 - `pnpm exec vitest run tests/unit tests/integration` for adapter shape, `limits[]` mapping, drift
-  handling, the five-minute floor, the skip-when-unconfigured path, and the poll-versus-spool
-  precedence rule, against sanitised fixtures.
+  handling, the five-minute floor, atomic claims from overlapping callers, the
+  skip-when-unconfigured path, and the poll-versus-spool precedence rule, against sanitised
+  fixtures.
 - `pnpm run spike:claude-usage` as the hand-run live gate, no more than once every five minutes.
 - `pnpm run test:live` for the added live check; it must skip, not fail, when no token is present.
 - `pnpm run test:e2e` is **required**, not optional. Widening `CREDENTIAL_PROVIDERS` adds a third

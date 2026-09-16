@@ -2,6 +2,29 @@
 
 ## 2026-09-16
 
+- **Decision**: [the plan](plan/ai-usage-dashboard-implementation-plan.md) now gives a Claude
+  usage refusal conditional, not unconditional, status semantics. The
+  composite falls back to the spool without retrying. A usable spool snapshot produces one
+  successful Claude attempt and ordinary source freshness decides `healthy` or `stale`; without a
+  usable spool the attempt is `error`, and any older snapshot is historical. This replaces the
+  earlier shorthand below that said every refusal degrades to `stale`, which contradicted the
+  canonical latest-attempt precedence.
+- **Design**: [the poll brief](backlog/ready-for-agent/poll-claude-quota-without-a-session.md)
+  specifies that the five-minute Claude usage floor is enforced by an atomic, durable SQLite claim,
+  not by configuration or process memory. The systemd collector is a new oneshot process on every
+  run, while manual refresh runs in the web process; only shared state prevents either path, or two
+  overlapping paths, from calling the endpoint inside the interval. The planned migration `0003`
+  must therefore create singleton `claude_poll_state(last_attempted_at)` alongside the
+  credential-table rebuild; it has not been implemented yet.
+  Claiming happens before the request, so a refusal or crash conservatively spends the interval;
+  a caller that loses the claim reads the spool without polling.
+- **Update**: the hand-run usage probe now validates the contract recorded in
+  [M0 discovery](discovery/m0-discovery.md). It accepts real
+  ISO-8601 offsets without accepting impossible calendar dates, distinguishes missing nullable
+  fields from explicit `null`, maps absent/empty/all-inactive `limits[]` to `not_entitled`, rejects
+  malformed credential JSON and whitespace-only file tokens cleanly, counts withheld names through
+  every array row, and never reads or prints a non-2xx provider body. Focused unit tests cover those
+  boundaries.
 - **Decision**: Claude keeps exactly one collector adapter. A second review found that the brief's
   two-source design could not be built as written: `src/lib/collector/index.ts` states "one run,
   one attempt per provider", `getLatestAttempts` partitions by provider alone, and
@@ -70,8 +93,9 @@
     `claude -p "/usage"` is a diagnostic, and no value it prints is stored, because its percentages
     are integers and its reset time is a rounded relative duration.
   - §3.1 gains the optional poll: read the normalised `limits[]` projection, at most one request
-    per five minutes, never retry a refusal, degrade to `stale` on refusal and `unavailable` on
-    drift. The status-line spool stays the default and the fallback.
+    per five minutes, never retry a refusal, fall back to the spool on refusal, and render drift as
+    `unavailable`. The newer decision above records the exact status when the fallback succeeds or
+    fails. The status-line spool stays the default and the fallback.
   - Default-off was chosen so that cloning this repository never causes an undocumented Anthropic
     endpoint to be called without the user opting in.
   - The codenamed keys the endpoint returns are deliberately not recorded anywhere in this

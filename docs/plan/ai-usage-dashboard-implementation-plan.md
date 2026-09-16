@@ -93,7 +93,7 @@ The dashboard makes no automatic routing decisions in the MVP. It only presents 
 - Configuration integration must preserve any existing status line. If an existing configuration is found later, compose explicitly or fail closed — never overwrite silently.
 - The `rate_limits` field is only expected for Claude.ai Pro/Max accounts (or gateways with spend limits) and only becomes available after the first API response. Since this machine's `subscriptionType` is undetected and no status line exists yet, M0 must still prove the actual payload.
 - Parsing interactive `/status` or `/usage` output is not a source. `claude -p "/usage"` is permitted as a diagnostic only: it consumes no quota, but it renders integer percentages and a reset time that is a rounded relative duration, so no value it prints is ever stored.
-- **Optional usage poll, default off.** When the user supplies a token minted by `claude setup-token`, the collector may additionally poll Claude's undocumented usage endpoint, which answers with no session running. Read the normalised `limits[]` projection rather than the individual window keys, so a new window needs no code change. Send at most one request per five minutes and never retry a refusal: the endpoint escalates its rate limit with no `Retry-After`, so a refusal keeps the last good observation and marks it `stale`. A drifted shape renders `unavailable`. The status-line spool stays the default path and the fallback; the poll never replaces it, and the endpoint being undocumented means a shape change is expected rather than exceptional.
+- **Optional usage poll, default off.** When the user supplies a token minted by `claude setup-token`, the collector may additionally poll Claude's undocumented usage endpoint, which answers with no session running. Read the normalised `limits[]` projection rather than the individual window keys, so a new window needs no code change. Send at most one request per five minutes and never retry a refusal: the endpoint escalates its rate limit with no `Retry-After`. A refusal falls back to the spool; if that produces a snapshot, ordinary freshness rules decide whether it is `healthy` or `stale`. With no usable spool, the attempt is `error` and any older value remains visible only as historical data. A drifted shape renders `unavailable`. The status-line spool stays the default path and the fallback; the poll never replaces it, and the endpoint being undocumented means a shape change is expected rather than exceptional.
 
 #### DeepSeek
 
@@ -133,7 +133,10 @@ The dashboard makes no automatic routing decisions in the MVP. It only presents 
 - Pull Codex, DeepSeek, and OpenRouter in parallel with independent timeouts; ingest the Claude
   spool in the same run. When the optional Claude usage poll of §3.1 is configured, it joins that
   parallel pull and the spool ingest still runs. Its five-minute floor is a property of the poll
-  itself, not of the timer: a manual refresh must not bypass it.
+  itself, not of the timer: a manual refresh must not bypass it. Scheduled and manual collection
+  share an atomic, durable claim in SQLite for the last Claude poll attempt. The claim is written
+  before the HTTP request, so failures and process crashes still spend the interval; losing a race
+  skips the poll and continues with the spool.
 - Use SQLite WAL mode, `busy_timeout`, short transactions, and unique constraints to handle overlap between collector/manual refresh and the web process.
 - Default retention 90 days. Daily aggregates may be kept longer once their rollup and idempotency rules are tested.
 - Define freshness per source. Initial defaults: a pull source becomes `stale` after three missed intervals; a Claude event also becomes `stale` when the event passes its threshold or `resets_at` has passed.
@@ -261,6 +264,17 @@ All money values are stored as canonical decimal strings or scaled integers with
 - attempt: `run_id`, `provider`, `outcome` (`success`, `unavailable`, or `error`), `started_at`, `finished_at`, `error_code`, `retry_count`
 
 Derive success/failure counts from attempts so partial success is auditable and cannot drift from its details.
+
+#### `claude_poll_state`
+
+Planned for the optional Claude poll; this table is not implemented yet.
+
+- `id`, constrained to the singleton value `1`
+- `last_attempted_at`, claimed atomically before an HTTP request
+
+This source-specific scheduling state is separate from provider attempts: a composite Claude attempt
+may succeed from the spool after the poll fails, so `collector_attempts` cannot prove when the poll
+was last called. The durable claim is shared by the systemd oneshot and the web process.
 
 The database stores no account emails, account IDs, full CLI/status-line inputs, full app-server
 responses, or raw API payloads. Under §3.5 it stores the DeepSeek and OpenRouter API keys in
