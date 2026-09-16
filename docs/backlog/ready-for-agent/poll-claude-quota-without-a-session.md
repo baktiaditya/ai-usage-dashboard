@@ -180,7 +180,12 @@ All closed on 2026-09-16.
 6. Add `src/lib/adapters/claude-usage.ts`. It sends one `GET` to the usage endpoint through the
    shared helper in `src/lib/adapters/http.ts`, with `Authorization: Bearer <token>`,
    `anthropic-beta: oauth-2025-04-20`, `Accept: application/json`, and a `claude-cli/<version>`
-   user agent. It reads the `limits[]` array and maps each entry to a `QuotaWindow` from
+   user agent. The helper cannot send that today: `HttpGetOptions` accepts no extra headers and
+   `getJsonLossless` hard-codes `User-Agent: ai-usage-dashboard/0.1.0`. Extend it with optional
+   headers that may add `anthropic-beta` and override `User-Agent`, while `Authorization` stays
+   derived from `bearerToken` so no caller can bypass it; DeepSeek and OpenRouter keep sending
+   exactly what they send now. Call the helper once, never through `withBoundedRetry`: `rate_limited`
+   is in `RETRYABLE_CODES`, so wrapping it would retry into the escalation ladder. It reads the `limits[]` array and maps each entry to a `QuotaWindow` from
    `src/lib/domain.ts`, field by field as the next step specifies. Ignore the individual window
    keys, so a new window needs no code change.
 7. The mapping from a `limits[]` entry to a `QuotaWindow` is specified field by field, because
@@ -221,7 +226,12 @@ All closed on 2026-09-16.
    default.
 9. Reuse the failure vocabulary already in `src/lib/errors.ts`, exactly as
    `src/lib/ingestors/claude-statusline.ts` does: `schema_mismatch` on a drifted shape,
-   `version_unsupported` on an adapter schema bump. Do not invent a second vocabulary.
+   `version_unsupported` on an adapter schema bump. Do not invent a second vocabulary, and do not
+   add a Claude-specific status mapping for it. Neither code is in `UNAVAILABLE_CODES`, so the
+   collector records the attempt as `error` and `evaluateFreshness` renders `error`, as it already
+   does for drift on every other provider. Plan §4.5 still lists an unrecognised format guard under
+   `unavailable`; that divergence is pre-existing, applies to all providers, and is recorded in
+   [the log](../../log.md) under 2026-09-17. Changing `UNAVAILABLE_CODES` is out of scope here.
 10. **Claude stays one adapter, not two.** The collector's stated invariant is "one run, one
     attempt per provider" (`src/lib/collector/index.ts`), `getLatestAttempts` in
     `src/lib/db/repository.ts` partitions by provider alone, and `evaluateFreshness` in
@@ -242,12 +252,18 @@ All closed on 2026-09-16.
       exactly what the partial unique index in `0000_initial.sql` already expects.
     - With no token configured the composite is the spool ingestor and nothing else, which is how
       the "byte-for-byte unchanged" criterion below is met.
-11. A `429` never retries and falls back to the spool. When the spool produces a snapshot, the
-    composite emits one successful attempt on that snapshot and ordinary source freshness decides
-    whether the card is `healthy` or `stale`. When the spool has nothing usable, the composite
-    emits an error; `evaluateFreshness` then renders `error`, and any older snapshot remains visible
-    only as historical data. Do not special-case that failed attempt into `stale`, because canonical
-    status precedence says the latest error wins.
+11. Any poll failure falls back to the spool: a `429`, any other refusal such as `401`, a network
+    error, a timeout, a drifted shape (`schema_mismatch`, including a `bucketId` collision), or
+    `version_unsupported`. None of them retries. When the spool produces a snapshot, the composite
+    emits one successful attempt on that snapshot and ordinary source freshness decides whether the
+    card is `healthy` or `stale`. When the spool has nothing usable, the composite throws the
+    poll's `CollectionError`, not the spool's: the user configured the token, so the poll's code is
+    the one that explains the card. The collector then records `error` and `evaluateFreshness`
+    renders `error`, and any older snapshot remains visible only as historical data. Do not
+    special-case that failed attempt into `stale` or `unavailable`, because canonical status
+    precedence says the latest error wins.
+    - The poll's failure is never written as a second attempt, and its `safeMessage` stays
+      redacted like every other adapter's.
     - Never retry, and never sleep-and-retry inside one collection run.
 12. Enforce the poll cadence across processes, not just in configuration. In
     `drizzle/0003_claude_usage_token.sql`, create a singleton `claude_poll_state` table with the
@@ -312,7 +328,8 @@ Verified against `src/`, `drizzle/`, and `tests/` on 2026-09-16.
 | `src/lib/db/repository.ts`                             | atomically claim the next permitted Claude poll attempt                |
 | `src/lib/domain.ts`                                    | add `claude` to `CREDENTIAL_PROVIDERS`; rewrite the false doc comment  |
 | `src/lib/adapters/claude-usage.ts`                     | new pull adapter reading `limits[]`                                    |
-| `src/lib/adapters/http.ts`                             | reuse; extend only if headers cannot be passed today                   |
+| `src/lib/adapters/http.ts`                             | add optional headers; `User-Agent` overridable, `Authorization` fixed  |
+| `tests/integration/http-adapters.test.ts`              | Claude headers sent; DeepSeek and OpenRouter requests unchanged        |
 | `src/lib/collector/index.ts`                           | one composite Claude adapter, never a second one named `claude`        |
 | `src/lib/config.ts`                                    | poll cadence with a five-minute floor, rejected below it               |
 | `src/lib/freshness.ts`                                 | budget keyed on source, not provider alone; poll gets the pull budget  |
@@ -356,7 +373,10 @@ that trace before widening the union, in case it has gained consumers since.
       Claude source, and nothing calls the endpoint.
 - [ ] A `429` issues no retry. With a usable spool snapshot the attempt succeeds from the spool and
       ordinary freshness decides `healthy`/`stale`; without one the attempt is `error`.
-- [ ] A response whose shape has drifted renders `unavailable`, never a confidently wrong number.
+- [ ] A response whose shape has drifted never produces a number. With a usable spool snapshot the
+      attempt succeeds from the spool; without one the attempt is `error` with code
+      `schema_mismatch` and the card renders `error`, the same as drift on every other provider.
+- [ ] The DeepSeek and OpenRouter requests carry exactly the headers they carry today.
 - [ ] Two `limits[]` entries that would produce the same `bucketId` raise `schema_mismatch` and
       discard the snapshot, rather than reaching the unique constraint on `quota_windows`.
 - [ ] A polled window's `resetsAt` matches the `resets_at` the endpoint sent, to the second. A

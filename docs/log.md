@@ -1,5 +1,30 @@
 # Bundle Update Log
 
+## 2026-09-17
+
+- **Risk**: plan §4.5 and the implementation disagree on how a failed format or version guard is
+  shown. §4.5 lists it under `unavailable`, and the comment in
+  `src/lib/ingestors/claude-statusline.ts` says the same, but `UNAVAILABLE_CODES` in
+  `src/lib/errors.ts` holds only `not_configured`, `not_entitled`, and `no_event_yet`. The collector
+  therefore records `schema_mismatch` and `version_unsupported` as an `error` attempt, and
+  `evaluateFreshness` renders `error`, for Codex, DeepSeek, OpenRouter, and the Claude spool alike.
+  The divergence predates the Claude poll. It is annotated in §4.5 rather than resolved there,
+  because either direction is a cross-provider change that belongs in its own brief.
+- **Decision**: the Claude usage poll follows the implemented mapping, not §4.5. A review of PR #14
+  found that [the poll brief](backlog/ready-for-agent/poll-claude-quota-without-a-session.md)
+  required `schema_mismatch` on drift while its acceptance criteria required the card to render
+  `unavailable`, which the existing collector cannot produce. Drift now renders `error` when no
+  spool snapshot is usable, and no Claude-specific status mapping is added. This supersedes the
+  2026-09-16 shorthand "render drift as `unavailable`" in plan §3.1.
+- **Decision**: every poll failure falls back to the spool, not only a `429`. A `401`, a transport
+  failure, a timeout, or a drifted shape leaves the spool exactly as valid as a refusal does. When
+  the spool has nothing usable, the composite surfaces the poll's failure code, because the user
+  configured the token and that code is the one that explains the card.
+- **Update**: the brief now states that `src/lib/adapters/http.ts` must be extended, rather than
+  "only if" needed. `HttpGetOptions` accepts no extra headers and `getJsonLossless` hard-codes its
+  `User-Agent`, while the poll requires `anthropic-beta` and a `claude-cli/<version>` agent. It
+  also forbids wrapping the poll in `withBoundedRetry`, since `rate_limited` is a retryable code.
+
 ## 2026-09-16
 
 - **Decision**: [the plan](plan/ai-usage-dashboard-implementation-plan.md) now gives a Claude
