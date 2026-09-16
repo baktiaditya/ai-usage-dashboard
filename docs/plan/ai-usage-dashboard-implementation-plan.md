@@ -130,7 +130,10 @@ The dashboard makes no automatic routing decisions in the MVP. It only presents 
 - Provide a one-shot command, e.g. `pnpm run collect`, as the single orchestration path for scheduled and manual collection.
 - Run that command every 5 minutes via a user-level `systemd` service + timer. Do not rely on in-process Next.js intervals as the primary scheduler.
 - Optionally serve the dashboard itself at boot as a user-level web unit, installed with `--with-web`. See the 2026-09-14 decision in the [log](../log.md).
-- Pull Codex, DeepSeek, and OpenRouter in parallel with independent timeouts; ingest the Claude spool in the same run.
+- Pull Codex, DeepSeek, and OpenRouter in parallel with independent timeouts; ingest the Claude
+  spool in the same run. When the optional Claude usage poll of §3.2 is configured, it joins that
+  parallel pull and the spool ingest still runs. Its five-minute floor is a property of the poll
+  itself, not of the timer: a manual refresh must not bypass it.
 - Use SQLite WAL mode, `busy_timeout`, short transactions, and unique constraints to handle overlap between collector/manual refresh and the web process.
 - Default retention 90 days. Daily aggregates may be kept longer once their rollup and idempotency rules are tested.
 - Define freshness per source. Initial defaults: a pull source becomes `stale` after three missed intervals; a Claude event also becomes `stale` when the event passes its threshold or `resets_at` has passed.
@@ -172,6 +175,10 @@ Decided and implemented 2026-09-15 (see the [log](../log.md)); delivered from th
 - Saving a key does not validate it upstream and does not start a collection. Saving or removing a
   key changes only the dashboard's local copy; the application still never creates, modifies, or
   deletes keys at the provider (§10).
+- A third key is optional and belongs to a source, not to a provider: the Claude token of §3.2.
+  DeepSeek and OpenRouter report nothing without their key; Claude keeps reporting through the
+  status-line spool without one. Settings must say so, so that an empty Claude field never reads
+  as a broken provider.
 - The development server stores keys only in its own database (§3.4).
 
 ## 4. Technical design
@@ -255,7 +262,12 @@ All money values are stored as canonical decimal strings or scaled integers with
 
 Derive success/failure counts from attempts so partial success is auditable and cannot drift from its details.
 
-The database stores no OAuth tokens, account emails, account IDs, full CLI/status-line inputs, full app-server responses, or raw API payloads. Under §3.5 it stores exactly two API keys — DeepSeek and OpenRouter — in `provider_credentials`.
+The database stores no account emails, account IDs, full CLI/status-line inputs, full app-server
+responses, or raw API payloads. Under §3.5 it stores the DeepSeek and OpenRouter API keys in
+`provider_credentials`, and — only when the user opts into the §3.2 poll — a Claude token minted
+by `claude setup-token`. That token is the single exception to storing no OAuth token: it is
+supplied by the user, never read out of any CLI's auth file, and the prohibition on reading
+`~/.claude/.credentials.json` stands unchanged.
 
 ### 4.5 Status semantics
 
@@ -322,7 +334,9 @@ The MVP may proceed with unavailable adapters, but acceptance for a given provid
 
 - One page shows the last known state of all four providers without blocking when one adapter fails or is unconfigured.
 - Codex reads quota via `account/rateLimits/read`; it does not read auth files or parse terminal UI.
-- Claude shows quota only when the bridge receives a validated, still-fresh payload; a missing payload shows as `unavailable`/`stale`.
+- Claude shows quota only from a validated, still-fresh observation — the status-line spool by
+  default, or the optional §3.2 poll when the user has configured it. With neither, the card shows
+  `unavailable`/`stale`.
 - DeepSeek shows all per-currency balances without claiming any usage; OpenRouter shows total credits, total usage, and remaining from the official endpoint.
 - All money figures use decimal-safe arithmetic, and every quota window retains its source `usedPercent`, duration, and reset time.
 - Historical snapshots are stored. 7/30-day charts appear only with sufficient baseline and use metric-type-appropriate aggregation.

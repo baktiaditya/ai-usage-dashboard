@@ -2,6 +2,39 @@
 
 ## 2026-09-16
 
+- **Decision**: the plan's Claude-poll amendment is completed. The first pass amended
+  [the plan](plan/ai-usage-dashboard-implementation-plan.md) §2 and §3.1 only, and code review
+  found three further passages still asserting the pre-amendment world, which left the canonical
+  document contradicting itself and the brief unexecutable.
+  - §3.3 said the collector pulls Codex, DeepSeek and OpenRouter and ingests the Claude spool. It
+    now records the optional poll joining that parallel pull, and states that the five-minute floor
+    belongs to the poll rather than to the timer, so a manual refresh cannot bypass it.
+  - §4.4 said the database stores no OAuth tokens and exactly two API keys. The Claude token from
+    `claude setup-token` is an OAuth token, so that sentence forbade the very thing §3.2 now
+    permits. It now names the token as the single exception — user-supplied, never read from a
+    CLI's auth file — and the prohibition on reading `~/.claude/.credentials.json` is restated
+    unchanged.
+  - §7 said Claude shows quota only when the bridge receives a payload. It now accepts either
+    source, spool by default.
+  - §3.5 gains the optional third key, with the reason it differs in kind: DeepSeek and OpenRouter
+    report nothing without their key, while Claude keeps reporting through the spool, so Settings
+    must say the Claude field is optional or an empty field reads as a broken provider.
+- **Discovery**: widening `CREDENTIAL_PROVIDERS` does not reach the database. The provider column
+  is constrained twice more — a Drizzle `enum` in `src/lib/db/schema.ts` and
+  `CHECK (provider IN ('deepseek', 'openrouter'))` in `drizzle/0002_provider_credentials.sql` —
+  and `readProviderCredentials` in `src/lib/db/credentials.ts` returns a hand-written two-field
+  object rather than following the constant. The brief's impact map claimed the credential store
+  would follow automatically; had it been implemented as written, saving a Claude token would have
+  been refused by the `CHECK`. The brief now carries the migration, the regenerated
+  `migrations.generated.ts`, the read model, and their tests. SQLite cannot alter a `CHECK` in
+  place, so `0003` rebuilds the table and `0002` stays untouched as history.
+- **Update**: the usage-endpoint gate is now recorded in
+  [M0 discovery](discovery/m0-discovery.md), superseding the note in the `Proposed` entry below
+  that deliberately left that document unchanged. That note was right while the source was a
+  proposal; the plan has since accepted it, and
+  [the sync map](../.agents/skills/okf-sync/references/repo-sync-map.md) puts a passing provider
+  gate in discovery. The record withholds the codenamed key names and keeps only their count, which
+  is the drift signal. `pnpm run spike:claude-usage` is also added to the README command table.
 - **Decision**: Claude quota may be polled, as an optional source that is off by default. This
   amends [the plan](plan/ai-usage-dashboard-implementation-plan.md) §2 and §3.1.
   - §2 "Structured source first" previously forbade calling internal endpoints with extracted

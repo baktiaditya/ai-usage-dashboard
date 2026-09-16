@@ -121,6 +121,7 @@ so scheduled and manual runs cannot drift apart in behaviour.
 | `pnpm run verify`                            | format + lint + typecheck + unit + integration                                                            |
 | `pnpm run test:e2e`                          | browser smoke at desktop and mobile widths                                                                |
 | `pnpm run test:live`                         | opt-in live checks; skips gates whose credential is absent                                                |
+| `pnpm run spike:claude-usage`                | hand-run gate probe for Claude's usage endpoint; at most once every five minutes                          |
 
 ## Status
 
