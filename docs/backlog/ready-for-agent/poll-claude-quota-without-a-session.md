@@ -149,54 +149,70 @@ All closed on 2026-09-16.
 
 1. Add `claude` to `CREDENTIAL_PROVIDERS` in `src/lib/domain.ts`, so the token is saved, read, and
    redacted by the same path DeepSeek and OpenRouter already use in `src/lib/db/credentials.ts`.
-   Check every switch and exhaustiveness check over that union before widening it — the type is
-   `CredentialProvider`, and `isCredentialProvider` guards the API boundary.
-2. Add `src/lib/adapters/claude-usage.ts`. It sends one `GET` to the usage endpoint through the
+   The doc comment directly above that constant currently reads "Codex and Claude authenticate
+   through their own CLIs and have no key here" — rewrite it, because widening the union makes it
+   false. The type is `CredentialProvider`, and `isCredentialProvider` guards the API boundary in
+   `src/app/api/settings/credentials/[provider]/route.ts`.
+2. Widening that union is product-visible. `src/components/settings-dialog.tsx` maps over
+   `CREDENTIAL_PROVIDERS`, so a third field appears in Settings on its own. Add its `FIELD_LABELS`
+   entry and help copy, and extend the `aria-describedby` branch that currently special-cases
+   `openrouter`. The copy must say the Claude token is **optional**: unlike DeepSeek and
+   OpenRouter, Claude still reports quota without it, through the status-line spool.
+3. Add `src/lib/adapters/claude-usage.ts`. It sends one `GET` to the usage endpoint through the
    shared helper in `src/lib/adapters/http.ts`, with `Authorization: Bearer <token>`,
    `anthropic-beta: oauth-2025-04-20`, `Accept: application/json`, and a `claude-cli/<version>`
    user agent. It parses the `limits[]` array — `{ kind, group, percent, severity, resets_at,
 scope, is_active }` — and maps each active entry to a `QuotaWindow` from `src/lib/domain.ts`.
    Ignore the individual window keys, so a new window needs no code change.
-3. Reuse the failure vocabulary already in `src/lib/errors.ts`, exactly as
+4. Reuse the failure vocabulary already in `src/lib/errors.ts`, exactly as
    `src/lib/ingestors/claude-statusline.ts` does: `schema_mismatch` on a drifted shape,
    `version_unsupported` on an adapter schema bump. Do not invent a second vocabulary.
-4. Treat `429` as "keep the last good observation": the adapter surfaces a distinct error the
+5. Treat `429` as "keep the last good observation": the adapter surfaces a distinct error the
    collector records without clearing the previous snapshot, so the card reads `stale` rather than
    failing. Never retry, and never sleep-and-retry inside one collection run.
-5. Wire the adapter into `src/lib/collector/index.ts` alongside the other pull sources. It must
+6. Wire the adapter into `src/lib/collector/index.ts` alongside the other pull sources. It must
    skip cleanly, not fail, when no Claude token is configured — the same shape as a missing
    DeepSeek key today.
-6. In `src/lib/config.ts`, add the poll's cadence with a hard floor of five minutes, and reject a
+7. In `src/lib/config.ts`, add the poll's cadence with a hard floor of five minutes, and reject a
    shorter value at load time rather than silently clamping it.
-7. In `src/lib/freshness.ts`, give a polled Claude observation the pull budget
+8. In `src/lib/freshness.ts`, give a polled Claude observation the pull budget
    (`pullMissedIntervals` x `collectIntervalMinutes`). Leave `claudeEventMaxAgeMinutes` in place —
    it still governs the spool, which remains the default path.
-8. Precedence: when both a poll and a spool observation are fresh, the more recent `observedAt`
+9. Precedence: when both a poll and a spool observation are fresh, the more recent `observedAt`
    wins, and the card carries one reason string. The card must never show two disagreeing Claude
    readings.
-9. Keep `scripts/spike-claude-oauth-usage.ts` as the hand-run gate probe, and add a live check to
-   `tests/live/live-smoke.test.ts` that skips when no token is configured.
+10. Keep `scripts/spike-claude-oauth-usage.ts` as the hand-run gate probe, and add a live check to
+    `tests/live/live-smoke.test.ts` that skips when no token is configured.
 
 ## Files Touched
 
 Verified against `src/` on 2026-09-16.
 
-| Path                               | Change                                                                |
-| ---------------------------------- | --------------------------------------------------------------------- |
-| `src/lib/domain.ts`                | add `claude` to `CREDENTIAL_PROVIDERS`; check the union's users       |
-| `src/lib/adapters/claude-usage.ts` | new pull adapter reading `limits[]`                                   |
-| `src/lib/adapters/http.ts`         | reuse; extend only if headers cannot be passed today                  |
-| `src/lib/collector/index.ts`       | run the poll in the parallel pull phase; skip when unconfigured       |
-| `src/lib/config.ts`                | poll cadence with a five-minute floor, rejected below it              |
-| `src/lib/freshness.ts`             | pull budget for a polled Claude observation                           |
-| `src/lib/db/credentials.ts`        | follows `CREDENTIAL_PROVIDERS`; verify no provider list is hard-coded |
-| `src/lib/queries/overview.ts`      | precedence between poll and spool for the Claude card                 |
-| `tests/live/live-smoke.test.ts`    | live check that skips without a token                                 |
-| `tests/fixtures/`                  | sanitised endpoint fixtures, values replaced                          |
-| `docs/discovery/m0-discovery.md`   | record the gate now that the source is accepted                       |
-| `docs/operations/setup.md`         | token provisioning and how to enable the poll                         |
+| Path                                                   | Change                                                                 |
+| ------------------------------------------------------ | ---------------------------------------------------------------------- |
+| `src/lib/domain.ts`                                    | add `claude` to `CREDENTIAL_PROVIDERS`; check the union's users        |
+| `src/lib/adapters/claude-usage.ts`                     | new pull adapter reading `limits[]`                                    |
+| `src/lib/adapters/http.ts`                             | reuse; extend only if headers cannot be passed today                   |
+| `src/lib/collector/index.ts`                           | run the poll in the parallel pull phase; skip when unconfigured        |
+| `src/lib/config.ts`                                    | poll cadence with a five-minute floor, rejected below it               |
+| `src/lib/freshness.ts`                                 | pull budget for a polled Claude observation                            |
+| `src/lib/db/credentials.ts`                            | follows `CREDENTIAL_PROVIDERS`; verify no provider list is hard-coded  |
+| `src/lib/queries/overview.ts`                          | precedence between poll and spool for the Claude card                  |
+| `src/components/settings-dialog.tsx`                   | maps `CREDENTIAL_PROVIDERS`; add label, optional-key copy, aria branch |
+| `src/app/api/settings/credentials/[provider]/route.ts` | validates via `isCredentialProvider`; the union widens the route       |
+| `tests/unit/settings-dialog.test.tsx`                  | asserts over the provider list; update for the third field             |
+| `tests/e2e/settings.spec.ts`                           | covers the Settings dialog; update for the third field                 |
+| `tests/live/live-smoke.test.ts`                        | live check that skips without a token                                  |
+| `tests/fixtures/`                                      | sanitised endpoint fixtures, values replaced                           |
+| `docs/discovery/m0-discovery.md`                       | record the gate now that the source is accepted                        |
+| `docs/operations/setup.md`                             | token provisioning and how to enable the poll                          |
 
 `src/lib/ingestors/claude-statusline.ts` is deliberately absent: its contract does not change.
+
+Adding a provider to `CREDENTIAL_PROVIDERS` reaches the Settings UI, its route, and both of its
+test suites. This table was assembled by tracing every reference to `CREDENTIAL_PROVIDERS`,
+`CredentialProvider`, and `isCredentialProvider` across `src/` and `tests/`; re-run that trace
+before widening the union, in case it has gained consumers since.
 
 ## Acceptance Criteria
 
@@ -208,6 +224,8 @@ Verified against `src/` on 2026-09-16.
 - [ ] A response whose shape has drifted renders `unavailable`, never a confidently wrong number.
 - [ ] A cadence below five minutes is rejected at configuration load, not clamped.
 - [ ] A fresh poll and a fresh spool event never produce two disagreeing Claude readings.
+- [ ] The Settings dialog renders a Claude field whose copy says the token is optional, and
+      leaving it empty changes nothing about how the Claude card behaves today.
 - [ ] No token, email address, organisation ID, quota value, or codenamed key appears in the
       database, the repository, or any log line.
 - [ ] Fixtures under `tests/fixtures/` carry no real value and are marked sanitised.
@@ -219,7 +237,9 @@ Verified against `src/` on 2026-09-16.
   precedence rule, against sanitised fixtures.
 - `pnpm run spike:claude-usage` as the hand-run live gate, no more than once every five minutes.
 - `pnpm run test:live` for the added live check; it must skip, not fail, when no token is present.
-- `pnpm run test:e2e` only if the Claude card's rendering changes.
+- `pnpm run test:e2e` is **required**, not optional. Widening `CREDENTIAL_PROVIDERS` adds a third
+  field to the Settings dialog, which is a browser-visible change, and happy-dom alone does not
+  prove geometry, focus, or scrolling there.
 - `pnpm run verify` as the final gate.
 - `python3 .agents/skills/okf-sync/scripts/validate_okf_bundle.py` for the documentation changes.
 

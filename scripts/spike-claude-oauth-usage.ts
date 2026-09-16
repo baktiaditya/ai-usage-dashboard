@@ -53,6 +53,19 @@ const USAGE_URL = 'https://api.anthropic.com/api/oauth/usage';
 const USER_AGENT = 'claude-cli/2.1.269 (external, cli)';
 const OAUTH_BETA = 'oauth-2025-04-20';
 
+/**
+ * Structured members the payload is known to carry beyond the window list. They
+ * are not modelled by the dashboard, but they are understood, so reporting them
+ * as drift would bury the signal that matters.
+ */
+const KNOWN_STRUCTURES = [
+  'extra_usage',
+  'limits',
+  'spend',
+  'seven_day_breakdown',
+  'member_dashboard_available',
+] as const;
+
 /** Windows the payload is expected to carry. Absent ones are reported, not failed. */
 const KNOWN_WINDOWS = [
   'five_hour',
@@ -236,6 +249,42 @@ function checkContract(payload: Record<string, unknown>): string[] {
     }
   }
 
+  // `limits[]` is the projection the adapter is specified to read, so the probe
+  // has to prove that contract too. Validating only the window keys would gate a
+  // shape nothing actually consumes.
+  const limits = payload['limits'];
+  if (limits === undefined) {
+    problems.push('`limits` is absent — the adapter is specified to read that projection');
+  } else if (!Array.isArray(limits)) {
+    problems.push('`limits` is not an array');
+  } else {
+    if (limits.length === 0) problems.push('`limits` is empty while windows carry data');
+    limits.forEach((entry, index) => {
+      const at = `limits[${index}]`;
+      if (typeof entry !== 'object' || entry === null) {
+        problems.push(`${at} is not an object`);
+        return;
+      }
+      const row = entry as Record<string, unknown>;
+      const percent = row['percent'];
+      if (typeof percent !== 'number' || !Number.isFinite(percent)) {
+        problems.push(`${at}.percent is not a finite number`);
+      } else if (percent < 0 || percent > 100) {
+        problems.push(`${at}.percent is outside 0..100`);
+      }
+      if (typeof row['is_active'] !== 'boolean') {
+        problems.push(`${at}.is_active is not a boolean`);
+      }
+      for (const key of ['kind', 'group', 'severity']) {
+        if (typeof row[key] !== 'string') problems.push(`${at}.${key} is not a string`);
+      }
+      const resetsAt = row['resets_at'];
+      if (resetsAt !== null && (typeof resetsAt !== 'string' || !ISO_8601.test(resetsAt))) {
+        problems.push(`${at}.resets_at is neither null nor an ISO-8601 string`);
+      }
+    });
+  }
+
   // The status-line spool names these fields differently. Catching the swap here
   // is the point: an adapter that assumed the spool contract would read zeroes.
   if ('used_percentage' in payload) {
@@ -355,16 +404,23 @@ async function main(): Promise<number> {
   out.write('\nshape (values elided — this block is the evidence)\n');
   out.write(`${describeShape(record)}\n`);
 
-  const unexpected = Object.keys(record).filter(
-    (key) =>
-      !KNOWN_WINDOWS.includes(key as (typeof KNOWN_WINDOWS)[number]) && key !== 'extra_usage',
-  );
-  if (unexpected.length > 0) {
-    out.write(`\nunmodelled keys: ${unexpected.join(', ')}\n`);
+  const known = new Set<string>([...KNOWN_WINDOWS, ...KNOWN_STRUCTURES]);
+  const unrecognised = Object.keys(record).filter((key) => !known.has(key));
+  if (unrecognised.length > 0) {
+    // The names are withheld on purpose: they read as canaries, and this
+    // repository does not publish them. The counts still expose drift.
+    const carrying = unrecognised.filter((key) => record[key] !== null).length;
+    out.write(`\nkeys this probe does not recognise: ${unrecognised.length}`);
+    out.write(` (${carrying} carrying a value, names withheld)\n`);
   }
 
-  const populated = KNOWN_WINDOWS.filter((name) => record[name] !== null && name in record);
-  out.write(`\nwindows carrying data: ${populated.length > 0 ? populated.join(', ') : '(none)'}\n`);
+  const structures = KNOWN_STRUCTURES.filter((key) => key in record);
+  if (structures.length > 0) {
+    out.write(`\nknown but deliberately unmodelled: ${structures.join(', ')}\n`);
+  }
+
+  const active = KNOWN_WINDOWS.filter((name) => name in record && record[name] !== null);
+  out.write(`\nwindows carrying data: ${active.length > 0 ? active.join(', ') : '(none)'}\n`);
 
   const problems = checkContract(record);
   if (problems.length > 0) {

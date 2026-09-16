@@ -21,6 +21,15 @@
   - The codenamed keys the endpoint returns are deliberately not recorded anywhere in this
     repository. `scripts/spike-claude-oauth-usage.ts` reports them at runtime without hard-coding
     them, so drift stays visible without the bundle publishing the list.
+- **Discovery**: `CREDENTIAL_PROVIDERS` in `src/lib/domain.ts` is not an internal list.
+  `src/components/settings-dialog.tsx` maps over it, so adding a provider renders a new field in
+  Settings on its own, and `src/app/api/settings/credentials/[provider]/route.ts`,
+  `tests/unit/settings-dialog.test.tsx` and `tests/e2e/settings.spec.ts` all follow it. Widening it
+  for Claude is therefore a browser-visible change that Playwright must cover, and the doc comment
+  above the constant — "Codex and Claude authenticate through their own CLIs and have no key here"
+  — has to be rewritten. The Claude token is also optional in a way the other two are not: the
+  status-line spool keeps reporting quota without it, so the Settings copy must say so. The brief's
+  impact map and testing plan were corrected accordingly; its first version understated both.
 - **Update**: [poll-claude-quota-without-a-session](backlog/ready-for-agent/poll-claude-quota-without-a-session.md)
   is promoted to `ready-for-agent/` on the decision above, and
   [#13](https://github.com/baktiaditya/ai-usage-dashboard/issues/13) is relabelled to match.
