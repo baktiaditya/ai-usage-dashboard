@@ -65,8 +65,8 @@ The dashboard makes no automatic routing decisions in the MVP. It only presents 
 
 - **Localhost-first:** UI and API bind explicitly to `127.0.0.1`; not just checking request headers or addresses.
 - **Quota, counters, and money kept separate:** a quota window is a gauge; `total_usage` is a cumulative counter; a balance is a money value per currency. The three are never summed into a single number.
-- **Structured source first:** use documented APIs/provider interfaces. Do not read tokens from auth files, call internal endpoints with extracted tokens, or parse terminal UI when a structured interface is available.
-- **Separate pull and event ingestion:** Codex, DeepSeek, and OpenRouter can be polled; Claude quota arrives via the status line while Claude is active.
+- **Structured source first:** use documented APIs/provider interfaces. Do not read tokens from auth files, call internal endpoints with extracted tokens, or parse terminal UI when a structured interface is available. Claude quota carries the single exception, and only because no documented interface answers while no session is live: an optional, default-off poll may call Claude's undocumented usage endpoint with a token the user mints deliberately through `claude setup-token`. It never extracts a token from `~/.claude/.credentials.json`, and terminal UI is still never parsed for a value the dashboard stores.
+- **Separate pull and event ingestion:** Codex, DeepSeek, and OpenRouter can be polled; Claude quota arrives via the status line while Claude is active, and additionally from the optional Claude usage poll when the user has enabled it.
 - **Read-only behavior:** the application only performs read operations. Note: the OpenRouter Management Key remains a powerful administrative credential even though the adapter only calls `GET`.
 - **Graceful degradation:** one provider's failure or missing configuration does not fail the other providers.
 - **No raw payload storage:** validate payloads at the boundary, pick the needed fields, then discard the raw payload.
@@ -92,7 +92,8 @@ The dashboard makes no automatic routing decisions in the MVP. It only presents 
 - The collector reads and validates that spool. When no event exists yet, the event is too old, or the reset time has passed with no new observation, show `unavailable`/`stale`; never treat a stale value as current.
 - Configuration integration must preserve any existing status line. If an existing configuration is found later, compose explicitly or fail closed — never overwrite silently.
 - The `rate_limits` field is only expected for Claude.ai Pro/Max accounts (or gateways with spend limits) and only becomes available after the first API response. Since this machine's `subscriptionType` is undetected and no status line exists yet, M0 must still prove the actual payload.
-- Parsing interactive `/status` or `/usage` output is not an MVP source.
+- Parsing interactive `/status` or `/usage` output is not a source. `claude -p "/usage"` is permitted as a diagnostic only: it consumes no quota, but it renders integer percentages and a reset time that is a rounded relative duration, so no value it prints is ever stored.
+- **Optional usage poll, default off.** When the user supplies a token minted by `claude setup-token`, the collector may additionally poll Claude's undocumented usage endpoint, which answers with no session running. Read the normalised `limits[]` projection rather than the individual window keys, so a new window needs no code change. Send at most one request per five minutes and never retry a refusal: the endpoint escalates its rate limit with no `Retry-After`, so a refusal keeps the last good observation and marks it `stale`. A drifted shape renders `unavailable`. The status-line spool stays the default path and the fallback; the poll never replaces it, and the endpoint being undocumented means a shape change is expected rather than exceptional.
 
 #### DeepSeek
 

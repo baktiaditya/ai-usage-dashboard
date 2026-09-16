@@ -1,5 +1,65 @@
 # Bundle Update Log
 
+## 2026-09-16
+
+- **Decision**: Claude quota may be polled, as an optional source that is off by default. This
+  amends [the plan](plan/ai-usage-dashboard-implementation-plan.md) §2 and §3.1.
+  - §2 "Structured source first" previously forbade calling internal endpoints with extracted
+    tokens outright. It now carries one narrow exception, for Claude quota only, and only because
+    no documented interface answers while no session is live. The token must be minted
+    deliberately with `claude setup-token`; extracting one from `~/.claude/.credentials.json` stays
+    forbidden, which is what that clause was written to prevent.
+  - §2 "Separate pull and event ingestion" now records that Claude may also be polled.
+  - §3.1 previously ruled `/usage` out as an MVP source. It stays ruled out as a _source_:
+    `claude -p "/usage"` is a diagnostic, and no value it prints is stored, because its percentages
+    are integers and its reset time is a rounded relative duration.
+  - §3.1 gains the optional poll: read the normalised `limits[]` projection, at most one request
+    per five minutes, never retry a refusal, degrade to `stale` on refusal and `unavailable` on
+    drift. The status-line spool stays the default and the fallback.
+  - Default-off was chosen so that cloning this repository never causes an undocumented Anthropic
+    endpoint to be called without the user opting in.
+  - The codenamed keys the endpoint returns are deliberately not recorded anywhere in this
+    repository. `scripts/spike-claude-oauth-usage.ts` reports them at runtime without hard-coding
+    them, so drift stays visible without the bundle publishing the list.
+- **Update**: [poll-claude-quota-without-a-session](backlog/ready-for-agent/poll-claude-quota-without-a-session.md)
+  is promoted to `ready-for-agent/` on the decision above, and
+  [#13](https://github.com/baktiaditya/ai-usage-dashboard/issues/13) is relabelled to match.
+  Whether `claude -p "/usage"` calls the same endpoint underneath was probed with `claude --debug`
+  and stayed inconclusive; it no longer blocks anything, because that path is a diagnostic rather
+  than a fallback source.
+
+- **Discovery**: Claude quota can be read without a live Claude Code session. Two pull-shaped
+  sources were probed live on the development machine, and both answered while no session was
+  running.
+  - `GET /api/oauth/usage`, the source Claude Code reads for `/usage`, returned `200 OK` on two
+    probes five minutes apart. Active windows carry `utilization` plus an absolute ISO-8601
+    `resets_at`, and the payload also exposes a normalised `limits[]` projection, per-model
+    breakdown rows, and credits in minor units with an explicit currency and decimal places. The
+    endpoint is undocumented, its upstream issue is labelled `invalid`, and refusals escalate
+    30/60/120/240/300s with no `Retry-After`, so one request per five minutes or slower is the
+    only safe cadence. Its OAuth token expires and is rotated by Claude Code, so a collector that
+    refreshes it races the CLI for the same file.
+  - `claude -p "/usage"` consumes no quota — the `--output-format json` envelope reports zero
+    turns, zero tokens, zero API duration and `local_command: "usage"` — but returns the numbers
+    as human-rendered prose with integer percentages, and its reset time is a rounded relative
+    duration that differed between two runs seconds apart. It is a good health check and a poor
+    data source.
+  - `claude auth status` reports `loggedIn` reliably but `subscriptionType` is `null` on this Pro
+    account, so it cannot confirm plan tier. It also returns an email address and an organisation
+    ID, which must never reach the database or this bundle.
+  - Evidence is shape-only. No quota value, token, email address or account ID was recorded, here
+    or anywhere in the repository.
+  - `scripts/spike-claude-oauth-usage.ts` (`pnpm run spike:claude-usage`) is the gate probe. It
+    sends exactly one request, never retries a refusal, never writes the credentials file, and
+    prints structure with every leaf elided.
+- **Proposed**: [poll-claude-quota-without-a-session](backlog/ready-for-agent/poll-claude-quota-without-a-session.md)
+  files the above as a brief, first in `ready-for-human/` and promoted the same day, tracked by
+  [#13](https://github.com/baktiaditya/ai-usage-dashboard/issues/13). It is blocked on a user decision, because the
+  plan §2 and §3.1 both state that Claude quota arrives via the status line; that contradiction
+  must be resolved in the plan before the brief can be worked. `docs/discovery/m0-discovery.md` is
+  deliberately left unchanged — it records gates for accepted provider contracts, and this source
+  is a proposal, not yet a contract.
+
 ## 2026-09-15
 
 - **Update**: the move to pnpm is delivered in
