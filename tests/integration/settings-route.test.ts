@@ -123,10 +123,11 @@ function stored(): unknown[] {
 const UNSAVED = [
   { provider: 'deepseek', configured: false, hint: null, updatedAt: null },
   { provider: 'openrouter', configured: false, hint: null, updatedAt: null },
+  { provider: 'claude', configured: false, hint: null, updatedAt: null },
 ];
 
 describe('GET /api/settings/credentials', () => {
-  it('reports both providers unsaved on a fresh database, uncached', async () => {
+  it('reports every provider unsaved on a fresh database, uncached', async () => {
     const res = await get();
     expect(res.headers.get('cache-control')).toBe('no-store');
     expect(await read(res)).toMatchObject({ status: 200, body: { credentials: UNSAVED } });
@@ -141,6 +142,7 @@ describe('GET /api/settings/credentials', () => {
       credentials: [
         { provider: 'deepseek', configured: true, hint: '1234', updatedAt: expect.any(String) },
         UNSAVED[1],
+        UNSAVED[2],
       ],
     });
     expect(leaks(text)).toBe(false);
@@ -271,7 +273,24 @@ describe('validation', () => {
     await put('deepseek', { secret: SECRET });
   });
 
-  it.each(['codex', 'claude', 'not-a-provider'])(
+  it('accepts the optional Claude token on PUT and removes it on DELETE', async () => {
+    const put1 = await read(await put('claude', { secret: ` ${SECRET}\n` }));
+    expect(put1.status).toBe(200);
+    expect(put1.body).toMatchObject({ credential: { provider: 'claude', configured: true } });
+    expect(leaks(put1.text)).toBe(false);
+    expect(stored()).toContainEqual({
+      provider: 'claude',
+      secret: SECRET,
+      updated_at: expect.any(String),
+    });
+
+    const deleted = await read(await del('claude'));
+    expect(deleted.status).toBe(200);
+    expect(deleted.body).toMatchObject({ credential: { provider: 'claude', configured: false } });
+    expect(stored().some((row) => (row as { provider: string }).provider === 'claude')).toBe(false);
+  });
+
+  it.each(['codex', 'Claude', 'not-a-provider'])(
     'refuses provider %s with 400 invalid_provider on PUT and DELETE',
     async (provider) => {
       const before = stored();

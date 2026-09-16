@@ -25,10 +25,13 @@ export function isProvider(v: string): v is Provider {
 }
 
 /**
- * Providers whose key is saved in dashboard Settings (plan §3.5). Codex and
- * Claude authenticate through their own CLIs and have no key here.
+ * Providers whose key is saved in dashboard Settings (plan §3.5). DeepSeek and
+ * OpenRouter report nothing without theirs. The Claude token is optional and
+ * belongs to a source, not the provider: it only enables the usage poll of plan
+ * §3.1, and Claude keeps reporting through the status-line spool without it.
+ * Codex authenticates through its own CLI and has no key here.
  */
-export const CREDENTIAL_PROVIDERS = ['deepseek', 'openrouter'] as const;
+export const CREDENTIAL_PROVIDERS = ['deepseek', 'openrouter', 'claude'] as const;
 export type CredentialProvider = (typeof CREDENTIAL_PROVIDERS)[number];
 
 export function isCredentialProvider(value: string): value is CredentialProvider {
@@ -46,6 +49,13 @@ export interface CredentialStatus {
   readonly hint: string | null;
   readonly updatedAt: string | null;
 }
+
+/**
+ * `sourceVersion` of a Claude observation read from the optional usage poll
+ * (plan §3.1). A status-line observation carries `claude-code/<version>`
+ * instead, which is how freshness tells the two sources apart.
+ */
+export const CLAUDE_USAGE_SOURCE_VERSION = 'claude-api/oauth-usage';
 
 export const PROVIDER_LABELS: Record<Provider, string> = {
   codex: 'Codex',

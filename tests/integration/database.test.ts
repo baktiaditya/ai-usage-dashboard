@@ -11,6 +11,7 @@ import { MIGRATIONS } from '@/lib/db/migrations.generated';
 import * as schema from '@/lib/db/schema';
 import {
   applyRetention,
+  claimClaudePoll,
   finishRun,
   getCreditBaselineBefore,
   getLastSuccessAt,
@@ -111,6 +112,7 @@ describe('migrations', () => {
       .map((r) => (r as { name: string }).name);
 
     expect(tables).toEqual([
+      'claude_poll_state',
       'collector_attempts',
       'collector_runs',
       'credit_balances',
@@ -161,6 +163,69 @@ describe('migrations', () => {
       rmSync(dir, { recursive: true, force: true });
     }
   }, 30_000);
+
+  it('upgrades a 0002 database with saved keys to 0003, keeping them, and is a no-op after', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'aud-upgrade-0003-'));
+    const raw = new Database(join(dir, 'usage.db'));
+    const keys = [
+      {
+        provider: 'deepseek',
+        secret: 'sk-fake-upgrade-deepseek-0001',
+        updated_at: '2026-09-15T01:00:00.000Z',
+      },
+      {
+        provider: 'openrouter',
+        secret: 'sk-or-fake-upgrade-openrouter-0002',
+        updated_at: '2026-09-15T02:00:00.000Z',
+      },
+    ];
+    const select = () =>
+      raw
+        .prepare('SELECT provider, secret, updated_at FROM provider_credentials ORDER BY provider')
+        .all();
+    const insertClaude = () =>
+      raw
+        .prepare('INSERT INTO provider_credentials (provider, secret, updated_at) VALUES (?, ?, ?)')
+        .run('claude', 'sk-ant-oat01-fake-upgrade-token', '2026-09-17T00:00:00.000Z');
+    try {
+      raw.exec(
+        'CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL) STRICT',
+      );
+      for (const migration of MIGRATIONS.filter((m) => m.version <= 2)) {
+        raw.exec(migration.sql);
+        raw
+          .prepare('INSERT INTO schema_migrations VALUES (?, ?)')
+          .run(migration.version, '2026-09-15T00:00:00.000Z');
+      }
+      const insert = raw.prepare(
+        'INSERT INTO provider_credentials (provider, secret, updated_at) VALUES (?, ?, ?)',
+      );
+      for (const key of keys) insert.run(key.provider, key.secret, key.updated_at);
+
+      // The defect 0003 fixes: before it, a Claude token cannot be saved.
+      expect(insertClaude).toThrow(/CHECK constraint failed/);
+
+      expect(runMigrations(raw)).toBe(MIGRATIONS.length - 3);
+      expect(select()).toEqual(keys);
+
+      // Idempotent: a second run applies nothing and changes nothing.
+      expect(runMigrations(raw)).toBe(0);
+      expect(select()).toEqual(keys);
+
+      expect(insertClaude).not.toThrow();
+      expect(() =>
+        raw
+          .prepare(
+            'INSERT INTO provider_credentials (provider, secret, updated_at) VALUES (?, ?, ?)',
+          )
+          .run('codex', 'x', '2026-09-17T00:00:00.000Z'),
+      ).toThrow(/CHECK constraint failed/);
+      expect(raw.prepare('SELECT COUNT(*) FROM claude_poll_state').pluck().get()).toBe(0);
+    } finally {
+      raw.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 
   it('upgrades a 0000 database in place, keeping rows and lifting the 0..100 limit', () => {
     const dir = mkdtempSync(join(tmpdir(), 'aud-upgrade-'));
@@ -664,4 +729,75 @@ describe('WAL concurrency', () => {
       other.close();
     }
   });
+});
+
+describe('Claude poll claim', () => {
+  const FIVE_MINUTES = 5 * 60_000;
+  const at = (iso: string) => claimClaudePoll(t.db, iso, FIVE_MINUTES);
+  const lastAttempt = () =>
+    t.db.$client.prepare('SELECT id, last_attempted_at FROM claude_poll_state').all();
+
+  it('grants the first claim and records it', () => {
+    expect(at('2026-09-17T00:00:00.000Z')).toBe(true);
+    expect(lastAttempt()).toEqual([{ id: 1, last_attempted_at: '2026-09-17T00:00:00.000Z' }]);
+  });
+
+  it('refuses another claim inside the interval, however the first request ended', () => {
+    // The claim is taken before the request, so a 429 or a crash spends it too.
+    expect(at('2026-09-17T00:00:00.000Z')).toBe(true);
+    expect(at('2026-09-17T00:00:00.000Z')).toBe(false);
+    expect(at('2026-09-17T00:04:59.999Z')).toBe(false);
+    expect(lastAttempt()).toEqual([{ id: 1, last_attempted_at: '2026-09-17T00:00:00.000Z' }]);
+
+    expect(at('2026-09-17T00:05:00.000Z')).toBe(true);
+    expect(at('2026-09-17T00:09:59.999Z')).toBe(false);
+    expect(lastAttempt()).toEqual([{ id: 1, last_attempted_at: '2026-09-17T00:05:00.000Z' }]);
+  });
+
+  it('never moves the claim backwards for a caller with an older clock', () => {
+    expect(at('2026-09-17T00:10:00.000Z')).toBe(true);
+    expect(at('2026-09-17T00:00:00.000Z')).toBe(false);
+    expect(lastAttempt()).toEqual([{ id: 1, last_attempted_at: '2026-09-17T00:10:00.000Z' }]);
+  });
+
+  it('refuses a timestamp that would not compare chronologically as text', () => {
+    expect(() => at('2026-09-17T07:00:00+07:00')).toThrow(/canonical UTC/);
+    expect(() => at('2026-09-17T00:00:00Z')).toThrow(/canonical UTC/);
+    expect(lastAttempt()).toEqual([]);
+  });
+
+  it('lets exactly one of two connections win the same claim', () => {
+    const other = openDb({ path: t.path });
+    try {
+      const attemptedAt = '2026-09-17T00:00:00.000Z';
+      const results = [
+        claimClaudePoll(t.db, attemptedAt, FIVE_MINUTES),
+        claimClaudePoll(other, attemptedAt, FIVE_MINUTES),
+      ];
+      expect(results.filter(Boolean)).toHaveLength(1);
+    } finally {
+      other.$client.close();
+    }
+  });
+
+  it('lets exactly one of several processes claiming together win', async () => {
+    const tsx = join(process.cwd(), 'node_modules', 'tsx', 'dist', 'cli.mjs');
+    const child = join(process.cwd(), 'tests', 'helpers', 'claim-poll-child.ts');
+    const startAt = String(Date.now() + 3000);
+    const outcomes = await Promise.all(
+      Array.from(
+        { length: 6 },
+        (_, index) =>
+          new Promise<string>((resolve) => {
+            // Distinct instants inside one interval: whichever lands first wins.
+            const attemptedAt = new Date(Date.UTC(2026, 8, 17, 0, 0, index)).toISOString();
+            execFile(process.execPath, [tsx, child, t.path, startAt, attemptedAt], (_err, stdout) =>
+              resolve(stdout),
+            );
+          }),
+      ),
+    );
+    expect(outcomes.filter((o) => o === 'claimed')).toHaveLength(1);
+    expect(outcomes.filter((o) => o === 'skipped')).toHaveLength(5);
+  }, 30_000);
 });

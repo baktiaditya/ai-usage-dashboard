@@ -17,24 +17,47 @@ import type { AppConfig } from '../config';
 import type { CollectContext, CollectionResult, Provider, ProviderAdapter } from '../domain';
 import { CollectionError, isRetryable, isUnavailable } from '../errors';
 import type { ErrorCode } from '../errors';
+import { createClaudeAdapter } from '../adapters/claude-usage';
 import { createCodexAdapter } from '../adapters/codex';
 import { createDeepseekAdapter } from '../adapters/deepseek';
 import { createOpenrouterAdapter } from '../adapters/openrouter';
-import { createClaudeIngestor } from '../ingestors/claude-statusline';
 import type { Db } from '../db/client';
 import { readProviderCredentials } from '../db/credentials';
 import type { ProviderCredentials } from '../db/credentials';
-import { applyRetention, finishRun, recordAttempt, startRun } from '../db/repository';
+import {
+  applyRetention,
+  claimClaudePoll,
+  finishRun,
+  recordAttempt,
+  startRun,
+} from '../db/repository';
 import type { RunTrigger } from '../db/repository';
 import { safeErrorMessage } from '../redact';
 import { nowIso } from '../time';
 import type { Logger } from '../logger';
 import { silentLogger } from '../logger';
 
-export function buildAdapters(config: AppConfig, keys: ProviderCredentials): ProviderAdapter[] {
+/**
+ * Exactly one adapter per provider. Claude's is a composite of the optional
+ * usage poll and the status-line spool, never a second adapter named `claude`:
+ * attempts are partitioned by provider alone, so two would overwrite each
+ * other's latest row.
+ */
+export function buildAdapters(
+  config: AppConfig,
+  keys: ProviderCredentials,
+  db: Db,
+): ProviderAdapter[] {
   return [
     createCodexAdapter(),
-    createClaudeIngestor({ spoolPath: config.spoolPath }),
+    createClaudeAdapter({
+      spoolPath: config.spoolPath,
+      usageToken: keys.claudeUsageToken,
+      // The database, not process memory, holds the cadence: the scheduled
+      // collector is a fresh process every run, and manual refresh shares it.
+      claimPoll: (attemptedAt) =>
+        claimClaudePoll(db, attemptedAt, config.claudePollIntervalMinutes * 60_000),
+    }),
     createDeepseekAdapter({ apiKey: keys.deepseekApiKey }),
     createOpenrouterAdapter({ managementKey: keys.openrouterManagementKey }),
   ];
@@ -154,7 +177,8 @@ export async function collectOnce(options: CollectOptions): Promise<CollectSumma
   // Keys are read on every run and never cached, so a key saved in Settings
   // applies to the next scheduled run and to an immediate manual refresh.
   const all =
-    options.adapters ?? buildAdapters(options.config, readProviderCredentials(options.db));
+    options.adapters ??
+    buildAdapters(options.config, readProviderCredentials(options.db), options.db);
   const selected = options.providers
     ? all.filter((a) => options.providers?.includes(a.provider))
     : all;

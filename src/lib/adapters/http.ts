@@ -1,5 +1,5 @@
 /**
- * Shared HTTP plumbing for the credit adapters.
+ * Shared HTTP plumbing for the credit adapters and the Claude usage poll.
  *
  * Responses are read as *text* and handed to `parseJsonLossless`, never to
  * `response.json()`. That is the whole point: `response.json()` would convert
@@ -23,6 +23,38 @@ export interface HttpGetOptions {
   readonly timeoutMs: number;
   readonly signal?: AbortSignal;
   readonly fetchImpl?: typeof fetch;
+  /**
+   * Extra request headers. They may add a header or override `User-Agent`, but
+   * never `Authorization`, which is always derived from `bearerToken`.
+   */
+  readonly headers?: Readonly<Record<string, string>>;
+}
+
+const DEFAULT_USER_AGENT = 'ai-usage-dashboard/0.1.0';
+
+/**
+ * The request headers for one GET. Names are matched case-insensitively, so an
+ * override replaces the default instead of sending both, and an
+ * `authorization` spelled any way is refused rather than silently merged.
+ */
+export function buildRequestHeaders(
+  bearerToken: string,
+  extra: Readonly<Record<string, string>> = {},
+): Record<string, string> {
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${bearerToken}`,
+    Accept: 'application/json',
+    'User-Agent': DEFAULT_USER_AGENT,
+  };
+  for (const [name, value] of Object.entries(extra)) {
+    const lower = name.toLowerCase();
+    if (lower === 'authorization') {
+      throw new Error('Authorization is derived from bearerToken and cannot be overridden');
+    }
+    const existing = Object.keys(headers).find((key) => key.toLowerCase() === lower);
+    headers[existing ?? name] = value;
+  }
+  return headers;
 }
 
 /**
@@ -35,6 +67,9 @@ export interface HttpGetOptions {
  */
 export async function getJsonLossless(options: HttpGetOptions): Promise<unknown> {
   const doFetch = options.fetchImpl ?? fetch;
+  // Built before any timer or listener, so a refused header throws cleanly
+  // instead of being reported as a network failure.
+  const headers = buildRequestHeaders(options.bearerToken, options.headers);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(new Error('timeout')), options.timeoutMs);
   const onOuterAbort = () => controller.abort(new Error('aborted'));
@@ -52,11 +87,7 @@ export async function getJsonLossless(options: HttpGetOptions): Promise<unknown>
     try {
       response = await doFetch(options.url, {
         method: 'GET',
-        headers: {
-          Authorization: `Bearer ${options.bearerToken}`,
-          Accept: 'application/json',
-          'User-Agent': 'ai-usage-dashboard/0.1.0',
-        },
+        headers,
         signal: controller.signal,
         redirect: 'error',
         cache: 'no-store',

@@ -82,8 +82,8 @@ pnpm run db:backup ~/usage-copy.db   # or a file of your choosing
 A backup runs while the collector and the dashboard keep writing, and produces one verified `0600`
 file. A backup inside the data directory does not survive losing the disk, so copy it elsewhere too.
 
-A backup contains the DeepSeek and OpenRouter keys saved in Settings (§4), in plaintext, as the
-database holds them. Keep every copy owner-only, and delete copies you no longer need.
+A backup contains the DeepSeek and OpenRouter keys saved in Settings (§4), and the Claude token when
+one is saved (§3), in plaintext, as the database holds them. Keep every copy owner-only, and delete copies you no longer need.
 
 To restore, stop everything that has the database open, restore, and start it again. Leave the web
 unit out of both `systemctl` lines if you did not install it.
@@ -134,8 +134,11 @@ pnpm run collect
 
 ## 3. Claude Code
 
-Claude quota is **pushed**, not polled. The status line is the only documented
-interface that carries `rate_limits`, so a small bridge script records it.
+Claude quota is **pushed** by default, not polled. The status line is the only
+documented interface that carries `rate_limits`, so a small bridge script records
+it. Because the status line only fires during a session, you can also opt into a
+poll that reads quota while no session is running; see
+[Optional: poll quota without a session](#optional-poll-quota-without-a-session).
 
 The bridge receives the full status-line payload — which includes `session_id`,
 `transcript_path`, `cwd`, workspace/repo identity and session cost — and writes
@@ -198,6 +201,68 @@ exposed no rate_limits"_ — which is a different, and more useful, message than
 Minimum supported version: **Claude Code 2.1.269**, the version whose status-line `rate_limits` the
 bridge is live-verified against ([M0 Discovery](../discovery/m0-discovery.md)). Older releases are
 untested.
+
+### Optional: poll quota without a session
+
+The bridge only records quota while a session is live, so an idle machine drifts to
+`stale` or `no_event_yet`. With a Claude token saved, the collector also reads
+`GET https://api.anthropic.com/api/oauth/usage`, the endpoint Claude Code itself reads for
+`/usage`, which answers with no session running. It is **off until you save a token**: without
+one, nothing calls that endpoint and Claude behaves exactly as above.
+
+The endpoint is undocumented and unsupported, so a change in its response is expected rather than
+exceptional. The dashboard treats it that way:
+
+- **At most one request per five minutes**, whatever triggers the run. The scheduled collector and a
+  card's **Refresh** share one claim in the database, taken before each request, so a refused or
+  failed request still spends the interval. A run inside the interval skips the poll.
+  `AUD_CLAUDE_POLL_INTERVAL_MINUTES` (§7) can lengthen it; a value below `5` stops startup with a
+  configuration error.
+- **Never retried.** Refusals escalate with no `Retry-After`, so a `429` is left for the next
+  interval.
+- **The spool stays the default and the fallback.** Each run reads both sources and keeps whichever
+  observed most recently, so the card never shows two Claude readings. When the poll fails — a
+  refusal, a network error, a timeout, or a response whose shape changed — the run uses the spool.
+  Only when the spool has nothing usable does the card show the poll's error, such as
+  `rate_limited`, `auth_rejected`, or `schema_mismatch`.
+- **Only the normalised `limits[]` list is read**, and only windows this build can label are shown
+  (`Session`, `Weekly, all models`). A polled reading states no window length, and it is judged by the
+  polled freshness budget (three collect intervals) rather than the 12-hour status-line budget. The
+  diagnostics panel's source version reads `claude-api/oauth-usage` when the poll supplied the
+  reading and `claude-code/<version>` when the spool did.
+
+The collector never reads `~/.claude/.credentials.json`. The token is one you mint for this
+dashboard.
+
+#### Claude token lifecycle
+
+The token is long-lived and stored in plaintext in the database, like the other keys (§4).
+
+1. **Mint.** Run `claude setup-token`, then paste the token into **Claude Token (optional)** in
+   dashboard **Settings** and select **Save**. Never put it in `collector.env`, an environment
+   variable, or `.env.local`; none of them is read. It applies from the next collection, or select
+   **Refresh** on the Claude card.
+2. **Revoke.** Removing the token in Settings deletes only the dashboard's copy; the token stays
+   valid at Anthropic until you revoke it there. Revoke it on claude.ai → **Settings** →
+   **Claude Code**, one authorisation at a time. There is no CLI path: `claude setup-token` only
+   mints, and `claude auth logout` ends your interactive session, not the standalone token. The
+   Anthropic Console's API key page does not list these tokens; it manages organisation API keys, a
+   different mechanism.
+3. **Verify the revocation.** Probe the endpoint with the old token and the credentials-file
+   fallback disabled, no sooner than five minutes after the last poll:
+
+   ```bash
+   CLAUDE_OAUTH_TOKEN=<old token> pnpm run spike:claude-usage -- --credentials /nonexistent
+   ```
+
+   A revoked token answers `FAILED 401`. The probe never prints the response body, so the status
+   is the proof. Keep `--credentials /nonexistent`: without it the probe falls back to your live
+   session in `~/.claude/.credentials.json` and reports `200 OK`, which looks like a failed
+   revocation when nothing is wrong. A command typed with the token inline lands in your shell
+   history; clear that entry afterwards.
+
+4. **Remove it from Settings** with **Remove**, so the database stops holding a dead secret. The
+   card returns to the status-line spool.
 
 ---
 
@@ -718,20 +783,21 @@ procedure from `origin/main`.
 
 Every value has a safe default; all are optional.
 
-| Variable                       | Default                                      | Notes                                                                               |
-| ------------------------------ | -------------------------------------------- | ----------------------------------------------------------------------------------- |
-| `AUD_DATA_DIR`                 | `~/.local/share/ai-usage-dashboard`          | database + spool; absolute or `~/…`                                                 |
-| `AUD_TIMEZONE`                 | `Asia/Jakarta`                               | only affects calendar-day boundaries in history                                     |
-| `AUD_HOST`                     | `127.0.0.1`                                  | loopback only; anything else is rejected                                            |
-| `AUD_PORT`                     | `3838`                                       | `pnpm run start` and the web unit bind to it                                        |
-| `AUD_DEV_PORT`                 | `3839`                                       | `pnpm run dev` only; must differ from `AUD_PORT`                                    |
-| `AUD_DEV_DATA_DIR`             | `~/.local/share/ai-usage-dashboard-dev`      | `pnpm run dev` / `seed:dev` only; absolute or `~/…`; never the production directory |
-| `AUD_DEV_LIVE_REFRESH`         | `0`                                          | `0` or `1` only; `1` lets development refresh collect; see §6                       |
-| `AUD_THRESHOLDS`               | —                                            | JSON advisory overrides; see Thresholds below                                       |
-| `AUD_RETENTION_DAYS`           | `90`                                         |                                                                                     |
-| `AUD_COLLECT_INTERVAL_MINUTES` | `5`                                          | also drives the freshness budget                                                    |
-| `AUD_LOG_LEVEL`                | `info`                                       | `debug` \| `info` \| `warn` \| `error`                                              |
-| `AUD_ENV_FILE`                 | `~/.config/ai-usage-dashboard/collector.env` | optional `AUD_*` settings file, absolute or `~/…`; never keys (§4)                  |
+| Variable                           | Default                                      | Notes                                                                               |
+| ---------------------------------- | -------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `AUD_DATA_DIR`                     | `~/.local/share/ai-usage-dashboard`          | database + spool; absolute or `~/…`                                                 |
+| `AUD_TIMEZONE`                     | `Asia/Jakarta`                               | only affects calendar-day boundaries in history                                     |
+| `AUD_HOST`                         | `127.0.0.1`                                  | loopback only; anything else is rejected                                            |
+| `AUD_PORT`                         | `3838`                                       | `pnpm run start` and the web unit bind to it                                        |
+| `AUD_DEV_PORT`                     | `3839`                                       | `pnpm run dev` only; must differ from `AUD_PORT`                                    |
+| `AUD_DEV_DATA_DIR`                 | `~/.local/share/ai-usage-dashboard-dev`      | `pnpm run dev` / `seed:dev` only; absolute or `~/…`; never the production directory |
+| `AUD_DEV_LIVE_REFRESH`             | `0`                                          | `0` or `1` only; `1` lets development refresh collect; see §6                       |
+| `AUD_THRESHOLDS`                   | —                                            | JSON advisory overrides; see Thresholds below                                       |
+| `AUD_RETENTION_DAYS`               | `90`                                         |                                                                                     |
+| `AUD_COLLECT_INTERVAL_MINUTES`     | `5`                                          | also drives the freshness budget                                                    |
+| `AUD_CLAUDE_POLL_INTERVAL_MINUTES` | `5`                                          | minimum spacing of Claude usage polls (§3); below `5` is rejected, not clamped      |
+| `AUD_LOG_LEVEL`                    | `info`                                       | `debug` \| `info` \| `warn` \| `error`                                              |
+| `AUD_ENV_FILE`                     | `~/.config/ai-usage-dashboard/collector.env` | optional `AUD_*` settings file, absolute or `~/…`; never keys (§4)                  |
 
 ### Thresholds
 
@@ -830,6 +896,13 @@ Install it, send one prompt in a Claude session, then `pnpm run collect`.
 **Claude says "the status line ran but this account exposed no rate_limits"** —
 the bridge is working. This account or plan does not publish quota.
 
+**Claude shows `rate_limited`, `auth_rejected`, or `schema_mismatch`** — the optional usage poll
+(§3) failed and the status-line spool had nothing usable to fall back on. `rate_limited` clears on
+its own at a later interval; do not refresh repeatedly, because the next poll is not allowed before
+the interval anyway. `auth_rejected` means the saved token was revoked or has expired: mint a new
+one and save it, or remove it to return to the spool. `schema_mismatch` means the endpoint's
+response changed shape. Claude reads from the spool again once the bridge has recorded an event.
+
 **OpenRouter shows `insufficient_scope`** — you used an inference key. The
 credits endpoint needs a Management key.
 
@@ -869,8 +942,11 @@ the entry for the version it replaces. Approvals stay pinned to exact versions.
 - read `~/.codex/auth.json`, extract an OAuth token, or call a provider backend
   with an extracted credential;
 - store a raw provider payload, an email, an account ID, or the full status-line
-  input. The only keys it stores are the DeepSeek and OpenRouter keys saved in
-  Settings, and only in its database;
+  input. The only keys it stores are the DeepSeek and OpenRouter keys and the
+  optional Claude token saved in Settings, and only in its database;
+- read `~/.claude/.credentials.json` from the collector, or call the Claude usage
+  endpoint without a token you saved, more than once per five minutes, or again
+  after a refusal within the same interval;
 - send a full DeepSeek or OpenRouter key, or any other credential, to the
   browser. Settings receives at most a key's last four characters;
 - bind to anything but loopback;

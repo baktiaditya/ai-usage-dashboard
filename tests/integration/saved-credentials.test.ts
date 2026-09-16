@@ -19,7 +19,9 @@ import { readSavedCredentials } from '../helpers/saved-credentials';
 const DEEPSEEK_KEY = 'sk-fake-live-deepseek-000abcd';
 const OPENROUTER_KEY = 'sk-or-fake-live-openrouter-wxyz';
 
-const NO_KEYS = { deepseekApiKey: null, openrouterManagementKey: null };
+const CLAUDE_TOKEN = 'sk-ant-oat01-fake-live-claude-token-0000abcd';
+
+const NO_KEYS = { deepseekApiKey: null, openrouterManagementKey: null, claudeUsageToken: null };
 
 let dir: string;
 beforeEach(() => {
@@ -81,15 +83,17 @@ describe('live gate credential reading', () => {
     expect(() => readSavedCredentials(path)).toThrow('file is not a database');
   });
 
-  it('reads both saved keys', () => {
+  it('reads every saved key, the Claude token included', () => {
     const t = createTestDb();
     try {
       saveProviderCredential(t.db, 'deepseek', DEEPSEEK_KEY);
       saveProviderCredential(t.db, 'openrouter', OPENROUTER_KEY);
+      saveProviderCredential(t.db, 'claude', CLAUDE_TOKEN);
 
       expect(readSavedCredentials(t.path)).toEqual({
         deepseekApiKey: DEEPSEEK_KEY,
         openrouterManagementKey: OPENROUTER_KEY,
+        claudeUsageToken: CLAUDE_TOKEN,
       });
     } finally {
       t.cleanup();

@@ -88,10 +88,15 @@ export interface Overview {
   readonly cards: readonly ProviderCard[];
 }
 
-const WINDOW_LABELS: Record<string, string> = {
+export const WINDOW_LABELS: Readonly<Record<string, string>> = {
   five_hour: '5 hour',
   seven_day: '7 day',
   spend_limit: 'Spend limit',
+  // `limits[].kind` from the Claude usage poll. It states no duration, so these
+  // labels are the only name the card shows; an unlisted kind is refused by the
+  // adapter (`CLAUDE_USAGE_WINDOW_KINDS`) rather than rendered raw.
+  session: 'Session',
+  weekly_all: 'Weekly, all models',
   primary: 'Primary',
   secondary: 'Secondary',
 };
@@ -200,7 +205,7 @@ export function buildOverview(db: Db, config: AppConfig, now: Date = new Date())
       sourceObservedAt: snapshot?.sourceObservedAt ?? null,
       lastSuccessfulCollectionAt: lastSuccess.get(provider) ?? null,
       dataAgeMs: freshness.dataAgeMs,
-      freshnessBudgetMs: maxAgeMs(provider, config),
+      freshnessBudgetMs: maxAgeMs(provider, snapshot?.sourceVersion ?? null, config),
       sourceVersion: snapshot?.sourceVersion ?? null,
       schemaVersion: snapshot?.schemaVersion ?? null,
       windows,

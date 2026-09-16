@@ -9,7 +9,7 @@ Four providers, three kinds of number, deliberately never mixed:
 | Provider        | Source                                                  | Measures                                    |
 | --------------- | ------------------------------------------------------- | ------------------------------------------- |
 | **Codex**       | `codex app-server` JSON-RPC (`account/rateLimits/read`) | quota gauge per window                      |
-| **Claude Code** | status-line bridge → local spool                        | quota gauge per window                      |
+| **Claude Code** | status-line bridge → local spool; optional usage poll   | quota gauge per window                      |
 | **DeepSeek**    | `GET api.deepseek.com/user/balance`                     | money balance per currency                  |
 | **OpenRouter**  | `GET openrouter.ai/api/v1/credits`                      | money: credits, cumulative usage, remaining |
 
@@ -33,7 +33,8 @@ and manual refresh disabled unless `AUD_DEV_LIVE_REFRESH=1`.
 
 It works with nothing configured. Providers you have not set up render as
 `unavailable` with a setup hint instead of blocking the page or failing the run.
-DeepSeek and OpenRouter keys are entered under **Settings**, next to **Reload view**.
+DeepSeek and OpenRouter keys are entered under **Settings**, next to **Reload view**. An optional
+Claude token entered there lets Claude report quota while no session is running.
 
 Full instructions, including the Claude status-line bridge, credentials, and the
 systemd timer: **[docs/operations/setup.md](docs/operations/setup.md)**.
@@ -70,8 +71,8 @@ computed from a two-day-old percentage is a guess wearing the costume of a fact.
 scripts/collect.ts ─┐                        ┌─ adapters/codex      (JSON-RPC child process)
                     ├─ collector/  ──────────┼─ adapters/deepseek   (HTTPS)
 POST /api/.../refresh┘   parallel,           ├─ adapters/openrouter (HTTPS)
-                         isolated,           └─ ingestors/claude-statusline (local spool)
-                         one attempt/provider
+                         isolated,           └─ adapters/claude-usage (optional HTTPS poll,
+                         one attempt/provider      composed with ingestors/claude-statusline)
                               │
                               ▼
                       db/  SQLite + WAL
@@ -92,13 +93,15 @@ so scheduled and manual runs cannot drift apart in behaviour.
 
 - binds explicitly to `127.0.0.1`; a non-loopback `AUD_HOST` fails at startup;
 - authentication is delegated to the source: no auth file is read, no token is
-  extracted, no terminal UI is scraped;
+  extracted, no terminal UI is scraped. The one token the dashboard holds for a
+  CLI provider is a Claude token the user mints with `claude setup-token` and
+  pastes into Settings to opt into the usage poll;
 - adapters select an allowlist at the boundary and discard the raw payload —
   account IDs, emails, session IDs and transcript paths are never persisted;
 - a redaction pass runs before every log write, persisted diagnostic, API
   response and rendered string, with tests asserting on each secret shape;
 - manual refresh is `POST`, same-origin enforced, and locally rate limited;
-- DeepSeek and OpenRouter keys are saved from the Settings dialog into the
+- DeepSeek and OpenRouter keys, and the optional Claude token, are saved from the Settings dialog into the
   owner-only (`0600`) database, are never read from the environment, and never
   reach the browser in full: it receives at most a key's last four characters,
   and every settings route requires a same-origin request;

@@ -25,6 +25,26 @@ describe('configuration', () => {
     expect(c.retentionDays).toBe(90);
   });
 
+  it('polls Claude usage no more often than every five minutes by default', () => {
+    expect(loadConfig({}).claudePollIntervalMinutes).toBe(5);
+    expect(loadConfig({ AUD_CLAUDE_POLL_INTERVAL_MINUTES: '' }).claudePollIntervalMinutes).toBe(5);
+    expect(loadConfig({ AUD_CLAUDE_POLL_INTERVAL_MINUTES: '15' }).claudePollIntervalMinutes).toBe(
+      15,
+    );
+  });
+
+  it('rejects a Claude poll interval below the five-minute floor instead of clamping it', () => {
+    for (const value of ['4', '0', '-5', '4.9', 'five']) {
+      expect(() => loadConfig({ AUD_CLAUDE_POLL_INTERVAL_MINUTES: value }), value).toThrow(
+        ConfigError,
+      );
+    }
+    // The floor is the poll's own, not the timer's: a faster timer does not lower it.
+    expect(() =>
+      loadConfig({ AUD_COLLECT_INTERVAL_MINUTES: '1', AUD_CLAUDE_POLL_INTERVAL_MINUTES: '1' }),
+    ).toThrow(/AUD_CLAUDE_POLL_INTERVAL_MINUTES/);
+  });
+
   it('reads no provider key from the environment', () => {
     // Fake keys only.
     const c = loadConfig({

@@ -11,6 +11,7 @@ import { E2E_ORIGIN, clearProviderKeys } from './credentials';
  */
 const DEEPSEEK_KEY = 'sk-e2e-0000000000001234';
 const OPENROUTER_KEY = 'sk-or-e2e-000000000005678';
+const CLAUDE_TOKEN = 'sk-ant-oat01-e2e-fake-0000000009012';
 
 test.afterEach(async ({ request }) => {
   await clearProviderKeys(request);
@@ -64,8 +65,9 @@ test('opens a modal dialog that takes focus, traps it, locks scroll, and fits th
   await expect(page.getByTestId('open-settings')).toHaveAttribute('aria-expanded', 'true');
   await expect(dialog.getByLabel('DeepSeek API Key')).toBeVisible();
   await expect(dialog.getByLabel('OpenRouter Management Key')).toBeVisible();
+  await expect(dialog.getByLabel('Claude Token (optional)')).toBeAttached();
   await expect(page.getByTestId('settings-input-deepseek')).toBeFocused();
-  for (const provider of ['deepseek', 'openrouter']) {
+  for (const provider of ['deepseek', 'openrouter', 'claude']) {
     await expect(page.getByTestId(`settings-input-${provider}`)).toHaveAttribute(
       'type',
       'password',
@@ -254,8 +256,69 @@ test('Remove deletes a saved key immediately', async ({ page, request }) => {
     headers: { origin: E2E_ORIGIN },
   });
   expect(await listed.json()).toMatchObject({
-    credentials: [{ configured: false }, { provider: 'openrouter', configured: false }],
+    credentials: [
+      { configured: false },
+      { provider: 'openrouter', configured: false },
+      { provider: 'claude', configured: false },
+    ],
   });
+});
+
+test('the optional Claude token field says it is optional, saves, and is reachable at every width', async ({
+  page,
+  request,
+}) => {
+  await page.goto('/');
+  const dialog = await openSettings(page);
+  const input = dialog.getByLabel('Claude Token (optional)');
+
+  await expect(input).toHaveAttribute('type', 'password');
+  await expect(input).toHaveValue('');
+  await expect(page.getByTestId('settings-status-claude')).toHaveText('Not set');
+  await expect(input).toHaveAccessibleDescription(
+    /^Optional\. Claude still reports quota through the status line without it\..*claude setup-token.*Removing it here does not revoke it\. Not set$/,
+  );
+
+  // The third field may push the footer below the fold on a phone; the panel
+  // scrolls internally, and the field and Save stay inside the viewport.
+  await input.scrollIntoViewIfNeeded();
+  await input.fill(CLAUDE_TOKEN);
+  const viewport = page.viewportSize();
+  if (!viewport) throw new Error('viewport must be set');
+  for (const target of [input, page.getByTestId('settings-save')]) {
+    await target.scrollIntoViewIfNeeded();
+    const box = await target.boundingBox();
+    if (!box) throw new Error('target must have a box');
+    expect(box.y).toBeGreaterThanOrEqual(0);
+    expect(box.y + box.height).toBeLessThanOrEqual(viewport.height);
+  }
+  const panel = await dialog.boundingBox();
+  if (!panel) throw new Error('dialog must have a box');
+  expect(panel.y + panel.height).toBeLessThanOrEqual(viewport.height);
+  expect(await horizontalOverflow(page)).toBeLessThanOrEqual(1);
+
+  const putResponse = page.waitForResponse(
+    (r) => r.url().endsWith('/api/settings/credentials/claude') && r.request().method() === 'PUT',
+  );
+  await page.getByTestId('settings-save').click();
+  const put = await putResponse;
+  expect(put.status()).toBe(200);
+  expect(await put.text()).not.toContain(CLAUDE_TOKEN.slice(0, -4));
+  await expect(page.getByTestId('settings-status-claude')).toContainText('Saved ••••9012');
+  await expect(input).toHaveValue('');
+  // Tab order still reaches the Claude field's Remove button inside the dialog.
+  await page.getByTestId('settings-remove-claude').focus();
+  await expect(page.getByTestId('settings-remove-claude')).toBeFocused();
+
+  const listed = await request.get('/api/settings/credentials', {
+    headers: { origin: E2E_ORIGIN },
+  });
+  const text = await listed.text();
+  expect(text).toContain('"provider":"claude","configured":true,"hint":"9012"');
+  expect(text).not.toContain(CLAUDE_TOKEN.slice(0, -4));
+
+  await page.getByTestId('settings-remove-claude').click();
+  await expect(page.getByTestId('settings-status-claude')).toHaveText('Not set');
 });
 
 test('the settings API refuses a cross-origin request', async ({ request }) => {

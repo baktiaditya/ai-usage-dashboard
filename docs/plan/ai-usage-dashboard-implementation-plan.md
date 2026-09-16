@@ -267,7 +267,7 @@ Derive success/failure counts from attempts so partial success is auditable and 
 
 #### `claude_poll_state`
 
-Planned for the optional Claude poll; this table is not implemented yet.
+Created by migration `0003` for the optional Claude poll (implemented 2026-09-17).
 
 - `id`, constrained to the singleton value `1`
 - `last_attempted_at`, claimed atomically before an HTTP request

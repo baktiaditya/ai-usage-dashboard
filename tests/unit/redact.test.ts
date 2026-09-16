@@ -13,6 +13,11 @@ describe('redactText', () => {
     ['openrouter key', 'key sk-or-v1-0123456789abcdef0123', 'sk-or-v1-0123456789abcdef0123'],
     ['generic api key', 'sk-0123456789abcdefghij', 'sk-0123456789abcdefghij'],
     [
+      'claude setup token',
+      'rejected sk-ant-oat01-0123456789abcdef-ghij',
+      'sk-ant-oat01-0123456789abcdef-ghij',
+    ],
+    [
       'jwt',
       'token eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NQ.SflKxwRJSMeKKF2QT4',
       'eyJhbGciOiJIUzI1NiJ9',

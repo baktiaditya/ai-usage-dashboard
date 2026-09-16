@@ -1,6 +1,6 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Wrapped, not replaced: each keeps its real behavior and records its options.
@@ -17,12 +17,17 @@ import { createDeepseekAdapter } from '@/lib/adapters/deepseek';
 import { createOpenrouterAdapter } from '@/lib/adapters/openrouter';
 import { collectOnce, runAdapter } from '@/lib/collector/index';
 import { getConfig, resetConfigCache } from '@/lib/config';
+import { openDb } from '@/lib/db/client';
 import { removeProviderCredential, saveProviderCredential } from '@/lib/db/credentials';
 import { CollectionError } from '@/lib/errors';
 import type { ErrorCode } from '@/lib/errors';
+import { CLAUDE_USAGE_SOURCE_VERSION } from '@/lib/domain';
 import type { ProviderAdapter, Provider, QuotaSnapshot } from '@/lib/domain';
 import { getLatestAttempts, getLatestSnapshots } from '@/lib/db/repository';
+import type { Logger } from '@/lib/logger';
+import { buildOverview } from '@/lib/queries/overview';
 import { createTestDb, testConfig } from '../helpers/db';
+import { fixtureText } from '../helpers/fixtures';
 import type { TestDb } from '../helpers/db';
 
 let t: TestDb;
@@ -484,5 +489,197 @@ describe('credentials come from the database', () => {
       vi.unstubAllGlobals();
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe('Claude usage poll through the collector', () => {
+  // Shaped like a setup token, but not one.
+  const CLAUDE_TOKEN = 'sk-ant-oat01-fake-collector-token-0000';
+  let upstream: ReturnType<typeof vi.fn>;
+  let claudeConfig: ReturnType<typeof testConfig>;
+
+  const respond = (status: number, body = fixtureText('claude-usage', 'valid'), delayMs = 0) =>
+    vi.fn(async () => {
+      if (delayMs) await new Promise((r) => setTimeout(r, delayMs));
+      return new Response(body, { status, headers: { 'Content-Type': 'application/json' } });
+    });
+
+  function stubUpstream(fn: ReturnType<typeof vi.fn>): void {
+    upstream = fn;
+    vi.stubGlobal('fetch', upstream);
+  }
+
+  function writeSpool(): void {
+    mkdirSync(dirname(claudeConfig.spoolPath), { recursive: true });
+    writeFileSync(claudeConfig.spoolPath, fixtureText('claude', 'valid-spool'));
+  }
+
+  const run = (trigger: 'scheduled' | 'manual' = 'scheduled', db = t.db) =>
+    collectOnce({ db, config: claudeConfig, trigger, providers: ['claude'] });
+
+  const claudeRows = (table: 'collector_attempts' | 'provider_snapshots') =>
+    t.db.$client.prepare(`SELECT COUNT(*) FROM ${table} WHERE provider = 'claude'`).pluck().get();
+
+  const claudeCard = () =>
+    buildOverview(t.db, claudeConfig).cards.find((c) => c.provider === 'claude');
+
+  beforeEach(() => {
+    claudeConfig = testConfig({ AUD_DATA_DIR: t.dir });
+    stubUpstream(respond(200));
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('with no token saved, reads only the spool and never calls or claims the endpoint', async () => {
+    const summary = await run();
+
+    expect(summary.attempts).toEqual([
+      { provider: 'claude', outcome: 'unavailable', code: 'no_event_yet' },
+    ]);
+    expect(upstream).not.toHaveBeenCalled();
+    expect(t.db.$client.prepare('SELECT COUNT(*) FROM claude_poll_state').pluck().get()).toBe(0);
+
+    writeSpool();
+    expect((await run()).attempts).toEqual([
+      { provider: 'claude', outcome: 'success', code: null },
+    ]);
+    expect(getLatestSnapshots(t.db).get('claude')?.sourceVersion).toBe('claude-code/2.1.269');
+    expect(upstream).not.toHaveBeenCalled();
+  });
+
+  it('with a token, reports a current, labelled reading while no session has run', async () => {
+    saveProviderCredential(t.db, 'claude', CLAUDE_TOKEN);
+    const summary = await run();
+
+    expect(summary.attempts).toEqual([{ provider: 'claude', outcome: 'success', code: null }]);
+    expect(upstream).toHaveBeenCalledTimes(1);
+
+    const card = claudeCard();
+    expect(card).toMatchObject({
+      status: 'healthy',
+      sourceVersion: CLAUDE_USAGE_SOURCE_VERSION,
+      // A polled observation gets the pull budget, not the 12-hour event budget.
+      freshnessBudgetMs: 15 * 60_000,
+      endedWindows: [],
+    });
+    expect(card?.windows.map((w) => w.label)).toEqual(['Session', 'Weekly, all models']);
+    expect(card?.windows.map((w) => w.resetsAt)).toEqual([
+      '2026-09-17T09:00:00.123456+00:00',
+      '2026-09-21T03:00:00+07:00',
+    ]);
+  });
+
+  it('makes at most one request when scheduled and manual collections overlap', async () => {
+    saveProviderCredential(t.db, 'claude', CLAUDE_TOKEN);
+    stubUpstream(respond(200, fixtureText('claude-usage', 'valid'), 200));
+    writeSpool();
+    const web = openDb({ path: t.path });
+    try {
+      const summaries = await Promise.all([run('scheduled'), run('manual', web)]);
+
+      expect(upstream).toHaveBeenCalledTimes(1);
+      // Each run still records exactly one Claude attempt, and both succeed.
+      for (const summary of summaries) {
+        expect(summary.attempts).toEqual([{ provider: 'claude', outcome: 'success', code: null }]);
+      }
+      expect(claudeRows('collector_attempts')).toBe(2);
+      expect([...getLatestAttempts(t.db).keys()].filter((p) => p === 'claude')).toHaveLength(1);
+    } finally {
+      web.$client.close();
+    }
+  });
+
+  it('spends the interval on a 429: no retry, success from the spool, no second request', async () => {
+    saveProviderCredential(t.db, 'claude', CLAUDE_TOKEN);
+    stubUpstream(respond(429, '{"error":"elided"}'));
+    writeSpool();
+
+    const first = await run();
+    expect(first.attempts).toEqual([{ provider: 'claude', outcome: 'success', code: null }]);
+    expect(upstream).toHaveBeenCalledTimes(1);
+    expect(getLatestAttempts(t.db).get('claude')).toMatchObject({
+      outcome: 'success',
+      retryCount: 0,
+    });
+    expect(getLatestSnapshots(t.db).get('claude')?.sourceVersion).toBe('claude-code/2.1.269');
+
+    // A manual refresh straight after is inside the interval the failure spent.
+    await run('manual');
+    expect(upstream).toHaveBeenCalledTimes(1);
+  });
+
+  it('records error with the poll code when a 429 has no usable spool to fall back on', async () => {
+    saveProviderCredential(t.db, 'claude', CLAUDE_TOKEN);
+    stubUpstream(respond(429, '{"error":"elided"}'));
+
+    expect((await run()).attempts).toEqual([
+      { provider: 'claude', outcome: 'error', code: 'rate_limited' },
+    ]);
+    expect(upstream).toHaveBeenCalledTimes(1);
+    expect(claudeCard()?.status).toBe('error');
+  });
+
+  it('records schema_mismatch and renders error on drift without a usable spool', async () => {
+    saveProviderCredential(t.db, 'claude', CLAUDE_TOKEN);
+    stubUpstream(respond(200, fixtureText('claude-usage', 'drift-duplicate-identity')));
+
+    expect((await run()).attempts).toEqual([
+      { provider: 'claude', outcome: 'error', code: 'schema_mismatch' },
+    ]);
+    expect(claudeRows('provider_snapshots')).toBe(0);
+    expect(claudeCard()).toMatchObject({
+      status: 'error',
+      windows: [],
+      diagnostics: { errorCode: 'schema_mismatch' },
+    });
+  });
+
+  it('writes one attempt and at most one snapshot when both sources are fresh', async () => {
+    saveProviderCredential(t.db, 'claude', CLAUDE_TOKEN);
+    writeSpool();
+
+    await run();
+    expect(claudeRows('collector_attempts')).toBe(1);
+    expect(claudeRows('provider_snapshots')).toBe(1);
+    expect(getLatestSnapshots(t.db).get('claude')?.sourceVersion).toBe(CLAUDE_USAGE_SOURCE_VERSION);
+
+    // Inside the interval the poll is skipped; the unchanged spool event is
+    // written once and then deduplicated.
+    await run('manual');
+    await run('manual');
+    expect(claudeRows('collector_attempts')).toBe(3);
+    expect(claudeRows('provider_snapshots')).toBe(2);
+    expect(upstream).toHaveBeenCalledTimes(1);
+  });
+
+  it('never logs the token or a quota value', async () => {
+    saveProviderCredential(t.db, 'claude', CLAUDE_TOKEN);
+    const lines: string[] = [];
+    const record = (message: string, fields?: Record<string, unknown>) => {
+      lines.push(`${message} ${JSON.stringify(fields)}`);
+    };
+    const logger: Logger = {
+      debug: record,
+      info: record,
+      warn: record,
+      error: record,
+      child: () => logger,
+    };
+    for (const status of [200, 401]) {
+      t.db.$client.exec('DELETE FROM claude_poll_state');
+      stubUpstream(respond(status, status === 200 ? undefined : '{"error":"elided"}'));
+      await collectOnce({
+        db: t.db,
+        config: claudeConfig,
+        trigger: 'manual',
+        providers: ['claude'],
+        logger,
+      });
+    }
+    const logged = lines.join('\n');
+    expect(logged).toContain('auth_rejected');
+    expect(logged).not.toContain('fake-collector-token');
+    expect(logged).not.toMatch(/12\.5|\b48\b|session:session/);
   });
 });

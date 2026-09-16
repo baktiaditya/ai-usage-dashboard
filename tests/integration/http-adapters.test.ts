@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
+import {
+  CLAUDE_USAGE_OAUTH_BETA,
+  CLAUDE_USAGE_USER_AGENT,
+  pollClaudeUsage,
+} from '@/lib/adapters/claude-usage';
 import { createDeepseekAdapter } from '@/lib/adapters/deepseek';
+import { buildRequestHeaders } from '@/lib/adapters/http';
 import { createOpenrouterAdapter } from '@/lib/adapters/openrouter';
 import { CollectionError } from '@/lib/errors';
 import { fixtureText } from '../helpers/fixtures';
@@ -58,6 +64,69 @@ describe('credential handling', () => {
     const { impl, calls } = capturingFetch(fixtureText('deepseek', 'valid-single-currency'));
     await createDeepseekAdapter({ apiKey: 'k', fetchImpl: impl }).collect(signal());
     expect((calls[0]?.init as RequestInit).redirect).toBe('error');
+  });
+});
+
+describe('request headers', () => {
+  // The exact set each provider sent before the Claude poll extended the helper.
+  const unchanged = (key: string) => ({
+    Authorization: `Bearer ${key}`,
+    Accept: 'application/json',
+    'User-Agent': 'ai-usage-dashboard/0.1.0',
+  });
+
+  it('sends DeepSeek exactly the headers it sent before', async () => {
+    const { impl, calls } = capturingFetch(fixtureText('deepseek', 'valid-single-currency'));
+    await createDeepseekAdapter({ apiKey: 'sk-fake-ds', fetchImpl: impl }).collect(signal());
+    expect(calls[0]?.init?.headers).toStrictEqual(unchanged('sk-fake-ds'));
+  });
+
+  it('sends OpenRouter exactly the headers it sent before', async () => {
+    const { impl, calls } = capturingFetch(fixtureText('openrouter', 'valid'));
+    await createOpenrouterAdapter({ managementKey: 'sk-or-fake', fetchImpl: impl }).collect(
+      signal(),
+    );
+    expect(calls[0]?.init?.headers).toStrictEqual(unchanged('sk-or-fake'));
+  });
+
+  it('sends the Claude usage poll its beta header and a claude-cli user agent', async () => {
+    const { impl, calls } = capturingFetch(fixtureText('claude-usage', 'valid'));
+    await pollClaudeUsage({ token: 'sk-ant-oat01-fake', fetchImpl: impl }, signal());
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.url).toBe('https://api.anthropic.com/api/oauth/usage');
+    expect(calls[0]?.url).not.toContain('fake');
+    expect(calls[0]?.init?.headers).toStrictEqual({
+      Authorization: 'Bearer sk-ant-oat01-fake',
+      Accept: 'application/json',
+      'User-Agent': CLAUDE_USAGE_USER_AGENT,
+      'anthropic-beta': CLAUDE_USAGE_OAUTH_BETA,
+    });
+    expect(CLAUDE_USAGE_USER_AGENT).toMatch(/^claude-cli\//);
+  });
+
+  it('overrides a default header case-insensitively instead of sending both', () => {
+    expect(buildRequestHeaders('k', { 'user-agent': 'other/1' })).toStrictEqual({
+      Authorization: 'Bearer k',
+      Accept: 'application/json',
+      'User-Agent': 'other/1',
+    });
+  });
+
+  it('never lets an extra header replace the Authorization derived from the token', () => {
+    for (const name of ['Authorization', 'authorization', 'AUTHORIZATION']) {
+      expect(() => buildRequestHeaders('k', { [name]: 'Bearer stolen' })).toThrow(/Authorization/);
+    }
+  });
+
+  it('never retries a refused Claude poll', async () => {
+    for (const status of [429, 500, 401]) {
+      const { impl, calls } = capturingFetch('{}', status);
+      await expect(
+        pollClaudeUsage({ token: 'sk-ant-oat01-fake', fetchImpl: impl }, signal()),
+      ).rejects.toBeInstanceOf(CollectionError);
+      expect(calls).toHaveLength(1);
+    }
   });
 });
 

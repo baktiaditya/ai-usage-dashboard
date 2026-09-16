@@ -15,11 +15,17 @@
  * see what was true before the failure — clearly labelled with its age.
  */
 import type { AppConfig } from './config';
+import { CLAUDE_USAGE_SOURCE_VERSION } from './domain';
 import type { CardStatus, Provider } from './domain';
 import type { StoredAttempt, StoredSnapshot } from './db/repository';
 import { ageMs, hasPassed } from './time';
 
-/** Sources the collector polls; Claude is event-driven and has its own budget. */
+/**
+ * Providers the collector always polls. Claude is not one of them: its spool is
+ * event-driven and has its own budget, and only an observation from the
+ * optional usage poll is judged as a pull. Adding `claude` here would silently
+ * shorten how long a spool-only install stays fresh.
+ */
 const PULL_PROVIDERS: ReadonlySet<Provider> = new Set(['codex', 'deepseek', 'openrouter']);
 
 export interface FreshnessInput {
@@ -40,9 +46,19 @@ export interface FreshnessResult {
   readonly resetPassedWithoutObservation: boolean;
 }
 
-/** How old an observation from this provider may be before it is stale. */
-export function maxAgeMs(provider: Provider, config: AppConfig): number {
-  if (PULL_PROVIDERS.has(provider)) {
+/**
+ * How old an observation may be before it is stale. Keyed on the source as well
+ * as the provider, because one Claude card can hold a spool event in one run
+ * and a polled reading in the next. `sourceVersion` is the stored snapshot's,
+ * or `null` when there is none.
+ */
+export function maxAgeMs(
+  provider: Provider,
+  sourceVersion: string | null,
+  config: AppConfig,
+): number {
+  const polled = provider === 'claude' && sourceVersion === CLAUDE_USAGE_SOURCE_VERSION;
+  if (PULL_PROVIDERS.has(provider) || polled) {
     return config.freshness.pullMissedIntervals * config.collectIntervalMinutes * 60_000;
   }
   return config.freshness.claudeEventMaxAgeMinutes * 60_000;
@@ -81,7 +97,7 @@ export function evaluateFreshness(input: FreshnessInput): FreshnessResult {
   }
 
   const age = ageMs(snapshot.sourceObservedAt, now);
-  const limit = maxAgeMs(provider, config);
+  const limit = maxAgeMs(provider, snapshot.sourceVersion, config);
 
   // 3a. A quota window that has already reset makes the stored percentage
   //     meaningless: the real value is whatever accrued since the reset, and we

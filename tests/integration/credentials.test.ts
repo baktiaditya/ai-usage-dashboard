@@ -13,6 +13,8 @@ import type { TestDb } from '../helpers/db';
 // Fake keys only.
 const DEEPSEEK_KEY = 'sk-fake-deepseek-0000000abcd';
 const OPENROUTER_KEY = 'sk-or-fake-openrouter-000wxyz';
+// Shaped like a `claude setup-token` token, but not one.
+const CLAUDE_TOKEN = 'sk-ant-oat01-fake-sanitised-token-0000000000000000-lmno';
 
 let t: TestDb;
 beforeEach(() => {
@@ -33,10 +35,12 @@ describe('saving and reading', () => {
     expect(readProviderCredentials(t.db)).toEqual({
       deepseekApiKey: null,
       openrouterManagementKey: null,
+      claudeUsageToken: null,
     });
     expect(listCredentialStatus(t.db)).toEqual([
       { provider: 'deepseek', configured: false, hint: null, updatedAt: null },
       { provider: 'openrouter', configured: false, hint: null, updatedAt: null },
+      { provider: 'claude', configured: false, hint: null, updatedAt: null },
     ]);
   });
 
@@ -54,7 +58,23 @@ describe('saving and reading', () => {
     expect(readProviderCredentials(t.db)).toEqual({
       deepseekApiKey: DEEPSEEK_KEY,
       openrouterManagementKey: OPENROUTER_KEY,
+      claudeUsageToken: null,
     });
+  });
+
+  it('saves, reads, and redacts a Claude token like the other keys', () => {
+    // A setup token passes the shared secret schema unchanged.
+    expect(credentialSecretSchema.parse(CLAUDE_TOKEN)).toBe(CLAUDE_TOKEN);
+
+    const status = saveProviderCredential(t.db, 'claude', `${CLAUDE_TOKEN}\n`);
+    expect(status).toMatchObject({ provider: 'claude', configured: true, hint: 'lmno' });
+    expect(JSON.stringify(status)).not.toContain(CLAUDE_TOKEN.slice(0, -4));
+    expect(readProviderCredentials(t.db).claudeUsageToken).toBe(CLAUDE_TOKEN);
+    expect(JSON.stringify(listCredentialStatus(t.db))).not.toContain(CLAUDE_TOKEN.slice(0, -4));
+
+    expect(removeProviderCredential(t.db, 'claude')).toMatchObject({ configured: false });
+    expect(readProviderCredentials(t.db).claudeUsageToken).toBeNull();
+    expect(rows()).toEqual([]);
   });
 
   it('replaces the key and its updatedAt on a second save', () => {
@@ -98,12 +118,13 @@ describe('saving and reading', () => {
     expect(readProviderCredentials(t.db).openrouterManagementKey).toBeNull();
   });
 
-  it('lists both providers in order, and no status carries a secret', () => {
+  it('lists every provider in order, and no status carries a secret', () => {
+    saveProviderCredential(t.db, 'claude', CLAUDE_TOKEN);
     saveProviderCredential(t.db, 'openrouter', OPENROUTER_KEY);
     saveProviderCredential(t.db, 'deepseek', DEEPSEEK_KEY);
     const statuses = listCredentialStatus(t.db);
 
-    expect(statuses.map((s) => s.provider)).toEqual(['deepseek', 'openrouter']);
+    expect(statuses.map((s) => s.provider)).toEqual(['deepseek', 'openrouter', 'claude']);
     for (const status of statuses) {
       expect(Object.keys(status).sort()).toEqual(['configured', 'hint', 'provider', 'updatedAt']);
       expect(status).not.toHaveProperty('secret');
@@ -111,6 +132,7 @@ describe('saving and reading', () => {
     const serialized = JSON.stringify(statuses);
     expect(serialized).not.toContain(DEEPSEEK_KEY.slice(0, -4));
     expect(serialized).not.toContain(OPENROUTER_KEY.slice(0, -4));
+    expect(serialized).not.toContain(CLAUDE_TOKEN.slice(0, -4));
   });
 });
 
@@ -179,7 +201,11 @@ describe('table constraints', () => {
 
   it('rejects a provider that has no key in Settings', () => {
     expect(() => insert('codex', 'x')).toThrow(/CHECK constraint failed/);
-    expect(() => insert('claude', 'x')).toThrow(/CHECK constraint failed/);
+    expect(() => insert('not-a-provider', 'x')).toThrow(/CHECK constraint failed/);
+  });
+
+  it('accepts a Claude row since migration 0003', () => {
+    expect(() => insert('claude', 'x')).not.toThrow();
   });
 
   it('rejects an empty secret', () => {

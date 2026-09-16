@@ -163,6 +163,15 @@ implementation:
    duration — two runs seconds apart disagreed by a minute. It stays a diagnostic;
    no value it prints is ever stored.
 
+Re-probed once on 2026-09-17 with `--show-limit-kinds`, to label polled gauges:
+`200 OK`, same contract. The two active `limits[]` entries identify as
+`kind=session group=session` and `kind=weekly_all group=weekly`, both with
+`scope` null. Both read as window names rather than codenames, so they are
+published here and in `WINDOW_LABELS`; the adapter refuses any other kind rather
+than render it. The unrecognised top-level key count was **13**, one carrying a
+value — one more than the first probes. The drift signal fired on a key the
+adapter does not read, so it changed nothing; the names stay withheld.
+
 Not gated, and still unproven: a second machine, a non-Pro plan, and an account
 whose `seven_day_opus` or `seven_day_sonnet` windows carry data.
 

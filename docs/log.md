@@ -2,6 +2,30 @@
 
 ## 2026-09-17
 
+- **Update**: [the poll brief](backlog/ready-for-agent/poll-claude-quota-without-a-session.md)
+  is implemented on branch `feat/poll-claude-quota-without-a-session`, tracked by
+  [#13](https://github.com/baktiaditya/ai-usage-dashboard/issues/13). Migration `0003` rebuilds
+  `provider_credentials` with `claude` in its `CHECK` and creates the `claude_poll_state` singleton
+  that plan §4.4 now describes as implemented. `src/lib/adapters/claude-usage.ts` holds the poll and
+  the single composite Claude adapter. Freshness now keys the Claude budget on the snapshot's
+  `sourceVersion`, and [setup](operations/setup.md) §3 documents enabling the poll and the whole
+  token lifecycle. The brief stays in `ready-for-agent/` until the change is merged and deployed.
+- **Decision**: a `limits[].kind` without a label is refused in the adapter, not rendered. The
+  brief left the choice open between labelling and refusing. Refusing there keeps an undocumented
+  internal name out of the database, the history legend, and the advisory subject, not only the
+  card. A payload whose active limits all carry unknown kinds is `schema_mismatch`, because
+  `not_entitled` would misstate an account that does have limits. The two kinds seen live, `session`
+  and `weekly_all`, read as window names and are labelled `Session` and `Weekly, all models`.
+- **Discovery**: one re-probe with `--show-limit-kinds` returned 13 unrecognised top-level keys
+  instead of the 12 recorded on 2026-09-16, one still carrying a value. The drift signal fired on a
+  field the adapter does not read. Recorded as a count in
+  [M0 discovery](discovery/m0-discovery.md); the names stay withheld.
+- **Risk**: a run that loses the poll claim reads only the spool. With a token saved and no spool
+  file at all, a manual **Refresh** inside the five-minute interval records `no_event_yet` and the
+  card reads `unavailable` until the next run that polls. The brief accepts this, since the
+  loser continues through the spool path. A scheduled run can also lose narrowly, because
+  process start-up jitter can land consecutive claims just under five minutes apart. Installs with
+  the status-line bridge are unaffected, because the spool still yields a snapshot.
 - **Risk**: plan §4.5 and the implementation disagree on how a failed format or version guard is
   shown. §4.5 lists it under `unavailable`, and the comment in
   `src/lib/ingestors/claude-statusline.ts` says the same, but `UNAVAILABLE_CODES` in

@@ -160,6 +160,39 @@ function intToBool(v: number | null): boolean | null {
   return v === null ? null : v === 1;
 }
 
+const CANONICAL_UTC_ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+
+/**
+ * Atomically claim the next permitted Claude usage poll.
+ *
+ * Returns true, and records `attemptedAt`, only when no poll was claimed within
+ * `intervalMs` before it. One `INSERT … ON CONFLICT … DO UPDATE … WHERE`
+ * statement decides and writes together; a read followed by a write would let
+ * the scheduled collector and a manual refresh both see an old claim and both
+ * call the endpoint. The caller claims *before* its request, so a refusal, a
+ * network failure, or a crash still spends the interval.
+ *
+ * Timestamps must be canonical UTC ISO-8601 (`Date#toISOString`), which is what
+ * makes SQLite's text comparison chronological.
+ */
+export function claimClaudePoll(db: Db, attemptedAt: string, intervalMs: number): boolean {
+  if (!CANONICAL_UTC_ISO.test(attemptedAt) || Number.isNaN(Date.parse(attemptedAt))) {
+    throw new Error('claimClaudePoll needs a canonical UTC ISO-8601 timestamp');
+  }
+  if (!Number.isFinite(intervalMs) || intervalMs < 0) {
+    throw new Error('claimClaudePoll needs a non-negative interval');
+  }
+  const cutoff = new Date(Date.parse(attemptedAt) - intervalMs).toISOString();
+  const result = db.$client
+    .prepare(
+      `INSERT INTO claude_poll_state (id, last_attempted_at) VALUES (1, ?)
+       ON CONFLICT (id) DO UPDATE SET last_attempted_at = excluded.last_attempted_at
+       WHERE claude_poll_state.last_attempted_at <= ?`,
+    )
+    .run(attemptedAt, cutoff);
+  return result.changes === 1;
+}
+
 // ---------------------------------------------------------------------------
 // Reads
 // ---------------------------------------------------------------------------

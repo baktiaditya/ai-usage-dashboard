@@ -1,0 +1,16 @@
+{
+  "_fixture": {
+    "sanitized": "Synthetic drift: the only active limit has a kind this build has no label for."
+  },
+  "limits": [
+    {
+      "kind": "renamed_window",
+      "group": null,
+      "percent": 10,
+      "severity": "normal",
+      "resets_at": null,
+      "scope": null,
+      "is_active": true
+    }
+  ]
+}
