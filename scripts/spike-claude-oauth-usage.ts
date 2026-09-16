@@ -26,7 +26,13 @@
  *   and never retried. Re-run by hand, and not more than once every ~5 minutes.
  * - Refresh the token. Writing `~/.claude/.credentials.json` races Claude Code's
  *   own refresh-token rotation. When the token is expired this exits `skipped`
- *   and tells you to mint a standalone one with `claude setup-token`.
+ *   and tells you to run a Claude Code session, which refreshes it.
+ *
+ * A `claude setup-token` token cannot pass this gate: it is inference-only, and
+ * the endpoint answers `403` without the `user:profile` scope. The dashboard's
+ * optional Claude source is therefore the rate-limit header probe in
+ * src/lib/adapters/claude-usage.ts, not this endpoint (M0 discovery,
+ * 2026-09-17).
  *
  * The endpoint is undocumented and unsupported: anthropics/claude-code#31637 is
  * labelled `invalid`. Treat a shape change as expected, not exceptional.
@@ -191,9 +197,9 @@ function usage(code: number, message?: string): number {
       '                        block elides. Needed to label a polled window; read',
       '                        the output before copying any value into the repo.',
       '',
-      'A token from `claude setup-token` in the environment is preferred: it is',
-      'long-lived and standalone, so the probe never races Claude Code for the',
-      'credentials file. Sends exactly one request; never retries a 429.',
+      'Needs a full-login token, which carries the user:profile scope. A token',
+      'from `claude setup-token` is inference-only and answers 403 here. Sends',
+      'exactly one request; never retries a 429.',
       '',
     ].join('\n'),
   );
@@ -495,8 +501,8 @@ async function main(): Promise<number> {
       [
         'skipped: no token found.',
         `  looked at $${options.tokenEnvName}, then ${displayPath(options.credentialsPath)}`,
-        '  mint a standalone one with: claude setup-token',
-        `  then: ${options.tokenEnvName}=<token> pnpm run spike:claude-usage`,
+        '  log in with `claude` (a setup-token token lacks the user:profile scope)',
+        `  or: ${options.tokenEnvName}=<full-login token> pnpm run spike:claude-usage`,
         '',
       ].join('\n'),
     );
@@ -513,9 +519,8 @@ async function main(): Promise<number> {
           '',
           'skipped: that token is expired.',
           "  Refreshing it here would race Claude Code's own rotation of the same",
-          '  file, so this script will not do it. Either run a Claude Code session',
-          '  (which refreshes it), or mint a standalone token:',
-          '    claude setup-token',
+          '  file, so this script will not do it. Run a Claude Code session, which',
+          '  refreshes it. A `claude setup-token` token cannot read this endpoint.',
           '',
         ].join('\n'),
       );

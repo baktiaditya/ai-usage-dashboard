@@ -39,7 +39,7 @@ describe('configuration', () => {
         ConfigError,
       );
     }
-    // The floor is the poll's own, not the timer's: a faster timer does not lower it.
+    // The floor is the probe's own, not the timer's: a faster timer does not lower it.
     expect(() =>
       loadConfig({ AUD_COLLECT_INTERVAL_MINUTES: '1', AUD_CLAUDE_POLL_INTERVAL_MINUTES: '1' }),
     ).toThrow(/AUD_CLAUDE_POLL_INTERVAL_MINUTES/);

@@ -89,9 +89,9 @@ export const ERROR_CODE_HINTS: Record<ErrorCode, string> = {
  * owns the answer. The collector records no attempt for it, so the latest
  * attempt stays the one that actually did the work.
  *
- * Only the composite Claude adapter uses it: a run that lost the usage-poll
- * claim and has no usable spool reading neither polled nor observed anything.
- * Recording `unavailable` or `error` there would be a verdict about a poll it
+ * Only the composite Claude adapter uses it: a run that lost the quota-probe
+ * claim and has no usable spool reading neither probed nor observed anything.
+ * Recording `unavailable` or `error` there would be a verdict about a probe it
  * never made, and because it started later it would mask the claimant's result
  * — even one still in flight.
  */
