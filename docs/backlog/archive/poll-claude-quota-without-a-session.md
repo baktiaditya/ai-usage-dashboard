@@ -2,7 +2,17 @@
 
 ## Status
 
-Ready for agent
+Archived
+
+Delivered on 2026-09-17 in [PR #16](https://github.com/baktiaditya/ai-usage-dashboard/pull/16),
+merged as `b46205e` and deployed to the production checkout. The contract lives in
+[plan §2, §3.1, §3.3, §4.4 and §7](../../plan/ai-usage-dashboard-implementation-plan.md),
+[M0 discovery](../../discovery/m0-discovery.md), and [Setup](../../operations/setup.md) §3; the
+delivery is recorded in the [log](../../log.md).
+
+Delivery departs from the Implementation Contract below: the revision note that follows records the
+change of source from the usage endpoint to a rate-limit header probe. The canonical documents above
+state the delivered rules; this brief is not updated further.
 
 The status above must match the directory that contains this brief. Move the file with
 `git mv` when its readiness changes.
