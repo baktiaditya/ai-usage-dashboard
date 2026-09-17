@@ -69,8 +69,8 @@ export function parseSpoolEvent(text: string): SpoolEvent {
     );
   }
 
-  // A newer bridge writing a format this build has never seen must degrade to
-  // "unavailable", not to a confidently wrong number.
+  // A newer bridge writing an unknown format must fail with version_unsupported
+  // so the card shows an error instead of a confidently wrong number.
   if (parsed.data.spoolSchemaVersion > SUPPORTED_SPOOL_SCHEMA_VERSION) {
     throw new CollectionError(
       'version_unsupported',

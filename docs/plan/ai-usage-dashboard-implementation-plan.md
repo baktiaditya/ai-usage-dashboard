@@ -291,12 +291,10 @@ supplied by the user, never read out of any CLI's auth file, and the prohibition
 
 - `healthy`: the last collection succeeded and is still within the freshness policy.
 - `stale`: previously succeeded, but data age passed the threshold or a quota reset passed with no new observation.
-- `unavailable`: source/credential not configured, account ineligible, source field unavailable, or format/version guard unrecognized.
-- `error`: the source should be available and an attempt failed due to timeout, network, auth rejection, or upstream error.
+- `unavailable`: source/credential not configured, account ineligible, or source field unavailable.
+- `error`: the source should be available and an attempt failed due to timeout, network, auth rejection, upstream error, or an unrecognized format/version guard (`schema_mismatch` or `version_unsupported`).
 
 Attempt status and snapshot freshness are separate concepts and are not stored as a single status on the immutable snapshot. The overview computes the card state at query time with the following precedence: latest attempt `error`; source `unavailable` or no snapshot ever; snapshot past the freshness policy becomes `stale`; otherwise `healthy`. The last known value may remain visible in `error`/`unavailable` states with a clear timestamp and warning.
-
-**Known divergence (recorded 2026-09-17):** the implementation does not yet match the `unavailable` bullet for format/version guards. `UNAVAILABLE_CODES` in `src/lib/errors.ts` holds only `not_configured`, `not_entitled`, and `no_event_yet`, so `schema_mismatch` and `version_unsupported` record an `error` attempt and render `error` for every provider. Until that is resolved in one place for all providers, new adapters follow the implemented mapping rather than special-casing their own; see the [log](../log.md).
 
 ## 5. Security and operations
 

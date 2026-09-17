@@ -250,9 +250,8 @@ All closed on 2026-09-16.
    `version_unsupported` on an adapter schema bump. Do not invent a second vocabulary, and do not
    add a Claude-specific status mapping for it. Neither code is in `UNAVAILABLE_CODES`, so the
    collector records the attempt as `error` and `evaluateFreshness` renders `error`, as it already
-   does for drift on every other provider. Plan §4.5 still lists an unrecognised format guard under
-   `unavailable`; that divergence is pre-existing, applies to all providers, and is recorded in
-   [the log](../../log.md) under 2026-09-17. Changing `UNAVAILABLE_CODES` is out of scope here.
+   does for drift on every other provider. Plan §4.5 uses the same mapping for
+   unrecognised format/version guards. Changing `UNAVAILABLE_CODES` is out of scope here.
 10. **Claude stays one adapter, not two.** The collector's stated invariant is "one run, one
     attempt per provider" (`src/lib/collector/index.ts`), `getLatestAttempts` in
     `src/lib/db/repository.ts` partitions by provider alone, and `evaluateFreshness` in
