@@ -2,6 +2,14 @@
 
 ## 2026-09-17
 
+- **Decision**: [issue #15](https://github.com/baktiaditya/ai-usage-dashboard/issues/15)
+  resolves the status divergence recorded in the Risk entry below. An unrecognised format or
+  version guard (`schema_mismatch` or `version_unsupported`) is an `error` attempt for every
+  provider: the source should be available, but its response cannot be trusted. `unavailable`
+  remains for sources that are not configured, not entitled, or have no event yet. The
+  [plan](plan/ai-usage-dashboard-implementation-plan.md) §4.5, the §9 format-change mitigation, and
+  the Claude spool comment now match the existing collector mapping; no runtime status mapping changes. Tests pin both codes across
+  all four providers. This supersedes the 2026-09-17 Risk entry about the divergence.
 - **Update**: [PR #16](https://github.com/baktiaditya/ai-usage-dashboard/pull/16) is merged as
   `b46205e` and deployed to the production checkout from `820d873`, after a `db:backup` of the live
   database. The Setup §6 deploy and verify blocks from `origin/main` passed with no rollback:

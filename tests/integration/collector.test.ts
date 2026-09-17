@@ -142,6 +142,16 @@ describe('runAdapter', () => {
     expect(record.result.outcome).toBe('unavailable');
   });
 
+  it.each(['schema_mismatch', 'version_unsupported'] as const)(
+    'classifies %s as error for every provider',
+    async (code) => {
+      for (const provider of ['codex', 'claude', 'deepseek', 'openrouter'] as const) {
+        const record = await runAdapter(failingAdapter(provider, code));
+        expect(record.result).toMatchObject({ outcome: 'error', failure: { provider, code } });
+      }
+    },
+  );
+
   it('enforces its own timeout ceiling on an adapter that ignores the signal', async () => {
     const started = Date.now();
     const record = await runAdapter(hangingAdapter('codex'));
