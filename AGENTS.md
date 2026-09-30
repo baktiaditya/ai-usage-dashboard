@@ -11,13 +11,18 @@ implementation lives in `src/`.
 1. Use code-review-graph before Grep/Glob/Read-style codebase exploration. Start with
    `get_minimal_context_tool`, then use semantic/relationship queries for exploration, impact/flow
    tools for blast radius, `detect_changes_tool` for review, and `tests_for` before concluding
-   coverage is missing. Confirm graph freshness when the exact head matters. If the tools are
-   unavailable, `get_minimal_context_tool` returns `not_ready`, or the graph does not cover the
-   target, state that limitation and continue with filesystem search. Semantic search degrades
-   silently: `code-review-graph update` never refreshes embeddings, so nodes added since the last
-   `embed` are absent from vector results while `search_mode` still reports `semantic`. Re-run
-   `code-review-graph embed --provider local` before relying on it, or treat a semantic miss as
-   inconclusive.
+   coverage is missing. Confirm graph freshness when the exact head matters: each tool result
+   carries `_graph.head_matches_build`, and when it is `false`, run `code-review-graph build`.
+   After a branch switch, `code-review-graph update` can report no changed files and leave the
+   graph on the old branch. If the tools are unavailable, `get_minimal_context_tool` returns
+   `not_ready`, or the graph does not cover the target, state that limitation and continue with
+   filesystem search. Semantic search degrades silently: `code-review-graph update` never
+   refreshes embeddings, so nodes added since the last `embed` are absent from vector results
+   while `search_mode` still reports `semantic`. Re-run `code-review-graph embed --provider local`
+   before relying on it, or treat a semantic miss as inconclusive. A `search_mode` of `fts` means
+   the running server has no embeddings at all. Local embedding needs the
+   `code-review-graph[embeddings]` install, which the `uvx` entry in `.mcp.json` lacks. Read `fts`
+   results as keyword matches and state that limitation.
 2. Inspect `git status --short` and the relevant diff before editing. Preserve unrelated worktree
    changes.
 3. Load only the task branches that apply:
