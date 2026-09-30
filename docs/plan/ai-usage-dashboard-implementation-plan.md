@@ -111,8 +111,8 @@ The dashboard makes no automatic routing decisions in the MVP. It only presents 
 
 #### OpenCode Go
 
-Added 2026-09-30 (see the [log](../log.md)). The work is briefed in
-[add-opencode-go-quota](../backlog/ready-for-agent/add-opencode-go-quota.md).
+Added 2026-09-30 (see the [log](../log.md)), delivered from the now archived brief
+[add-opencode-go-quota](../backlog/archive/add-opencode-go-quota.md).
 
 - Call `GET https://opencode.ai/zen/go/v1/usage` with an OpenCode API key sent as
   `Authorization: Bearer`. The endpoint reads no other header.

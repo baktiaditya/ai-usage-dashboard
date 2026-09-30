@@ -2,7 +2,18 @@
 
 ## Status
 
-Ready for agent
+Archived
+
+Delivered on 2026-09-30 in [PR #20](https://github.com/baktiaditya/ai-usage-dashboard/pull/20),
+merged as `ad85dcf` and deployed to the production checkout. The contract lives in
+[plan §3.1 and §3.5](../../plan/ai-usage-dashboard-implementation-plan.md),
+[M0 discovery](../../discovery/m0-discovery.md), and [Setup](../../operations/setup.md) §4; the
+delivery is recorded in the [log](../../log.md).
+
+Delivery goes beyond the Implementation Contract below: the OpenCode Go card spans the full grid
+width and carries a **Today** chart of each window's utilisation per local hour, recorded as a
+Design entry in the log. The canonical documents above state the delivered rules; this brief is not
+updated further.
 
 The status above must match the directory that contains this brief. Move the file with
 `git mv` when its readiness changes.

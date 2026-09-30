@@ -308,8 +308,10 @@ Facts that drove the contract in [plan §3.1](../plan/ai-usage-dashboard-impleme
 3. **`403` has not been observed here.** The upstream PR discussion and downstream integrations
    report that a valid key without a Go subscription gets `403`. It is fixture-tested only.
 
-**Gate closed** by the live `200` above. The saved-in-Settings live check belongs to the
-[implementation brief](../backlog/ready-for-agent/add-opencode-go-quota.md).
+**Gate closed** by the live `200` above. The saved-in-Settings live check passed on the
+development server and again in production after the deploy, both with `success`. The work was
+delivered from the now archived
+[implementation brief](../backlog/archive/add-opencode-go-quota.md).
 
 ## Decisions fixed at M0
 

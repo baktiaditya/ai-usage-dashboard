@@ -2,6 +2,16 @@
 
 ## 2026-09-30
 
+- **Update**: [PR #20](https://github.com/baktiaditya/ai-usage-dashboard/pull/20) is merged as
+  `ad85dcf` and deployed to the production checkout from `2614f5a`, after a `db:backup` of the live
+  database. The Setup §6 deploy and verify blocks from `origin/main` passed with no rollback:
+  `verify` passed (38 files, 647 tests), migration `0004` applied with no foreign key violation and
+  `integrity_check` returning `ok`, and all collector runs and the saved Claude, DeepSeek and
+  OpenRouter keys were kept. The first collector run after the deploy succeeded for every configured
+  provider and reported OpenCode Go as `not_configured`. With the key then saved in production
+  Settings, **Refresh** on the card recorded `success` and the card drew its three windows and the
+  **Today** chart.
+  [The OpenCode Go brief](backlog/archive/add-opencode-go-quota.md) moves to `archive/`.
 - **Design**: the OpenCode Go card spans the full grid width. It shows the windows on the left
   and a **Today** chart on the right: each window's utilisation at the end of every local hour,
   drawn from the collector's own snapshots. The user asked for a layout like the OpenCode
@@ -35,7 +45,7 @@
   The dashboard keeps the source value unchanged, as plan §3.1 requires.
   [Setup](operations/setup.md) §4 explains the difference.
 
-- **Update**: [add-opencode-go-quota](backlog/ready-for-agent/add-opencode-go-quota.md) is
+- **Update**: [add-opencode-go-quota](backlog/archive/add-opencode-go-quota.md) is
   implemented on branch `feat/opencode-go-quota`. It is not merged or deployed. The pieces:
   - the adapter, `src/lib/adapters/opencode-go.ts`;
   - migration `0004`;
@@ -80,7 +90,7 @@
   recorded in [M0 discovery](discovery/m0-discovery.md), and requests with no key or a bogus key
   got `401` JSON. The endpoint is upstream PR anomalyco/opencode#16513 and is not yet in OpenCode's
   public docs. Evidence is shape-only; no key or percentage is recorded.
-- **Proposed**: [add-opencode-go-quota](backlog/ready-for-agent/add-opencode-go-quota.md) files
+- **Proposed**: [add-opencode-go-quota](backlog/archive/add-opencode-go-quota.md) files
   the implementation directly in `ready-for-agent/`, tracked by
   [#21](https://github.com/baktiaditya/ai-usage-dashboard/issues/21). The scope decision and live
   gate above close every dependency, so no user decision is outstanding.
