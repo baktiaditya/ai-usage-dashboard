@@ -46,9 +46,15 @@ const WINDOWS = [
  * percentage arrives as `{ __rawNumber: "41" }`, not `41`. A plain number is
  * accepted too, for payloads parsed any other way. The source value is kept,
  * never clamped; presentation clamps.
+ *
+ * The marker's text must be a JSON number literal before it is converted:
+ * `Number()` alone reads "" as 0 and "0x64" as 100, which would store a
+ * malformed field as a plausible percentage instead of refusing it.
  */
+const JSON_NUMBER = /^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$/;
+
 const percentSchema = z
-  .union([z.number(), z.object({ __rawNumber: z.string() })])
+  .union([z.number(), z.object({ __rawNumber: z.string().regex(JSON_NUMBER) })])
   .transform((v) => (typeof v === 'number' ? v : Number(v.__rawNumber)))
   .pipe(z.number().min(0));
 

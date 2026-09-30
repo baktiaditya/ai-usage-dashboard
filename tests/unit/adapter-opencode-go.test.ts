@@ -107,6 +107,12 @@ describe('opencode go normalisation', () => {
   it.each([
     ['a negative percentage', { percent: -1 }],
     ['a non-numeric percentage', { percent: { __rawNumber: 'NaN' } }],
+    // Number() would read each of these as a plausible percentage.
+    ['an empty lossless marker', { percent: { __rawNumber: '' } }],
+    ['a hexadecimal lossless marker', { percent: { __rawNumber: '0x64' } }],
+    ['a padded lossless marker', { percent: { __rawNumber: ' 41' } }],
+    ['a signed lossless marker', { percent: { __rawNumber: '+41' } }],
+    ['an Infinity lossless marker', { percent: { __rawNumber: 'Infinity' } }],
     ['a percentage sent as a string', { percent: '41' }],
     ['a reset time that is not an instant', { resetsAt: 'next monday' }],
     ['a reset time without an offset', { resetsAt: '2026-10-05T00:00:00' }],
@@ -116,6 +122,17 @@ describe('opencode go normalisation', () => {
     expect(() => normalizeOpencodeGoResponse(raw)).toThrow(
       expect.objectContaining({ code: 'schema_mismatch' }),
     );
+  });
+
+  it('reads every JSON number literal form a lossless marker can carry', () => {
+    const raw = fixtureJson('opencode-go', 'valid') as { usage: Record<string, object> };
+    const read = (text: string) => {
+      raw.usage.weekly = { ...raw.usage.weekly, percent: { __rawNumber: text } };
+      return normalizeOpencodeGoResponse(raw).windows[1]!.usedPercent;
+    };
+    expect([read('41'), read('0'), read('41.5'), read('1e2'), read('4.1E+1')]).toEqual([
+      41, 0, 41.5, 100, 41,
+    ]);
   });
 
   it('refuses a payload with no usage object', () => {
@@ -186,6 +203,18 @@ describe('opencode go adapter', () => {
     expect(calls).toHaveLength(2);
     expect(recordRetry).toHaveBeenCalledTimes(1);
     expect(snap.windows).toHaveLength(3);
+  });
+
+  it('refuses a malformed lossless marker on the real HTTP path, storing nothing', async () => {
+    const body = fixtureText('opencode-go', 'valid').replace(
+      '"percent": 41',
+      '"percent": { "__rawNumber": "0x64" }',
+    );
+    expect(body).toContain('0x64');
+    const { impl } = fetchSequence(() => respond(body));
+    await expect(
+      createOpencodeGoAdapter({ apiKey: KEY, fetchImpl: impl }).collect(signal()),
+    ).rejects.toMatchObject({ code: 'schema_mismatch' });
   });
 
   it('never echoes the error body or the key in a failure message', async () => {
