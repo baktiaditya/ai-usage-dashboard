@@ -210,6 +210,15 @@ async function main(): Promise<void> {
   for (let d = 8; d >= 1; d -= 1) {
     write(db, 'opencode_go', opencodeGoSnapshot(daysAgo(d), [5 + d, 80 - d * 6, 60 - d * 3]));
   }
+  // A reading each hour for the card's Today chart. Readings before local
+  // midnight fall outside it, so the chart still draws after an early-morning seed.
+  for (let h = 6; h >= 1; h -= 1) {
+    write(
+      db,
+      'opencode_go',
+      opencodeGoSnapshot(minutesAgo(h * 60), [4 + (6 - h) * 2, 78 + (6 - h), 60]),
+    );
+  }
   write(db, 'opencode_go', opencodeGoSnapshot(minutesAgo(3), [18, 84, 61]));
 
   // --- DeepSeek: stale, and low enough on CNY to trigger `watch` -----------

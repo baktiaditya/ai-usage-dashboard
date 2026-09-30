@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { buildOverview, findEndedWindows, labelWindow } from '@/lib/queries/overview';
-import { buildCreditHistory, buildQuotaHistory } from '@/lib/queries/history';
+import { buildCreditHistory, buildQuotaHistory, buildQuotaToday } from '@/lib/queries/history';
 import { recordAttempt, startRun } from '@/lib/db/repository';
 import { CLAUDE_PROBE_SOURCE_VERSION } from '@/lib/domain';
 import type { CreditSnapshot, Provider, QuotaSnapshot } from '@/lib/domain';
@@ -180,6 +180,45 @@ describe('window labelling', () => {
         resetsAt: '2026-10-14T09:15:00.000Z',
       }),
     ).toBe('Monthly');
+  });
+});
+
+describe('today per hour', () => {
+  // NOW is 19:00 in Asia/Jakarta (UTC+7), so local today began at 17:00 UTC
+  // the day before.
+  it('keeps latest, min and max per local hour, and leaves out yesterday', () => {
+    writeQuota('codex', '2026-09-11T16:50:00.000Z', [90, 90]); // 23:50 yesterday
+    writeQuota('codex', '2026-09-12T02:10:00.000Z', [10, 40]); // 09:10
+    writeQuota('codex', '2026-09-12T02:40:00.000Z', [15, 41]); // 09:40
+    writeQuota('codex', '2026-09-12T11:55:00.000Z', [30, 50]); // 18:55
+
+    const today = buildQuotaToday(t.db, config, 'codex', NOW);
+
+    expect(today.availability).toEqual({ available: true });
+    expect(today.currentHour).toBe(19);
+    expect(today.series.map((s) => s.label)).toEqual(['5 hour', '7 day']);
+    expect(today.series[0]!.points).toEqual([
+      { hour: 9, latestPercent: 15, minPercent: 10, maxPercent: 15, samples: 2 },
+      { hour: 18, latestPercent: 30, minPercent: 30, maxPercent: 30, samples: 1 },
+    ]);
+  });
+
+  it('says so, instead of drawing zeros, when nothing was observed today', () => {
+    writeQuota('codex', '2026-09-11T16:50:00.000Z');
+
+    const today = buildQuotaToday(t.db, config, 'codex', NOW);
+
+    expect(today.availability.available).toBe(false);
+    expect(today.series).toEqual([]);
+    expect(today.currentHour).toBe(19);
+  });
+
+  it('is charted on the OpenCode Go card only', () => {
+    const overview = buildOverview(t.db, config, NOW);
+    for (const card of overview.cards) {
+      if (card.provider === 'opencode_go') expect(card.today).not.toBeNull();
+      else expect(card.today).toBeNull();
+    }
   });
 });
 

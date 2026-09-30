@@ -65,6 +65,28 @@ test('renders the three OpenCode Go windows, and watches the one running low', a
   await expect(page.getByTestId('card-opencode_go')).not.toContainText('$');
 });
 
+test('the OpenCode Go card spans the grid on desktop and charts today', async ({ page }) => {
+  const wide = page.getByTestId('card-opencode_go');
+  const codex = await page.getByTestId('card-codex').boundingBox();
+  const box = await wide.boundingBox();
+  if (!codex || !box) throw new Error('both cards must have a box');
+  const desktop = (page.viewportSize()?.width ?? 0) >= 1024;
+  if (desktop) {
+    // Two columns plus the gap between them.
+    expect(box.width).toBeGreaterThan(codex.width * 2);
+  } else {
+    expect(Math.abs(box.width - codex.width)).toBeLessThanOrEqual(1);
+  }
+
+  const chart = page.getByTestId('today-chart-opencode_go');
+  await expect(chart).toBeVisible();
+  await expect(chart.locator('svg.recharts-surface')).toBeVisible();
+  const legend = page.getByTestId('today-legend-opencode_go');
+  await expect(legend).toContainText('5 hour');
+  await expect(legend).toContainText('7 day');
+  await expect(legend).toContainText('Monthly');
+});
+
 test('renders every DeepSeek currency separately', async ({ page }) => {
   await expect(page.getByTestId('balance-deepseek-CNY')).toContainText('30.00');
   await expect(page.getByTestId('balance-deepseek-USD')).toContainText('15.42');

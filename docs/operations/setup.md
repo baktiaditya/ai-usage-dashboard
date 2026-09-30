@@ -371,6 +371,11 @@ card shows three windows as the percentage **used** and its reset time:
 | weekly  | 7 day   | Monday 00:00 UTC                                    |
 | monthly | Monthly | on your billing anniversary, not the calendar month |
 
+The card spans the full width of the grid. Beside the windows, a **Today** chart
+draws each window's utilisation at the end of every local hour since midnight, from
+the dashboard's own readings. An hour with no reading stays a gap, never a zero, and
+hours are never summed. The chart needs no extra request to OpenCode.
+
 It shows **percentages only**. OpenCode does not report the dollar limits, whether
 the plan is Go or Go Plus, or your Zen balance, and the dashboard does not estimate
 any of them. A window OpenCode marks `rate-limited` sets the card's advisory to

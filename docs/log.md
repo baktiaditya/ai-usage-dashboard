@@ -2,6 +2,17 @@
 
 ## 2026-09-30
 
+- **Design**: the OpenCode Go card spans the full grid width. It shows the windows on the left
+  and a **Today** chart on the right: each window's utilisation at the end of every local hour,
+  drawn from the collector's own snapshots. The user asked for a layout like the OpenCode
+  console's overview. Most of that page (cost, requests, tokens, per-model usage, request log,
+  credits) is only in the console, behind a browser session. The API key reads no more than the
+  three percentages, upstream has no usage-history endpoint (anomalyco/opencode#43983), and
+  scraping or reading `opencode.db` stays out of scope under plan §3.1. The hourly chart is the
+  one widget our own data supports. It takes the history chart's series slots, keeps the latest
+  reading of each hour, and never sums a gauge. The overview carries it only for OpenCode Go, so
+  no other card and no extra request pays for it. `labelWindow` moved to
+  `src/lib/queries/labels.ts`, so the overview can import the history query without a cycle.
 - **Update**: the OpenCode Go live check passed with a key saved in dev-server Settings. The
   collector (`pnpm run collect --manual --provider=opencode_go` against the dev data directory),
   **Refresh** on the card with `AUD_DEV_LIVE_REFRESH=1`, and the OpenCode Go case of
