@@ -82,7 +82,7 @@ pnpm run db:backup ~/usage-copy.db   # or a file of your choosing
 A backup runs while the collector and the dashboard keep writing, and produces one verified `0600`
 file. A backup inside the data directory does not survive losing the disk, so copy it elsewhere too.
 
-A backup contains the DeepSeek and OpenRouter keys saved in Settings (§4), and the Claude token when
+A backup contains the DeepSeek, OpenRouter and OpenCode Go keys saved in Settings (§4), and the Claude token when
 one is saved (§3), in plaintext, as the database holds them. Keep every copy owner-only, and delete copies you no longer need.
 
 To restore, stop everything that has the database open, restore, and start it again. Leave the web
@@ -289,7 +289,7 @@ The token is long-lived and stored in plaintext in the database, like the other 
 
 ---
 
-## 4. DeepSeek and OpenRouter
+## 4. DeepSeek, OpenRouter, and OpenCode Go
 
 Both need a key, and both keys are entered in the dashboard. Open it, select
 **Settings** next to **Reload view**, paste the **DeepSeek API Key** and the
@@ -352,6 +352,61 @@ management key at <https://openrouter.ai/settings/management-keys>.
 DeepSeek balance movement is labelled **balance change**, never usage: a balance
 also moves on top-ups and expiring grants, so calling it spend would be a
 fabricated number.
+
+### OpenCode Go
+
+OpenCode Go needs an OpenCode API key, saved the same way as the keys above: select
+**Settings**, paste it into **OpenCode Go API Key**, select **Save**, then **Refresh**
+on the OpenCode Go card. Keys are created in the OpenCode console
+(<https://opencode.ai/auth>). The dashboard never reads OpenCode's own
+`~/.local/share/opencode/auth.json`, so a key already used by the OpenCode CLI must be
+pasted here to be used.
+
+The collector reads `GET https://opencode.ai/zen/go/v1/usage` on every run. The
+card shows three windows as the percentage **used** and its reset time:
+
+| Window  | Label   | Resets                                              |
+| ------- | ------- | --------------------------------------------------- |
+| rolling | 5 hour  | five hours after the window opened                  |
+| weekly  | 7 day   | Monday 00:00 UTC                                    |
+| monthly | Monthly | on your billing anniversary, not the calendar month |
+
+The card spans the full width of the grid. Beside the windows, a **Today** chart
+draws each window's utilisation at the end of every local hour since midnight, from
+the dashboard's own readings. An hour with no reading stays a gap, never a zero, and
+hours are never summed. On the night the clocks go back, the repeated hour appears twice,
+each labelled with its zone name, such as `1:00 EDT` and `1:00 EST`; an hour the clocks
+skip is absent. A zone that moves its clocks by thirty minutes, such as Lord Howe, splits
+that hour at the change, so the chart can show a `1:30` or `2:30` hour. The chart needs no
+extra request to OpenCode.
+
+It shows **percentages only**. OpenCode does not report the dollar limits, whether
+the plan is Go or Go Plus, or your Zen balance, and the dashboard does not estimate
+any of them. A window OpenCode marks `rate-limited` sets the card's advisory to
+**Switch suggested**. If **Use balance** is enabled in the console, requests may
+still succeed on Zen credit.
+
+A card can read one point lower than the OpenCode console. The usage endpoint rounds
+each percentage down to a whole number, while the console rounds to the nearest, so
+40.6 % used shows as 40 % here and 41 % there. The dashboard stores the value exactly
+as the endpoint reports it.
+
+| Card shows                       | Meaning                                                |
+| -------------------------------- | ------------------------------------------------------ |
+| `unavailable` · `not_configured` | no key is saved                                        |
+| `error` · `auth_rejected`        | OpenCode rejected the key (HTTP 401)                   |
+| `unavailable` · `not_entitled`   | the key is valid but has no Go subscription (HTTP 403) |
+| `error` · `schema_mismatch`      | the response changed shape; nothing from it was stored |
+
+> The same key can run models and spend a Zen balance. Treat it like the OpenRouter
+> Management key: keep the database and its backups owner-only, and rotate the key
+> in the console if it is ever exposed. The dashboard only issues `GET` requests to
+> the usage endpoint with it, and Settings never receives more than its last four
+> characters.
+
+The endpoint is not yet in OpenCode's public docs; it was added in
+[anomalyco/opencode#16513](https://github.com/anomalyco/opencode/pull/16513). A shape
+change shows up as `schema_mismatch` rather than as a wrong number.
 
 ---
 

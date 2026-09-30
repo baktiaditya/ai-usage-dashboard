@@ -56,7 +56,12 @@ interface Call {
 }
 
 function stubApi({
-  statuses = [unsaved('deepseek'), unsaved('openrouter'), unsaved('claude')],
+  statuses = [
+    unsaved('deepseek'),
+    unsaved('openrouter'),
+    unsaved('opencode_go'),
+    unsaved('claude'),
+  ],
   list = async () => json({ credentials: statuses }),
   save = async (provider: CredentialProvider) => json({ credential: savedNow(provider, 'wxyz') }),
 }: {
@@ -177,7 +182,7 @@ describe('statuses', () => {
     expect(dialog).toHaveTextContent(
       'Must be a Management key; ordinary inference keys are rejected.',
     );
-    const link = within(dialog).getByRole('link');
+    const link = within(dialog).getByRole('link', { name: 'Create a Management key' });
     expect(link).toHaveAttribute('href', 'https://openrouter.ai/settings/management-keys');
     expect(link).toHaveAttribute('target', '_blank');
     expect(link).toHaveAttribute('rel', 'noreferrer');
@@ -192,7 +197,27 @@ describe('statuses', () => {
       within(dialog)
         .getAllByTestId(/^settings-input-/)
         .map((input) => input.getAttribute('data-testid')),
-    ).toEqual(['settings-input-deepseek', 'settings-input-openrouter', 'settings-input-claude']);
+    ).toEqual([
+      'settings-input-deepseek',
+      'settings-input-openrouter',
+      'settings-input-opencode_go',
+      'settings-input-claude',
+    ]);
+  });
+
+  it('warns that the OpenCode Go key can spend money, and links to the console', async () => {
+    stubApi();
+    const { dialog } = await openDialog();
+
+    const input = screen.getByTestId('settings-input-opencode_go');
+    const helpId = input.getAttribute('aria-describedby')?.split(' ')[0];
+    const help = helpId ? document.getElementById(helpId) : null;
+    expect(help).toHaveTextContent('only reads your Go usage windows');
+    expect(help).toHaveTextContent('spend Zen balance');
+    const link = within(dialog).getByRole('link', { name: 'Open the OpenCode console' });
+    expect(link).toHaveAttribute('href', 'https://opencode.ai/auth');
+    expect(link).toHaveAttribute('target', '_blank');
+    expect(link).toHaveAttribute('rel', 'noreferrer');
   });
 
   it('says the Claude token is optional, and describes the field with that help', async () => {

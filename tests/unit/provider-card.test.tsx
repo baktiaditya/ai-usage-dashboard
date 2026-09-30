@@ -65,6 +65,7 @@ function card(overrides: Partial<ProviderCard> = {}): ProviderCard {
       lastAttemptAt: '2026-09-12T11:58:01.000Z',
     },
     showingLastKnownValues: false,
+    today: null,
     ...overrides,
   };
 }
@@ -434,5 +435,80 @@ describe('provenance and diagnostics', () => {
   it('renders a refresh control per provider', () => {
     renderCard(card());
     expect(screen.getByTestId('refresh-codex')).toBeEnabled();
+  });
+});
+
+describe('today chart', () => {
+  const today = {
+    availability: { available: true as const },
+    hours: [
+      { startsAt: '2026-09-12T10:00:00.000Z', label: '17:00' },
+      { startsAt: '2026-09-12T11:00:00.000Z', label: '18:00' },
+    ],
+    series: [
+      {
+        bucketId: 'go',
+        windowKind: 'rolling',
+        label: '5 hour',
+        points: [
+          {
+            startsAt: '2026-09-12T11:00:00.000Z',
+            latestPercent: 2,
+            minPercent: 1,
+            maxPercent: 2,
+            samples: 12,
+          },
+        ],
+      },
+      {
+        bucketId: 'go',
+        windowKind: 'weekly',
+        label: '7 day',
+        points: [
+          {
+            startsAt: '2026-09-12T11:00:00.000Z',
+            latestPercent: 26,
+            minPercent: 25,
+            maxPercent: 26,
+            samples: 12,
+          },
+        ],
+      },
+    ],
+  };
+
+  it('spans the full grid row and names each window beside the chart', () => {
+    renderCard(card({ provider: 'opencode_go', label: 'OpenCode Go', today }));
+
+    expect(screen.getByTestId('card-opencode_go')).toHaveClass('lg:col-span-2');
+    expect(screen.getByTestId('today-chart-opencode_go')).toHaveTextContent('Today');
+    const legend = screen.getByTestId('today-legend-opencode_go');
+    expect(legend).toHaveTextContent('5 hour');
+    expect(legend).toHaveTextContent('7 day');
+  });
+
+  it('says why when nothing was observed today, instead of drawing zeros', () => {
+    renderCard(
+      card({
+        provider: 'opencode_go',
+        label: 'OpenCode Go',
+        today: {
+          availability: { available: false, reason: 'No quota observation was recorded today.' },
+          hours: [],
+          series: [],
+        },
+      }),
+    );
+
+    expect(screen.getByTestId('today-empty-opencode_go')).toHaveTextContent(
+      'No quota observation was recorded today.',
+    );
+    expect(screen.queryByTestId('today-chart-opencode_go')).not.toBeInTheDocument();
+  });
+
+  it('keeps an ordinary card at one column with no chart', () => {
+    renderCard(card());
+    expect(screen.getByTestId('card-codex')).not.toHaveClass('lg:col-span-2');
+    expect(screen.queryByTestId('today-chart-codex')).not.toBeInTheDocument();
   });
 });

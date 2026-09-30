@@ -2,6 +2,88 @@
 
 ## 2026-09-30
 
+- **Design**: the OpenCode Go card spans the full grid width. It shows the windows on the left
+  and a **Today** chart on the right: each window's utilisation at the end of every local hour,
+  drawn from the collector's own snapshots. The user asked for a layout like the OpenCode
+  console's overview. Most of that page (cost, requests, tokens, per-model usage, request log,
+  credits) is only in the console, behind a browser session. The API key reads no more than the
+  three percentages, upstream has no usage-history endpoint (anomalyco/opencode#43983), and
+  scraping or reading `opencode.db` stays out of scope under plan §3.1. The hourly chart is the
+  one widget our own data supports. It takes the history chart's series slots, keeps the latest
+  reading of each hour, and never sums a gauge. The overview carries it only for OpenCode Go, so
+  no other card and no extra request pays for it. `labelWindow` moved to
+  `src/lib/queries/labels.ts`, so the overview can import the history query without a cycle.
+  Hours are keyed by the UTC instant each local hour starts, not by the hour number, because
+  review found a DST fall-back merging the two occurrences of `01:00` into one point. An hour
+  also ends at any offset change inside it, since a second review found Lord Howe's
+  thirty-minute fall-back still starting the repeated half hour before the change.
+- **Update**: the OpenCode Go live check passed with a key saved in dev-server Settings. The
+  collector (`pnpm run collect --manual --provider=opencode_go` against the dev data directory),
+  **Refresh** on the card with `AUD_DEV_LIVE_REFRESH=1`, and the OpenCode Go case of
+  `pnpm run test:live` each recorded `success`. The card rendered three healthy windows, and the
+  weekly reset fell on Monday 00:00 UTC. No key or percentage is recorded here.
+- **Discovery**: the card can read one point lower than the OpenCode console. On a
+  side-by-side check, rolling and weekly were one point lower and monthly matched. Our side
+  caches nothing: requests use `cache: 'no-store'`, and a reading taken after the console
+  screenshot still matched the earlier ones. The cause is upstream rounding, read from
+  anomalyco/opencode `dev`:
+  - `/zen/go/v1/usage` rounds down: `Math.floor` in
+    `packages/console/core/src/subscription.ts`.
+  - The console rounds to the nearest value: `getUsagePercent` uses `Math.round` in
+    `packages/console/app/src/lib/lite-usage.ts`.
+
+  The dashboard keeps the source value unchanged, as plan §3.1 requires.
+  [Setup](operations/setup.md) §4 explains the difference.
+
+- **Update**: [add-opencode-go-quota](backlog/ready-for-agent/add-opencode-go-quota.md) is
+  implemented on branch `feat/opencode-go-quota`. It is not merged or deployed. The pieces:
+  - the adapter, `src/lib/adapters/opencode-go.ts`;
+  - migration `0004`;
+  - the Settings field;
+  - the card, logo, and demo seed;
+  - [setup](operations/setup.md) §4.
+
+  `pnpm run verify` (626 tests) and `pnpm run test:e2e` (66 tests) pass. The live check with a
+  key saved in Settings is still to be run by the user. Two deviations from the brief:
+  - **Credential order.** `CREDENTIAL_PROVIDERS` lists OpenCode Go before Claude, so the optional
+    Claude token stays the last field in Settings.
+  - **Deploy backup.** The deploy procedure in setup §6 does not take a backup. Before deploying
+    this build, run `pnpm run db:backup` in the production checkout by hand, because `0004` is
+    the first migration that rebuilds tables holding history.
+
+- **Discovery**: `getJsonLossless` hands every JSON number to an adapter as its source text,
+  `{ __rawNumber: "41" }`, not as a number. A schema that expects `z.number()` for OpenCode Go's
+  `percent` would therefore reject every live response as `schema_mismatch`, while fixture tests
+  that use plain `JSON.parse` still pass. The adapter accepts both forms, and its tests drive the
+  real HTTP path. A scratch run of the `0004` SQL with `foreign_keys = ON` confirmed the history
+  risk: every `provider_snapshots` and `quota_windows` row was deleted. The runner change is
+  load-bearing.
+
+- **Decision**: OpenCode Go is added as a fifth provider, a quota provider like Codex and Claude,
+  at the user's request. [Plan](plan/ai-usage-dashboard-implementation-plan.md) §3.1 gains an
+  OpenCode Go contract, and §1, §3.5, §5 and §7 now count five providers and name its key.
+  - **Source.** `GET https://opencode.ai/zen/go/v1/usage` with the user's OpenCode API key,
+    saved in Settings. OpenCode's `auth.json` and local database are never read, and the console
+    is never scraped.
+  - **What it shows.** The response carries only used percentages and reset times for the
+    `rolling`, `weekly`, and `monthly` windows. The card never shows dollars, the plan tier, or a
+    Zen balance.
+  - **`usageAllowed` stays `null`.** A `rate-limited` window becomes a limit-reached code and
+    never sets `usageAllowed` to false, because the console's "Use balance" option can keep
+    requests flowing and the response does not say whether it is on.
+  - **Migration `0004` must not lose history.** It widens the `provider` CHECK on
+    `collector_attempts` and `provider_snapshots`, and both are parents of `ON DELETE CASCADE`
+    keys. So the migration runner switches to SQLite's documented rebuild with foreign keys off
+    and a `foreign_key_check` before commit, rather than dropping the tables with enforcement on,
+    which would delete history.
+- **Discovery**: the OpenCode Go gate passed live. The user's key got a `200` with the shape now
+  recorded in [M0 discovery](discovery/m0-discovery.md), and requests with no key or a bogus key
+  got `401` JSON. The endpoint is upstream PR anomalyco/opencode#16513 and is not yet in OpenCode's
+  public docs. Evidence is shape-only; no key or percentage is recorded.
+- **Proposed**: [add-opencode-go-quota](backlog/ready-for-agent/add-opencode-go-quota.md) files
+  the implementation directly in `ready-for-agent/`, tracked by
+  [#21](https://github.com/baktiaditya/ai-usage-dashboard/issues/21). The scope decision and live
+  gate above close every dependency, so no user decision is outstanding.
 - **Restructure**: the Claude Code skill entrypoints under `.claude/skills/` are now relative
   symlinks into `.agents/skills/`, so each skill has one `SKILL.md` source of truth. The
   "update both SKILL.md files" rule in

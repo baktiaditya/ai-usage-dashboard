@@ -26,7 +26,12 @@ import { ageMs, hasPassed } from './time';
  * optional quota probe is judged as a pull. Adding `claude` here would silently
  * shorten how long a spool-only install stays fresh.
  */
-const PULL_PROVIDERS: ReadonlySet<Provider> = new Set(['codex', 'deepseek', 'openrouter']);
+const PULL_PROVIDERS: ReadonlySet<Provider> = new Set([
+  'codex',
+  'deepseek',
+  'openrouter',
+  'opencode_go',
+]);
 
 export interface FreshnessInput {
   readonly provider: Provider;

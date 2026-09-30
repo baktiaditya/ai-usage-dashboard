@@ -838,3 +838,91 @@ describe('Claude quota probe through the collector', () => {
     expect(logged).not.toMatch(/12\.5|\b48\b|4093000000|2099-/);
   });
 });
+
+describe('OpenCode Go through the collector', () => {
+  // Shaped like an OpenCode key, but not one.
+  const OPENCODE_GO_KEY = 'sk-fake-collector-opencode-go-0003';
+  let upstream: ReturnType<typeof vi.fn>;
+
+  const run = () =>
+    collectOnce({ db: t.db, config, trigger: 'manual', providers: ['opencode_go'] });
+  const card = () => buildOverview(t.db, config).cards.find((c) => c.provider === 'opencode_go');
+
+  function serve(status: number, fixture = 'valid'): void {
+    upstream = vi.fn(
+      async () =>
+        new Response(status === 200 ? fixtureText('opencode-go', fixture) : '{}', {
+          status,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+    );
+    vi.stubGlobal('fetch', upstream);
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('with no key saved, is unavailable and sends nothing', async () => {
+    serve(200);
+    expect((await run()).attempts).toEqual([
+      { provider: 'opencode_go', outcome: 'unavailable', code: 'not_configured' },
+    ]);
+    expect(upstream).not.toHaveBeenCalled();
+    expect(card()?.status).toBe('unavailable');
+  });
+
+  it('with a key, stores three labelled windows and renders a healthy card', async () => {
+    saveProviderCredential(t.db, 'opencode_go', OPENCODE_GO_KEY);
+    serve(200);
+
+    expect((await run()).attempts).toEqual([
+      { provider: 'opencode_go', outcome: 'success', code: null },
+    ]);
+    const sent = upstream.mock.calls[0] as unknown as [string, RequestInit];
+    expect(sent[0]).toBe('https://opencode.ai/zen/go/v1/usage');
+    expect((sent[1].headers as Record<string, string>)['Authorization']).toBe(
+      `Bearer ${OPENCODE_GO_KEY}`,
+    );
+
+    const c = card();
+    expect(c?.status).toBe('healthy');
+    expect(c?.kind).toBe('quota');
+    expect(c?.usageAllowed).toBeNull();
+    expect(c?.windows.map((w) => [w.label, w.usedPercent])).toEqual([
+      ['5 hour', 7],
+      ['7 day', 41],
+      ['Monthly', 23],
+    ]);
+  });
+
+  it('suggests switching when the source reports a rate-limited window', async () => {
+    saveProviderCredential(t.db, 'opencode_go', OPENCODE_GO_KEY);
+    serve(200, 'rate-limited');
+    await run();
+
+    const advisory = card()?.advisory;
+    expect(advisory?.state).toBe('switch_suggested');
+    expect(advisory?.reasons.map((r) => r.observed)).toContain('weekly_rate_limited');
+  });
+
+  it('renders a key without a Go subscription as unavailable, not as a broken key', async () => {
+    saveProviderCredential(t.db, 'opencode_go', OPENCODE_GO_KEY);
+    serve(403);
+
+    expect((await run()).attempts).toEqual([
+      { provider: 'opencode_go', outcome: 'unavailable', code: 'not_entitled' },
+    ]);
+    expect(card()?.status).toBe('unavailable');
+  });
+
+  it('renders a rejected key as an error', async () => {
+    saveProviderCredential(t.db, 'opencode_go', OPENCODE_GO_KEY);
+    serve(401);
+
+    expect((await run()).attempts).toEqual([
+      { provider: 'opencode_go', outcome: 'error', code: 'auth_rejected' },
+    ]);
+    expect(card()?.status).toBe('error');
+  });
+});

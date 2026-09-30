@@ -17,10 +17,12 @@ import type { AppConfig } from '../config';
 import type { Provider } from '../domain';
 import type { Db } from '../db/client';
 import { getCreditBaselineBefore, getCreditHistory, getQuotaHistory } from '../db/repository';
+import type { QuotaHistoryPoint } from '../db/repository';
 import type { MoneyString } from '../money';
 import { compareMoney, subtractMoney } from '../money';
-import { startOfLocalDayNDaysAgoUtc } from '../time';
-import { labelWindow } from './overview';
+import { localHoursBetween, startOfLocalDayNDaysAgoUtc, startOfLocalHourUtc } from '../time';
+import type { LocalHour } from '../time';
+import { labelWindow } from './labels';
 
 export type HistoryRange = 'today' | '7d' | '30d';
 
@@ -107,6 +109,160 @@ function localDayKey(iso: string, timezone: string): string {
   }).format(new Date(iso));
 }
 
+interface GroupedSeries {
+  readonly key: string;
+  readonly bucketId: string;
+  readonly windowKind: string;
+  readonly label: string;
+  /** Samples per bucket key, oldest first, sorted by key. */
+  readonly buckets: readonly (readonly [string, number[]])[];
+}
+
+/**
+ * Group quota rows by window, then by `keyOf` (a local day or hour). Rows
+ * arrive oldest first, so the last row seen for a series carries its current
+ * duration and each bucket's last sample is the latest reading in it.
+ */
+function groupQuotaSeries(
+  provider: Provider,
+  rows: readonly QuotaHistoryPoint[],
+  keyOf: (observedAt: string) => string,
+): GroupedSeries[] {
+  const bySeries = new Map<
+    string,
+    { bucketId: string; windowKind: string; label: string; buckets: Map<string, number[]> }
+  >();
+  for (const row of rows) {
+    const key = [row.bucketId, row.windowKind].join('\u0000');
+    const entry = bySeries.get(key) ?? {
+      bucketId: row.bucketId,
+      windowKind: row.windowKind,
+      label: '',
+      buckets: new Map<string, number[]>(),
+    };
+    entry.label = labelWindow({ ...row, resetsAt: null });
+    const bucket = keyOf(row.observedAt);
+    const samples = entry.buckets.get(bucket) ?? [];
+    samples.push(row.usedPercent);
+    entry.buckets.set(bucket, samples);
+    bySeries.set(key, entry);
+  }
+
+  // Two Codex buckets can both be "5 hour"; their own bucket name tells them
+  // apart. Claude's window labels are unique, so its bucket ids are never shown.
+  const labelCounts = new Map<string, number>();
+  for (const { label } of bySeries.values()) {
+    labelCounts.set(label, (labelCounts.get(label) ?? 0) + 1);
+  }
+
+  return [...bySeries.entries()].map(([key, { bucketId, windowKind, label, buckets }]) => ({
+    key,
+    bucketId,
+    windowKind,
+    label:
+      provider !== 'claude' && (labelCounts.get(label) ?? 0) > 1 ? `${label} · ${bucketId}` : label,
+    buckets: [...buckets.entries()].sort(([a], [b]) => a.localeCompare(b)),
+  }));
+}
+
+/**
+ * `latest` is the last sample in the bucket, which is the utilisation the
+ * window actually ended at — not an average across a reset.
+ */
+function summarise(samples: readonly number[]) {
+  return {
+    latestPercent: samples[samples.length - 1] ?? 0,
+    minPercent: Math.min(...samples),
+    maxPercent: Math.max(...samples),
+    samples: samples.length,
+  };
+}
+
+export interface QuotaTodayPoint {
+  /** The UTC instant the local hour began, matching one of `hours`. */
+  readonly startsAt: string;
+  readonly latestPercent: number;
+  readonly minPercent: number;
+  readonly maxPercent: number;
+  readonly samples: number;
+}
+
+export interface QuotaTodaySeries {
+  readonly bucketId: string;
+  readonly windowKind: string;
+  readonly label: string;
+  readonly points: readonly QuotaTodayPoint[];
+}
+
+export interface QuotaTodayHour {
+  /** The UTC instant the local hour began, unique even in a repeated hour. */
+  readonly startsAt: string;
+  /** The local clock hour, such as `9:00`; a repeated hour names its zone. */
+  readonly label: string;
+}
+
+export interface QuotaTodayResult {
+  readonly availability: Availability;
+  /** Every local hour from midnight to the one `now` falls in, oldest first. */
+  readonly hours: readonly QuotaTodayHour[];
+  readonly series: readonly QuotaTodaySeries[];
+}
+
+/**
+ * Label each hour by its local clock. When the clocks go back, a stretch of
+ * clock time happens twice, so both hours covering it carry their zone name
+ * (`1:00 EDT`, `1:00 EST`) to stay distinguishable. An hour a thirty-minute
+ * transition splits keeps its minutes (`1:30`).
+ */
+function labelHours(hours: readonly LocalHour[], timezone: string): QuotaTodayHour[] {
+  const zone = new Intl.DateTimeFormat('en-US', { timeZone: timezone, timeZoneName: 'short' });
+  return hours.map(({ startsAt, hour, minute, repeated }) => {
+    const label = `${hour}:${String(minute).padStart(2, '0')}`;
+    const zoneName = zone.formatToParts(startsAt).find((p) => p.type === 'timeZoneName')?.value;
+    return {
+      startsAt: startsAt.toISOString(),
+      label: repeated && zoneName ? `${label} ${zoneName}` : label,
+    };
+  });
+}
+
+/**
+ * Today's quota readings per local hour, for the card's intraday chart.
+ *
+ * The collector samples every few minutes, so an hour usually holds several
+ * readings. Like the daily history, each hour keeps latest / min / max and is
+ * never summed: a gauge that resets mid-hour would otherwise add up to a
+ * number no window ever reached. Hours are keyed by the instant they began, so
+ * the two occurrences of a repeated hour stay separate.
+ */
+export function buildQuotaToday(
+  db: Db,
+  config: AppConfig,
+  provider: Provider,
+  now: Date = new Date(),
+): QuotaTodayResult {
+  const since = startOfLocalDayNDaysAgoUtc(config.timezone, 0, now);
+  const rows = getQuotaHistory(db, provider, since.toISOString());
+  const hours = labelHours(localHoursBetween(config.timezone, since, now), config.timezone);
+
+  if (rows.length === 0) {
+    return {
+      availability: { available: false, reason: 'No quota observation was recorded today.' },
+      hours,
+      series: [],
+    };
+  }
+
+  const series = groupQuotaSeries(provider, rows, (iso) =>
+    startOfLocalHourUtc(config.timezone, new Date(iso)).toISOString(),
+  ).map(({ key: _key, buckets, ...rest }) => ({
+    ...rest,
+    points: buckets.map(([startsAt, samples]) => ({ startsAt, ...summarise(samples) })),
+  }));
+
+  return { availability: { available: true }, hours, series };
+}
+
 export function buildQuotaHistory(
   db: Db,
   config: AppConfig,
@@ -130,58 +286,12 @@ export function buildQuotaHistory(
     };
   }
 
-  // Group by window, then by local calendar day. Rows arrive oldest first, so
-  // the last row seen for a series carries its current duration.
-  const bySeries = new Map<
-    string,
-    { bucketId: string; windowKind: string; label: string; days: Map<string, number[]> }
-  >();
-  for (const row of rows) {
-    const key = [row.bucketId, row.windowKind].join('\u0000');
-    const entry = bySeries.get(key) ?? {
-      bucketId: row.bucketId,
-      windowKind: row.windowKind,
-      label: '',
-      days: new Map<string, number[]>(),
-    };
-    entry.label = labelWindow({ ...row, resetsAt: null });
-    const day = localDayKey(row.observedAt, config.timezone);
-    const samples = entry.days.get(day) ?? [];
-    samples.push(row.usedPercent);
-    entry.days.set(day, samples);
-    bySeries.set(key, entry);
-  }
-
-  // Two Codex buckets can both be "5 hour"; their own bucket name tells them
-  // apart. Claude's window labels are unique, so its bucket ids are never shown.
-  const labelCounts = new Map<string, number>();
-  for (const { label } of bySeries.values()) {
-    labelCounts.set(label, (labelCounts.get(label) ?? 0) + 1);
-  }
-
-  const series: QuotaSeries[] = [...bySeries.values()].map(
-    ({ bucketId, windowKind, label, days }) => {
-      return {
-        bucketId,
-        windowKind,
-        label:
-          provider !== 'claude' && (labelCounts.get(label) ?? 0) > 1
-            ? `${label} · ${bucketId}`
-            : label,
-        points: [...days.entries()]
-          .sort(([a], [b]) => a.localeCompare(b))
-          .map(([day, samples]) => ({
-            day,
-            // `latest` is the last sample of the day, which is the utilisation the
-            // window actually ended at — not an average across a reset.
-            latestPercent: samples[samples.length - 1] ?? 0,
-            minPercent: Math.min(...samples),
-            maxPercent: Math.max(...samples),
-            samples: samples.length,
-          })),
-      };
-    },
-  );
+  const series: QuotaSeries[] = groupQuotaSeries(provider, rows, (iso) =>
+    localDayKey(iso, config.timezone),
+  ).map(({ key: _key, buckets, ...rest }) => ({
+    ...rest,
+    points: buckets.map(([day, samples]) => ({ day, ...summarise(samples) })),
+  }));
 
   return {
     metric: 'quota_utilization',

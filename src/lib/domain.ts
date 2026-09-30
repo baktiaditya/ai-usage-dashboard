@@ -17,7 +17,12 @@
 import type { MoneyString } from './money';
 import type { ErrorCode } from './errors';
 
-export const PROVIDERS = ['codex', 'claude', 'deepseek', 'openrouter'] as const;
+/**
+ * Display order too: the overview returns cards in this order, and both the
+ * card grid and the history picker render them left to right. Subscription
+ * quota providers come first, prepaid balances after.
+ */
+export const PROVIDERS = ['codex', 'claude', 'opencode_go', 'deepseek', 'openrouter'] as const;
 export type Provider = (typeof PROVIDERS)[number];
 
 export function isProvider(v: string): v is Provider {
@@ -25,13 +30,13 @@ export function isProvider(v: string): v is Provider {
 }
 
 /**
- * Providers whose key is saved in dashboard Settings (plan §3.5). DeepSeek and
- * OpenRouter report nothing without theirs. The Claude token is optional and
+ * Providers whose key is saved in dashboard Settings (plan §3.5). DeepSeek,
+ * OpenRouter and OpenCode Go report nothing without theirs. The Claude token is optional and
  * belongs to a source, not the provider: it only enables the quota probe of plan
  * §3.1, and Claude keeps reporting through the status-line spool without it.
  * Codex authenticates through its own CLI and has no key here.
  */
-export const CREDENTIAL_PROVIDERS = ['deepseek', 'openrouter', 'claude'] as const;
+export const CREDENTIAL_PROVIDERS = ['deepseek', 'openrouter', 'opencode_go', 'claude'] as const;
 export type CredentialProvider = (typeof CREDENTIAL_PROVIDERS)[number];
 
 export function isCredentialProvider(value: string): value is CredentialProvider {
@@ -63,6 +68,7 @@ export const PROVIDER_LABELS: Record<Provider, string> = {
   claude: 'Claude Code',
   deepseek: 'DeepSeek',
   openrouter: 'OpenRouter',
+  opencode_go: 'OpenCode Go',
 };
 
 /** What the provider card is measuring. Drives which component renders it. */
@@ -73,6 +79,7 @@ export const PROVIDER_KIND: Record<Provider, SnapshotKind> = {
   claude: 'quota',
   deepseek: 'credit',
   openrouter: 'credit',
+  opencode_go: 'quota',
 };
 
 // ---------------------------------------------------------------------------

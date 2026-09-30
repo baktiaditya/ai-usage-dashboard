@@ -3,7 +3,7 @@
 /*
  * Palette.
  *
- * Status colour is load-bearing here — it is how a user reads four cards at a
+ * Status colour is load-bearing here — it is how a user reads every card at a
  * glance — so each state gets a dedicated token pair rather than a Tailwind
  * shade picked per component. Every state is also given a text label and an
  * icon in the markup, so the meaning survives for anyone who cannot separate
@@ -27,10 +27,12 @@
   --danger-bg: #fee2e2;
   --accent: #4338ca;
   --accent-bg: #e0e7ff;
-  /* Provider marks (provider-logo.tsx). OpenRouter's lime has no contrast on a light surface. */
+  /* Provider marks (provider-logo.tsx). OpenRouter's lime has no contrast on a light surface;
+   * OpenCode's mark is monochrome. */
   --logo-claude: #d97757;
   --logo-deepseek: #4d6bfe;
   --logo-openrouter: currentColor;
+  --logo-opencode-go: currentColor;
 
   /*
    * Categorical chart series, assigned in fixed order and never cycled.

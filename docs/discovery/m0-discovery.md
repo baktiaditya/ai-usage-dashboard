@@ -267,6 +267,50 @@ running `npm run test:live`.
 > is no longer read. The gate evidence above stays as recorded. It was gathered with the key in
 > `collector.env` and has not been re-run with a key saved in Settings.
 
+### OpenCode Go — PASSED (live, 2026-09-30)
+
+Added after M0 when scope grew to a fifth provider (see the [log](../log.md)). On 2026-09-30 the
+user ran `curl` with their own OpenCode API key against the endpoint. The response had exactly the
+shape below, with all three windows `ok`. No key, percentage, or reset time is recorded here.
+
+OpenCode added the endpoint in
+[anomalyco/opencode#16513](https://github.com/anomalyco/opencode/pull/16513). The public Go docs
+(<https://opencode.ai/docs/go/>) do not document it yet, so this shape is observed rather than
+contractual:
+
+```
+GET https://opencode.ai/zen/go/v1/usage
+Authorization: Bearer <OpenCode API key>
+
+200 { usage: { rolling: { status, percent, resetsAt },
+               weekly:  { status, percent, resetsAt },
+               monthly: { status, percent, resetsAt } } }
+    status   "ok" | "rate-limited"
+    percent  integer, percentage *used*
+    resetsAt ISO-8601 UTC with milliseconds
+```
+
+Probes run from this machine without a valid key, same day:
+
+| Request                             | Result                                               |
+| ----------------------------------- | ---------------------------------------------------- |
+| no auth header                      | `401` JSON, `AuthError` "Missing API key."           |
+| `Authorization: Bearer` + bogus key | `401` JSON, `AuthError` "Unauthorized"               |
+| `x-api-key` + bogus key             | `401` JSON, "Missing API key." (only Bearer is read) |
+
+Facts that drove the contract in [plan §3.1](../plan/ai-usage-dashboard-implementation-plan.md):
+
+1. **No money on the wire.** The response carries no dollar limit, plan tier (Go or Go Plus), or
+   account identifier. The card can only show percentages.
+2. **Windows have different reset rules.** In the live response, `weekly` reset at Monday
+   00:00 UTC. `monthly` reset on a mid-month day and time, which is the billing anniversary, not a
+   calendar month.
+3. **`403` has not been observed here.** The upstream PR discussion and downstream integrations
+   report that a valid key without a Go subscription gets `403`. It is fixture-tested only.
+
+**Gate closed** by the live `200` above. The saved-in-Settings live check belongs to the
+[implementation brief](../backlog/ready-for-agent/add-opencode-go-quota.md).
+
 ## Decisions fixed at M0
 
 These were left open by the plan and are now settled, with defaults in

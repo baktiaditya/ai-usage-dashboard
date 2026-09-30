@@ -10,7 +10,7 @@ export const E2E_ORIGIN = 'http://127.0.0.1:3939';
  * desktop project's settings spec.
  */
 export async function clearProviderKeys(request: APIRequestContext): Promise<void> {
-  for (const provider of ['deepseek', 'openrouter', 'claude']) {
+  for (const provider of ['deepseek', 'openrouter', 'opencode_go', 'claude']) {
     const res = await request.delete(`/api/settings/credentials/${provider}`, {
       headers: { origin: E2E_ORIGIN },
     });

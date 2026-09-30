@@ -16,6 +16,7 @@ import { CLAUDE_PROBE_WINDOWS, probeClaudeQuota } from '@/lib/adapters/claude-us
 import { createCodexAdapter } from '@/lib/adapters/codex';
 import { createDeepseekAdapter } from '@/lib/adapters/deepseek';
 import { createOpenrouterAdapter } from '@/lib/adapters/openrouter';
+import { createOpencodeGoAdapter } from '@/lib/adapters/opencode-go';
 import { createClaudeIngestor } from '@/lib/ingestors/claude-statusline';
 import { loadConfig } from '@/lib/config';
 import { openDb } from '@/lib/db/client';
@@ -150,5 +151,27 @@ describeWhen(saved.claudeUsageToken !== null)('live: claude quota probe', () => 
       expect(Date.parse(w.resetsAt as string)).toBeGreaterThan(Date.now() - 60_000);
     }
     expect(JSON.stringify(snap)).not.toMatch(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/);
+  }, 30_000);
+});
+
+describeWhen(saved.opencodeGoApiKey !== null)('live: opencode go usage', () => {
+  it('returns the rolling, weekly and monthly windows as used percentages', async () => {
+    const snap = await createOpencodeGoAdapter({
+      apiKey: saved.opencodeGoApiKey,
+      timeoutMs: 20_000,
+    }).collect(signal());
+
+    expect(snap.provider).toBe('opencode_go');
+    expect(snap.windows.map((w) => w.windowKind)).toEqual(['rolling', 'weekly', 'monthly']);
+    for (const w of snap.windows) {
+      // Shape only: the value itself is never asserted or printed.
+      expect(Number.isFinite(w.usedPercent)).toBe(true);
+      expect(w.usedPercent).toBeGreaterThanOrEqual(0);
+      expect(Date.parse(w.resetsAt as string)).toBeGreaterThan(Date.now() - 60_000);
+    }
+    // The weekly window is a calendar week ending Monday 00:00 UTC.
+    const weekly = new Date(snap.windows[1]!.resetsAt as string);
+    expect([weekly.getUTCDay(), weekly.getUTCHours(), weekly.getUTCMinutes()]).toEqual([1, 0, 0]);
+    expect(snap.usageAllowed).toBeNull();
   }, 30_000);
 });

@@ -48,7 +48,7 @@ const balanceThresholdSchema = z
     },
   );
 
-const PROVIDER_PATTERN = '(?:codex|claude|deepseek|openrouter)';
+const PROVIDER_PATTERN = '(?:codex|claude|deepseek|openrouter|opencode_go)';
 
 /**
  * `AUD_THRESHOLDS`: a JSON object merged over the defaults, key by key.
