@@ -11,7 +11,7 @@ This is a backlog implementation brief, not a canonical product or operations
 contract. It does not override `docs/plan/ai-usage-dashboard-implementation-plan.md`,
 `docs/discovery/m0-discovery.md`, `docs/operations/setup.md`, or `docs/log.md`.
 
-Related issue: none yet
+Related issue: [#21](https://github.com/baktiaditya/ai-usage-dashboard/issues/21)
 
 ## Objective
 

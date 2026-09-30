@@ -48,8 +48,9 @@
   got `401` JSON. The endpoint is upstream PR anomalyco/opencode#16513 and is not yet in OpenCode's
   public docs. Evidence is shape-only; no key or percentage is recorded.
 - **Proposed**: [add-opencode-go-quota](backlog/ready-for-agent/add-opencode-go-quota.md) files
-  the implementation directly in `ready-for-agent/`. The scope decision and live gate above close
-  every dependency, so no user decision is outstanding.
+  the implementation directly in `ready-for-agent/`, tracked by
+  [#21](https://github.com/baktiaditya/ai-usage-dashboard/issues/21). The scope decision and live
+  gate above close every dependency, so no user decision is outstanding.
 - **Restructure**: the Claude Code skill entrypoints under `.claude/skills/` are now relative
   symlinks into `.agents/skills/`, so each skill has one `SKILL.md` source of truth. The
   "update both SKILL.md files" rule in
