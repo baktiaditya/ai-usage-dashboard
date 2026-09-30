@@ -41,11 +41,10 @@ export function TodayQuotaChart({
     );
   }
 
-  const hours = Array.from({ length: today.currentHour + 1 }, (_, hour) => hour);
-  const rows = hours.map((hour) => {
-    const row: Record<string, string | number | null> = { hour: `${hour}:00` };
+  const rows = today.hours.map(({ startsAt, label }) => {
+    const row: Record<string, string | number | null> = { hour: label };
     for (const s of today.series) {
-      const point = s.points.find((p) => p.hour === hour);
+      const point = s.points.find((p) => p.startsAt === startsAt);
       row[s.windowKind] = point ? point.latestPercent : null;
     }
     return row;

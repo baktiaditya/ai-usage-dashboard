@@ -165,3 +165,34 @@ export function startOfLocalDayNDaysAgoUtc(
     day: target.getUTCDate(),
   });
 }
+
+/**
+ * Start of the local clock hour containing `at`, as a UTC instant.
+ *
+ * Keyed by instant rather than by hour number, because the hour number is not
+ * unique within a day: when the clocks go back, 01:00–02:00 happens twice and
+ * each occurrence starts at its own instant. Half-hour zones (Kolkata) start
+ * their hours at :30 UTC, which the wall-clock minutes account for.
+ */
+export function startOfLocalHourUtc(timezone: string, at: Date): Date {
+  const whole = Math.floor(at.getTime() / 1000) * 1000;
+  const intoHour = localParts(timezone, new Date(whole)).wallClockAsUtc % HOUR_MS;
+  return new Date(whole - intoHour);
+}
+
+/**
+ * Every local clock hour from `from` up to and including the one `to` falls in,
+ * as the instants they start at, oldest first. A skipped hour is absent and a
+ * repeated one appears twice.
+ */
+export function localHoursBetween(timezone: string, from: Date, to: Date): Date[] {
+  const hours: Date[] = [];
+  let cursor = startOfLocalHourUtc(timezone, from);
+  while (cursor.getTime() <= to.getTime()) {
+    hours.push(cursor);
+    // An hour start is always less than an hour before the instant it was
+    // taken from, so stepping one hour past it always moves forward.
+    cursor = startOfLocalHourUtc(timezone, new Date(cursor.getTime() + HOUR_MS));
+  }
+  return hours;
+}

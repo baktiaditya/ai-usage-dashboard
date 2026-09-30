@@ -20,7 +20,7 @@ import { getCreditBaselineBefore, getCreditHistory, getQuotaHistory } from '../d
 import type { QuotaHistoryPoint } from '../db/repository';
 import type { MoneyString } from '../money';
 import { compareMoney, subtractMoney } from '../money';
-import { startOfLocalDayNDaysAgoUtc } from '../time';
+import { localHoursBetween, startOfLocalDayNDaysAgoUtc, startOfLocalHourUtc } from '../time';
 import { labelWindow } from './labels';
 
 export type HistoryRange = 'today' | '7d' | '30d';
@@ -178,8 +178,8 @@ function summarise(samples: readonly number[]) {
 }
 
 export interface QuotaTodayPoint {
-  /** Local hour of day, 0–23, in the configured timezone. */
-  readonly hour: number;
+  /** The UTC instant the local hour began, matching one of `hours`. */
+  readonly startsAt: string;
   readonly latestPercent: number;
   readonly minPercent: number;
   readonly maxPercent: number;
@@ -193,21 +193,42 @@ export interface QuotaTodaySeries {
   readonly points: readonly QuotaTodayPoint[];
 }
 
+export interface QuotaTodayHour {
+  /** The UTC instant the local hour began, unique even in a repeated hour. */
+  readonly startsAt: string;
+  /** The local clock hour, such as `9:00`; a repeated hour names its zone. */
+  readonly label: string;
+}
+
 export interface QuotaTodayResult {
   readonly availability: Availability;
-  /** The local hour `now` falls in, so a chart can span midnight to now. */
-  readonly currentHour: number;
+  /** Every local hour from midnight to the one `now` falls in, oldest first. */
+  readonly hours: readonly QuotaTodayHour[];
   readonly series: readonly QuotaTodaySeries[];
 }
 
-/** Local hour of day, 0–23, in the configured timezone. */
-function localHour(iso: string | Date, timezone: string): number {
-  const hour = new Intl.DateTimeFormat('en-GB', {
+/**
+ * Label each hour by its local clock. When the clocks go back the same hour
+ * happens twice, so both occurrences carry their zone name (`1:00 EDT`,
+ * `1:00 EST`) to stay distinguishable.
+ */
+function labelHours(hours: readonly Date[], timezone: string): QuotaTodayHour[] {
+  const clock = new Intl.DateTimeFormat('en-GB', {
     timeZone: timezone,
-    hour: '2-digit',
+    hour: 'numeric',
     hourCycle: 'h23',
-  }).format(new Date(iso));
-  return Number(hour);
+  });
+  const zone = new Intl.DateTimeFormat('en-US', { timeZone: timezone, timeZoneName: 'short' });
+  const clocks = hours.map((h) => `${Number(clock.format(h))}:00`);
+  const repeated = new Set(clocks.filter((c, i) => clocks.indexOf(c) !== i));
+  return hours.map((h, i) => {
+    const label = clocks[i]!;
+    const zoneName = zone.formatToParts(h).find((p) => p.type === 'timeZoneName')?.value;
+    return {
+      startsAt: h.toISOString(),
+      label: repeated.has(label) && zoneName ? `${label} ${zoneName}` : label,
+    };
+  });
 }
 
 /**
@@ -216,7 +237,8 @@ function localHour(iso: string | Date, timezone: string): number {
  * The collector samples every few minutes, so an hour usually holds several
  * readings. Like the daily history, each hour keeps latest / min / max and is
  * never summed: a gauge that resets mid-hour would otherwise add up to a
- * number no window ever reached.
+ * number no window ever reached. Hours are keyed by the instant they began, so
+ * the two occurrences of a repeated hour stay separate.
  */
 export function buildQuotaToday(
   db: Db,
@@ -226,24 +248,24 @@ export function buildQuotaToday(
 ): QuotaTodayResult {
   const since = startOfLocalDayNDaysAgoUtc(config.timezone, 0, now);
   const rows = getQuotaHistory(db, provider, since.toISOString());
-  const currentHour = localHour(now, config.timezone);
+  const hours = labelHours(localHoursBetween(config.timezone, since, now), config.timezone);
 
   if (rows.length === 0) {
     return {
       availability: { available: false, reason: 'No quota observation was recorded today.' },
-      currentHour,
+      hours,
       series: [],
     };
   }
 
   const series = groupQuotaSeries(provider, rows, (iso) =>
-    String(localHour(iso, config.timezone)).padStart(2, '0'),
+    startOfLocalHourUtc(config.timezone, new Date(iso)).toISOString(),
   ).map(({ key: _key, buckets, ...rest }) => ({
     ...rest,
-    points: buckets.map(([hour, samples]) => ({ hour: Number(hour), ...summarise(samples) })),
+    points: buckets.map(([startsAt, samples]) => ({ startsAt, ...summarise(samples) })),
   }));
 
-  return { availability: { available: true }, currentHour, series };
+  return { availability: { available: true }, hours, series };
 }
 
 export function buildQuotaHistory(

@@ -195,12 +195,62 @@ describe('today per hour', () => {
     const today = buildQuotaToday(t.db, config, 'codex', NOW);
 
     expect(today.availability).toEqual({ available: true });
-    expect(today.currentHour).toBe(19);
+    expect(today.hours).toHaveLength(20);
+    expect(today.hours[0]).toEqual({ startsAt: '2026-09-11T17:00:00.000Z', label: '0:00' });
+    expect(today.hours.at(-1)).toEqual({ startsAt: '2026-09-12T12:00:00.000Z', label: '19:00' });
     expect(today.series.map((s) => s.label)).toEqual(['5 hour', '7 day']);
     expect(today.series[0]!.points).toEqual([
-      { hour: 9, latestPercent: 15, minPercent: 10, maxPercent: 15, samples: 2 },
-      { hour: 18, latestPercent: 30, minPercent: 30, maxPercent: 30, samples: 1 },
+      {
+        startsAt: '2026-09-12T02:00:00.000Z',
+        latestPercent: 15,
+        minPercent: 10,
+        maxPercent: 15,
+        samples: 2,
+      },
+      {
+        startsAt: '2026-09-12T11:00:00.000Z',
+        latestPercent: 30,
+        minPercent: 30,
+        maxPercent: 30,
+        samples: 1,
+      },
     ]);
+  });
+
+  it('keeps both occurrences of the hour repeated when the clocks go back', () => {
+    // New York leaves EDT at 06:00 UTC on 1 November 2026, so 01:00-02:00
+    // local happens twice. NOW is 07:00 EST.
+    const newYork = testConfig({ AUD_TIMEZONE: 'America/New_York' });
+    writeQuota('codex', '2026-11-01T05:59:00.000Z', [80, 50]); // 01:59 EDT
+    writeQuota('codex', '2026-11-01T06:59:00.000Z', [10, 51]); // 01:59 EST
+
+    const today = buildQuotaToday(t.db, newYork, 'codex', new Date('2026-11-01T12:00:00.000Z'));
+
+    expect(today.hours.map((h) => h.label)).toEqual([
+      '0:00',
+      '1:00 EDT',
+      '1:00 EST',
+      '2:00',
+      '3:00',
+      '4:00',
+      '5:00',
+      '6:00',
+      '7:00',
+    ]);
+    expect(today.series[0]!.points.map((p) => [p.startsAt, p.latestPercent, p.samples])).toEqual([
+      ['2026-11-01T05:00:00.000Z', 80, 1],
+      ['2026-11-01T06:00:00.000Z', 10, 1],
+    ]);
+  });
+
+  it('leaves out the hour skipped when the clocks go forward', () => {
+    const newYork = testConfig({ AUD_TIMEZONE: 'America/New_York' });
+    writeQuota('codex', '2026-03-08T07:30:00.000Z'); // 03:30 EDT
+
+    const today = buildQuotaToday(t.db, newYork, 'codex', new Date('2026-03-08T08:00:00.000Z'));
+
+    expect(today.hours.map((h) => h.label)).toEqual(['0:00', '1:00', '3:00', '4:00']);
+    expect(today.series[0]!.points.map((p) => p.startsAt)).toEqual(['2026-03-08T07:00:00.000Z']);
   });
 
   it('says so, instead of drawing zeros, when nothing was observed today', () => {
@@ -210,7 +260,7 @@ describe('today per hour', () => {
 
     expect(today.availability.available).toBe(false);
     expect(today.series).toEqual([]);
-    expect(today.currentHour).toBe(19);
+    expect(today.hours).toHaveLength(20);
   });
 
   it('is charted on the OpenCode Go card only', () => {

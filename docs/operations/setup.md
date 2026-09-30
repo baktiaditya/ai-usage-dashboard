@@ -374,7 +374,9 @@ card shows three windows as the percentage **used** and its reset time:
 The card spans the full width of the grid. Beside the windows, a **Today** chart
 draws each window's utilisation at the end of every local hour since midnight, from
 the dashboard's own readings. An hour with no reading stays a gap, never a zero, and
-hours are never summed. The chart needs no extra request to OpenCode.
+hours are never summed. On the night the clocks go back, the repeated hour appears twice,
+each labelled with its zone name, such as `1:00 EDT` and `1:00 EST`; an hour the clocks
+skip is absent. The chart needs no extra request to OpenCode.
 
 It shows **percentages only**. OpenCode does not report the dollar limits, whether
 the plan is Go or Go Plus, or your Zen balance, and the dashboard does not estimate

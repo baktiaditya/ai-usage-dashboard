@@ -12,8 +12,10 @@ import {
   epochSecondsToIso,
   formatAge,
   hasPassed,
+  localHoursBetween,
   startOfLocalDayNDaysAgoUtc,
   startOfLocalDayUtc,
+  startOfLocalHourUtc,
 } from '@/lib/time';
 
 describe('configuration', () => {
@@ -310,5 +312,30 @@ describe('calendar boundaries follow the configured timezone', () => {
         new Date('2026-03-12T15:00:00.000Z'),
       ).toISOString(),
     ).toBe('2026-03-05T05:00:00.000Z');
+  });
+});
+
+describe('local clock hours', () => {
+  it("starts a half-hour zone's hours at :30 UTC", () => {
+    // 10:59 in Asia/Kolkata (UTC+5:30).
+    const start = startOfLocalHourUtc('Asia/Kolkata', new Date('2026-09-12T05:29:59.500Z'));
+    expect(start.toISOString()).toBe('2026-09-12T04:30:00.000Z');
+  });
+
+  it('gives each occurrence of a repeated hour its own start', () => {
+    // 01:30 EDT, then 01:30 EST an hour later.
+    expect(
+      startOfLocalHourUtc('America/New_York', new Date('2026-11-01T05:30:00.000Z')).toISOString(),
+    ).toBe('2026-11-01T05:00:00.000Z');
+    expect(
+      startOfLocalHourUtc('America/New_York', new Date('2026-11-01T06:30:00.000Z')).toISOString(),
+    ).toBe('2026-11-01T06:00:00.000Z');
+  });
+
+  it('lists 25 hours on the day the clocks go back and 23 on the day they go forward', () => {
+    const hoursIn = (from: string, to: string) =>
+      localHoursBetween('America/New_York', new Date(from), new Date(to)).length;
+    expect(hoursIn('2026-11-01T04:00:00.000Z', '2026-11-02T04:59:59.000Z')).toBe(25);
+    expect(hoursIn('2026-03-08T05:00:00.000Z', '2026-03-09T03:59:59.000Z')).toBe(23);
   });
 });

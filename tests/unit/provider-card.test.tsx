@@ -441,19 +441,38 @@ describe('provenance and diagnostics', () => {
 describe('today chart', () => {
   const today = {
     availability: { available: true as const },
-    currentHour: 19,
+    hours: [
+      { startsAt: '2026-09-12T10:00:00.000Z', label: '17:00' },
+      { startsAt: '2026-09-12T11:00:00.000Z', label: '18:00' },
+    ],
     series: [
       {
         bucketId: 'go',
         windowKind: 'rolling',
         label: '5 hour',
-        points: [{ hour: 18, latestPercent: 2, minPercent: 1, maxPercent: 2, samples: 12 }],
+        points: [
+          {
+            startsAt: '2026-09-12T11:00:00.000Z',
+            latestPercent: 2,
+            minPercent: 1,
+            maxPercent: 2,
+            samples: 12,
+          },
+        ],
       },
       {
         bucketId: 'go',
         windowKind: 'weekly',
         label: '7 day',
-        points: [{ hour: 18, latestPercent: 26, minPercent: 25, maxPercent: 26, samples: 12 }],
+        points: [
+          {
+            startsAt: '2026-09-12T11:00:00.000Z',
+            latestPercent: 26,
+            minPercent: 25,
+            maxPercent: 26,
+            samples: 12,
+          },
+        ],
       },
     ],
   };
@@ -475,7 +494,7 @@ describe('today chart', () => {
         label: 'OpenCode Go',
         today: {
           availability: { available: false, reason: 'No quota observation was recorded today.' },
-          currentHour: 7,
+          hours: [],
           series: [],
         },
       }),
