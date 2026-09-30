@@ -123,6 +123,7 @@ function stored(): unknown[] {
 const UNSAVED = [
   { provider: 'deepseek', configured: false, hint: null, updatedAt: null },
   { provider: 'openrouter', configured: false, hint: null, updatedAt: null },
+  { provider: 'opencode_go', configured: false, hint: null, updatedAt: null },
   { provider: 'claude', configured: false, hint: null, updatedAt: null },
 ];
 
@@ -143,6 +144,7 @@ describe('GET /api/settings/credentials', () => {
         { provider: 'deepseek', configured: true, hint: '1234', updatedAt: expect.any(String) },
         UNSAVED[1],
         UNSAVED[2],
+        UNSAVED[3],
       ],
     });
     expect(leaks(text)).toBe(false);

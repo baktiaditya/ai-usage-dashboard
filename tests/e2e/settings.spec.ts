@@ -65,9 +65,10 @@ test('opens a modal dialog that takes focus, traps it, locks scroll, and fits th
   await expect(page.getByTestId('open-settings')).toHaveAttribute('aria-expanded', 'true');
   await expect(dialog.getByLabel('DeepSeek API Key')).toBeVisible();
   await expect(dialog.getByLabel('OpenRouter Management Key')).toBeVisible();
+  await expect(dialog.getByLabel('OpenCode Go API Key')).toBeAttached();
   await expect(dialog.getByLabel('Claude Token (optional)')).toBeAttached();
   await expect(page.getByTestId('settings-input-deepseek')).toBeFocused();
-  for (const provider of ['deepseek', 'openrouter', 'claude']) {
+  for (const provider of ['deepseek', 'openrouter', 'opencode_go', 'claude']) {
     await expect(page.getByTestId(`settings-input-${provider}`)).toHaveAttribute(
       'type',
       'password',
@@ -259,6 +260,7 @@ test('Remove deletes a saved key immediately', async ({ page, request }) => {
     credentials: [
       { configured: false },
       { provider: 'openrouter', configured: false },
+      { provider: 'opencode_go', configured: false },
       { provider: 'claude', configured: false },
     ],
   });

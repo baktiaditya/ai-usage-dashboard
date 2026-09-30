@@ -1,0 +1,17 @@
+{
+  "_fixture": {
+    "note": "Synthetic: extra fields a newer API might add, including a window this adapter does not read."
+  },
+  "plan": "go",
+  "usage": {
+    "rolling": {
+      "status": "ok",
+      "percent": 7,
+      "resetsAt": "2026-09-30T18:30:00.000+02:00",
+      "limitUsd": 12
+    },
+    "weekly": { "status": "ok", "percent": 41, "resetsAt": "2026-10-05T00:00:00.000Z" },
+    "monthly": { "status": "ok", "percent": 23, "resetsAt": "2026-10-14T09:15:00.000Z" },
+    "daily": { "status": "ok", "percent": 3, "resetsAt": "2026-10-01T00:00:00.000Z" }
+  }
+}

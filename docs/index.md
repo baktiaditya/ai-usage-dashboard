@@ -18,7 +18,7 @@ provider is worth switching away from right now. This bundle follows
 # Discovery
 
 - [Discovery](discovery/index.md) - Re-probed machine baseline, per-provider gate
-  evidence (all four provider gates live-verified), fixed decisions, and deviations from the plan.
+  evidence (all five provider gates live-verified), fixed decisions, and deviations from the plan.
 
 # Operations
 

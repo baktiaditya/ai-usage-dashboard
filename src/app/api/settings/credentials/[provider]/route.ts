@@ -39,7 +39,11 @@ function failure(status: number, code: string, message: string): NextResponse {
 }
 
 const INVALID_PROVIDER = () =>
-  failure(400, 'invalid_provider', 'Keys can be saved only for DeepSeek, OpenRouter, and Claude.');
+  failure(
+    400,
+    'invalid_provider',
+    'Keys can be saved only for DeepSeek, OpenRouter, Claude, and OpenCode Go.',
+  );
 
 /** Checks shared by both methods, in order: origin first, then the provider. */
 async function guard(

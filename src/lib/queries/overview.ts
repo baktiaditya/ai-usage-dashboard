@@ -94,6 +94,9 @@ const WINDOW_LABELS: Record<string, string> = {
   spend_limit: 'Spend limit',
   primary: 'Primary',
   secondary: 'Secondary',
+  // OpenCode Go's billing month runs from the subscription anniversary, so it
+  // has no fixed duration to label from.
+  monthly: 'Monthly',
 };
 
 /**

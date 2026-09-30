@@ -4,7 +4,7 @@ A localhost-first dashboard that answers three questions on one screen: how much
 subscription quota is left, how much prepaid credit is left, and whether any
 provider is worth switching away from right now.
 
-Four providers, three kinds of number, deliberately never mixed:
+Five providers, three kinds of number, deliberately never mixed:
 
 | Provider        | Source                                                  | Measures                                    |
 | --------------- | ------------------------------------------------------- | ------------------------------------------- |
@@ -12,6 +12,7 @@ Four providers, three kinds of number, deliberately never mixed:
 | **Claude Code** | status-line bridge → local spool; optional quota probe  | quota gauge per window                      |
 | **DeepSeek**    | `GET api.deepseek.com/user/balance`                     | money balance per currency                  |
 | **OpenRouter**  | `GET openrouter.ai/api/v1/credits`                      | money: credits, cumulative usage, remaining |
+| **OpenCode Go** | `GET opencode.ai/zen/go/v1/usage`                       | quota gauge per window                      |
 
 ## Quick start
 
@@ -33,7 +34,7 @@ and manual refresh disabled unless `AUD_DEV_LIVE_REFRESH=1`.
 
 It works with nothing configured. Providers you have not set up render as
 `unavailable` with a setup hint instead of blocking the page or failing the run.
-DeepSeek and OpenRouter keys are entered under **Settings**, next to **Reload view**. An optional
+DeepSeek, OpenRouter and OpenCode Go keys are entered under **Settings**, next to **Reload view**. An optional
 Claude token entered there lets Claude report quota while no session is running, by sending a
 one-token request that counts toward your Claude usage.
 
@@ -102,7 +103,7 @@ so scheduled and manual runs cannot drift apart in behaviour.
 - a redaction pass runs before every log write, persisted diagnostic, API
   response and rendered string, with tests asserting on each secret shape;
 - manual refresh is `POST`, same-origin enforced, and locally rate limited;
-- DeepSeek and OpenRouter keys, and the optional Claude token, are saved from the Settings dialog into the
+- DeepSeek, OpenRouter and OpenCode Go keys, and the optional Claude token, are saved from the Settings dialog into the
   owner-only (`0600`) database, are never read from the environment, and never
   reach the browser in full: it receives at most a key's last four characters,
   and every settings route requires a same-origin request;

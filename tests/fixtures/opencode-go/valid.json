@@ -1,0 +1,12 @@
+{
+  "_fixture": {
+    "source": "GET https://opencode.ai/zen/go/v1/usage",
+    "note": "Synthetic values in the shape verified live on 2026-09-30. No real key, percentage or reset time.",
+    "important": "percent is the percentage USED, not remaining. weekly resets Monday 00:00 UTC; monthly resets on the billing anniversary."
+  },
+  "usage": {
+    "rolling": { "status": "ok", "percent": 7, "resetsAt": "2026-09-30T16:30:00.000Z" },
+    "weekly": { "status": "ok", "percent": 41, "resetsAt": "2026-10-05T00:00:00.000Z" },
+    "monthly": { "status": "ok", "percent": 23, "resetsAt": "2026-10-14T09:15:00.000Z" }
+  }
+}

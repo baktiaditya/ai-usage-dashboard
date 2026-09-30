@@ -4,8 +4,9 @@
  * eyeballing the UI without waiting on real providers.
  *
  * Deliberately produces one provider in each of the four states, two currencies
- * on DeepSeek, two windows on Codex, and enough history for a 7-day chart plus
- * a pre-period baseline — the combination the browser tests assert on.
+ * on DeepSeek, two windows on Codex, three on OpenCode Go (one of them inside
+ * the `watch` threshold), and enough history for a 7-day chart plus a
+ * pre-period baseline — the combination the browser tests assert on.
  *
  * It starts by deleting every collector run in the database it opens, so it
  * never chooses a target by default:
@@ -130,6 +131,47 @@ function deepseekSnapshot(observedAt: string, cny: string, usd: string): CreditS
   };
 }
 
+/**
+ * OpenCode Go reports used percentages for a rolling five hours, a calendar
+ * week, and the billing month, which has no fixed length.
+ */
+function opencodeGoSnapshot(observedAt: string, used: [number, number, number]): QuotaSnapshot {
+  return {
+    kind: 'quota',
+    provider: 'opencode_go',
+    observedAt,
+    collectedAt: observedAt,
+    sourceVersion: 'opencode-api/zen-go-v1-usage',
+    schemaVersion: 1,
+    usageAllowed: null,
+    limitReachedCode: null,
+    sourceEventId: null,
+    windows: [
+      {
+        bucketId: 'go',
+        windowKind: 'rolling',
+        usedPercent: used[0],
+        windowDurationMinutes: 300,
+        resetsAt: inHours(4),
+      },
+      {
+        bucketId: 'go',
+        windowKind: 'weekly',
+        usedPercent: used[1],
+        windowDurationMinutes: 10080,
+        resetsAt: inHours(40),
+      },
+      {
+        bucketId: 'go',
+        windowKind: 'monthly',
+        usedPercent: used[2],
+        windowDurationMinutes: null,
+        resetsAt: inHours(300),
+      },
+    ],
+  };
+}
+
 function write(db: Db, provider: Provider, snapshot: QuotaSnapshot | CreditSnapshot): void {
   recordAttempt(db, {
     runId: startRun(db, 'scheduled', snapshot.collectedAt),
@@ -163,6 +205,12 @@ async function main(): Promise<void> {
     write(db, 'codex', codexSnapshot(daysAgo(d), [20 + d * 4, 30 + d * 2]));
   }
   write(db, 'codex', codexSnapshot(minutesAgo(2), [37, 52]));
+
+  // --- OpenCode Go: healthy, with the weekly window inside `watch` ----------
+  for (let d = 8; d >= 1; d -= 1) {
+    write(db, 'opencode_go', opencodeGoSnapshot(daysAgo(d), [5 + d, 80 - d * 6, 60 - d * 3]));
+  }
+  write(db, 'opencode_go', opencodeGoSnapshot(minutesAgo(3), [18, 84, 61]));
 
   // --- DeepSeek: stale, and low enough on CNY to trigger `watch` -----------
   // The baseline sits before the 7-day window so a balance change is computable.

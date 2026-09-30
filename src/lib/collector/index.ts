@@ -25,6 +25,7 @@ import { createClaudeAdapter } from '../adapters/claude-usage';
 import { createCodexAdapter } from '../adapters/codex';
 import { createDeepseekAdapter } from '../adapters/deepseek';
 import { createOpenrouterAdapter } from '../adapters/openrouter';
+import { createOpencodeGoAdapter } from '../adapters/opencode-go';
 import { maxAgeMs } from '../freshness';
 import type { Db } from '../db/client';
 import { readProviderCredentials } from '../db/credentials';
@@ -68,6 +69,7 @@ export function buildAdapters(
     }),
     createDeepseekAdapter({ apiKey: keys.deepseekApiKey }),
     createOpenrouterAdapter({ managementKey: keys.openrouterManagementKey }),
+    createOpencodeGoAdapter({ apiKey: keys.opencodeGoApiKey }),
   ];
 }
 

@@ -169,16 +169,29 @@ describe('window labelling', () => {
       }),
     ).toBe('Spend limit');
   });
+
+  it('labels the OpenCode Go billing month, which has no fixed duration', () => {
+    expect(
+      labelWindow({
+        bucketId: 'go',
+        windowKind: 'monthly',
+        usedPercent: 0,
+        windowDurationMinutes: null,
+        resetsAt: '2026-10-14T09:15:00.000Z',
+      }),
+    ).toBe('Monthly');
+  });
 });
 
 describe('overview', () => {
-  it('always returns all four providers, even with an empty database', () => {
+  it('always returns all five providers, even with an empty database', () => {
     const overview = buildOverview(t.db, config, NOW);
     expect(overview.cards.map((c) => c.provider)).toEqual([
       'codex',
       'claude',
       'deepseek',
       'openrouter',
+      'opencode_go',
     ]);
     expect(overview.cards.every((c) => c.status === 'unavailable')).toBe(true);
     // An empty dashboard must not pretend to have advice.

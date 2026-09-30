@@ -15,6 +15,7 @@ const DEEPSEEK_KEY = 'sk-fake-deepseek-0000000abcd';
 const OPENROUTER_KEY = 'sk-or-fake-openrouter-000wxyz';
 // Shaped like a `claude setup-token` token, but not one.
 const CLAUDE_TOKEN = 'sk-ant-oat01-fake-sanitised-token-0000000000000000-lmno';
+const OPENCODE_GO_KEY = 'sk-fake-opencode-go-00000000efgh';
 
 let t: TestDb;
 beforeEach(() => {
@@ -36,10 +37,12 @@ describe('saving and reading', () => {
       deepseekApiKey: null,
       openrouterManagementKey: null,
       claudeUsageToken: null,
+      opencodeGoApiKey: null,
     });
     expect(listCredentialStatus(t.db)).toEqual([
       { provider: 'deepseek', configured: false, hint: null, updatedAt: null },
       { provider: 'openrouter', configured: false, hint: null, updatedAt: null },
+      { provider: 'opencode_go', configured: false, hint: null, updatedAt: null },
       { provider: 'claude', configured: false, hint: null, updatedAt: null },
     ]);
   });
@@ -54,11 +57,13 @@ describe('saving and reading', () => {
       updatedAt: '2026-09-15T01:00:00.000Z',
     });
     saveProviderCredential(t.db, 'openrouter', OPENROUTER_KEY);
+    saveProviderCredential(t.db, 'opencode_go', OPENCODE_GO_KEY);
 
     expect(readProviderCredentials(t.db)).toEqual({
       deepseekApiKey: DEEPSEEK_KEY,
       openrouterManagementKey: OPENROUTER_KEY,
       claudeUsageToken: null,
+      opencodeGoApiKey: OPENCODE_GO_KEY,
     });
   });
 
@@ -120,11 +125,17 @@ describe('saving and reading', () => {
 
   it('lists every provider in order, and no status carries a secret', () => {
     saveProviderCredential(t.db, 'claude', CLAUDE_TOKEN);
+    saveProviderCredential(t.db, 'opencode_go', OPENCODE_GO_KEY);
     saveProviderCredential(t.db, 'openrouter', OPENROUTER_KEY);
     saveProviderCredential(t.db, 'deepseek', DEEPSEEK_KEY);
     const statuses = listCredentialStatus(t.db);
 
-    expect(statuses.map((s) => s.provider)).toEqual(['deepseek', 'openrouter', 'claude']);
+    expect(statuses.map((s) => s.provider)).toEqual([
+      'deepseek',
+      'openrouter',
+      'opencode_go',
+      'claude',
+    ]);
     for (const status of statuses) {
       expect(Object.keys(status).sort()).toEqual(['configured', 'hint', 'provider', 'updatedAt']);
       expect(status).not.toHaveProperty('secret');
@@ -133,6 +144,7 @@ describe('saving and reading', () => {
     expect(serialized).not.toContain(DEEPSEEK_KEY.slice(0, -4));
     expect(serialized).not.toContain(OPENROUTER_KEY.slice(0, -4));
     expect(serialized).not.toContain(CLAUDE_TOKEN.slice(0, -4));
+    expect(serialized).not.toContain(OPENCODE_GO_KEY.slice(0, -4));
   });
 });
 

@@ -6,7 +6,7 @@ description: Product authority — localhost quota/balance dashboard scope, prov
 
 # AI Usage Dashboard — Implementation Plan
 
-A local dashboard for monitoring Codex and Claude Code quota and DeepSeek and OpenRouter balances.
+A local dashboard for monitoring Codex, Claude Code, and OpenCode Go quota and DeepSeek and OpenRouter balances.
 
 ## 0. Machine validation baseline
 
@@ -54,7 +54,8 @@ No secrets, emails, account IDs, raw auth payloads, or point-in-time quota value
 
 Build a single `localhost-first` dashboard answering three questions: how much subscription quota remains, how much API credit remains, and when a provider needs manual review or replacement.
 
-- Show the current state of all four providers on one screen.
+- Show the current state of all five providers on one screen. OpenCode Go joined the original
+  four on 2026-09-30 (see the [log](../log.md)).
 - Store historical snapshots so usage trends can be analyzed without conflating different metric types.
 - Keep credentials and session tokens local and managed by their original source wherever possible.
 - Stay useful when one adapter fails or an upstream format changes.
@@ -107,6 +108,28 @@ The dashboard makes no automatic routing decisions in the MVP. It only presents 
 - Call `GET https://openrouter.ai/api/v1/credits` using a Management Key.
 - Normalize `data.total_credits` and `data.total_usage`; compute `remaining = total_credits - total_usage` with decimal arithmetic, not binary floating point.
 - Distinguish `401` (missing/invalid credential) from `403` (credential is not a Management Key) in the error taxonomy without printing raw responses.
+
+#### OpenCode Go
+
+Added 2026-09-30 (see the [log](../log.md)). The work is briefed in
+[add-opencode-go-quota](../backlog/ready-for-agent/add-opencode-go-quota.md).
+
+- Call `GET https://opencode.ai/zen/go/v1/usage` with an OpenCode API key sent as
+  `Authorization: Bearer`. The endpoint reads no other header.
+- Store the `rolling`, `weekly`, and `monthly` windows as three quota windows, each with its
+  source `percent` as `usedPercent` and its `resetsAt`. `rolling` lasts 300 minutes and `weekly`
+  lasts 10080 minutes (a calendar week ending Monday 00:00 UTC). `monthly` follows the billing
+  anniversary and has no fixed duration.
+- The response carries percentages only. Never show or derive dollar amounts, the plan tier, or
+  a Zen balance for this card (§10).
+- A window whose `status` is `rate-limited` is a limit-reached condition. It never means usage is
+  disallowed, because the console's **Use balance** option can keep requests flowing on Zen credit
+  and the response does not say whether that option is on.
+- `401` is a rejected key. `403` means the key has no Go subscription, which is `not_entitled`,
+  not a broken credential. A missing window or an unknown `status` is drift and stores nothing.
+- The key also authorises inference and can spend a Zen balance, so it is a high-impact secret
+  (§5). It is saved in Settings (§3.5). OpenCode's own `auth.json` and local database are never
+  read.
 
 ### 3.2 Dashboard
 
@@ -182,8 +205,10 @@ Decided and implemented 2026-09-15 (see the [log](../log.md)); delivered from th
 - Saving a key does not validate it upstream and does not start a collection. Saving or removing a
   key changes only the dashboard's local copy; the application still never creates, modifies, or
   deletes keys at the provider (§10).
-- A third key is optional and belongs to a source, not to a provider: the Claude token of §3.1.
-  DeepSeek and OpenRouter report nothing without their key; Claude keeps reporting through the
+- The OpenCode API key of §3.1 is saved and handled the same way, and OpenCode Go reports
+  nothing without it (added 2026-09-30).
+- One further key is optional and belongs to a source, not to a provider: the Claude token of
+  §3.1. DeepSeek, OpenRouter, and OpenCode Go report nothing without their key; Claude keeps reporting through the
   status-line spool without one. Settings must say so, so that an empty Claude field never reads
   as a broken provider.
 - The development server stores keys only in its own database (§3.4).
@@ -299,7 +324,7 @@ Attempt status and snapshot freshness are separate concepts and are not stored a
 ## 5. Security and operations
 
 - Read `DEEPSEEK_API_KEY` and `OPENROUTER_MANAGEMENT_KEY` from the collector process environment. For systemd, use an environment file outside the repository with `0600` permissions; a user service does not automatically inherit the shell environment. **Superseded by §3.5 (decided and implemented 2026-09-15):** keys are saved from the dashboard's Settings dialog into the owner-only database and are no longer read from any environment.
-- Treat the OpenRouter Management Key as a high-impact secret since it can access other administrative operations. Use a dashboard-specific key when the provider supports operational separation, restrict file permissions, and never send it to the browser. Under §3.5 the browser may receive only its last four characters.
+- Treat the OpenRouter Management Key as a high-impact secret since it can access other administrative operations. The OpenCode API key (§3.1) is high-impact too, because it can spend a Zen balance. Use a dashboard-specific key when the provider supports operational separation, restrict file permissions, and never send it to the browser. Under §3.5 the browser may receive only its last four characters.
 - Do not copy Codex/Claude OAuth credentials into `.env`. The Codex adapter delegates auth to the app-server; the Claude bridge only accepts status line fields the CLI already provides.
 - Selectors/redactors run before logging and persistence. Tests must prove that emails, account IDs, bearer tokens, authorization headers, and raw payloads never leak through.
 - The web server binds to `127.0.0.1`. Refresh endpoints accept `POST`, verify same-origin/CSRF, enforce a local rate limit, and never trust `Host`/`X-Forwarded-For` as the sole control.
@@ -350,7 +375,7 @@ The MVP may proceed with unavailable adapters, but acceptance for a given provid
 
 ## 7. MVP acceptance criteria
 
-- One page shows the last known state of all four providers without blocking when one adapter fails or is unconfigured.
+- One page shows the last known state of all five providers without blocking when one adapter fails or is unconfigured.
 - Codex reads quota via `account/rateLimits/read`; it does not read auth files or parse terminal UI.
 - Claude shows quota only from a validated, still-fresh observation — the status-line spool by
   default, or the optional §3.1 probe when the user has configured it. With neither, the card shows
