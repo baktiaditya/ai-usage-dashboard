@@ -173,26 +173,77 @@ export function startOfLocalDayNDaysAgoUtc(
  * unique within a day: when the clocks go back, 01:00–02:00 happens twice and
  * each occurrence starts at its own instant. Half-hour zones (Kolkata) start
  * their hours at :30 UTC, which the wall-clock minutes account for.
+ *
+ * An hour never spans an offset change. Lord Howe moves its clocks by thirty
+ * minutes, so the change can fall inside a clock hour; the part after it is an
+ * hour of its own that starts at the transition (01:30 on the night the clocks
+ * go back, 02:30 on the night they go forward). A transition lies between the
+ * wall-clock hour start and `at` exactly when their offsets differ, and a
+ * binary search at one-second resolution finds it.
  */
 export function startOfLocalHourUtc(timezone: string, at: Date): Date {
   const whole = Math.floor(at.getTime() / 1000) * 1000;
-  const intoHour = localParts(timezone, new Date(whole)).wallClockAsUtc % HOUR_MS;
-  return new Date(whole - intoHour);
+  const offset = offsetAt(timezone, new Date(whole));
+  const wallClockStart = whole - ((whole + offset) % HOUR_MS);
+  if (offsetAt(timezone, new Date(wallClockStart)) === offset) return new Date(wallClockStart);
+  let before = wallClockStart;
+  let reached = whole;
+  while (reached - before > 1000) {
+    const mid = Math.floor((before + reached) / 2000) * 1000;
+    if (offsetAt(timezone, new Date(mid)) === offset) reached = mid;
+    else before = mid;
+  }
+  return new Date(reached);
+}
+
+export interface LocalHour {
+  /** The UTC instant the hour starts. */
+  readonly startsAt: Date;
+  /** The local clock reading at that instant. */
+  readonly hour: number;
+  readonly minute: number;
+  /**
+   * Whether this hour's stretch of clock time also belongs to another hour in
+   * the list, which happens only when the clocks go back.
+   */
+  readonly repeated: boolean;
 }
 
 /**
  * Every local clock hour from `from` up to and including the one `to` falls in,
- * as the instants they start at, oldest first. A skipped hour is absent and a
- * repeated one appears twice.
+ * oldest first. A skipped hour is absent, a repeated one appears twice, and a
+ * thirty-minute transition splits its hour in two.
  */
-export function localHoursBetween(timezone: string, from: Date, to: Date): Date[] {
-  const hours: Date[] = [];
+export function localHoursBetween(timezone: string, from: Date, to: Date): LocalHour[] {
+  // Walk one hour past `to`, so the last hour's end is known too.
+  const starts: Date[] = [];
   let cursor = startOfLocalHourUtc(timezone, from);
-  while (cursor.getTime() <= to.getTime()) {
-    hours.push(cursor);
+  for (;;) {
+    starts.push(cursor);
+    if (cursor.getTime() > to.getTime()) break;
     // An hour start is always less than an hour before the instant it was
     // taken from, so stepping one hour past it always moves forward.
     cursor = startOfLocalHourUtc(timezone, new Date(cursor.getTime() + HOUR_MS));
   }
-  return hours;
+  // Each hour's clock time, from its start to where the next hour begins,
+  // read in the offset the hour itself runs on.
+  const spans = starts.slice(0, -1).map((start, i) => {
+    const offset = offsetAt(timezone, start);
+    return {
+      start,
+      wallStart: start.getTime() + offset,
+      wallEnd: starts[i + 1]!.getTime() + offset,
+    };
+  });
+  return spans.map((span, i) => {
+    const wall = new Date(span.wallStart);
+    return {
+      startsAt: span.start,
+      hour: wall.getUTCHours(),
+      minute: wall.getUTCMinutes(),
+      repeated: spans.some(
+        (other, j) => j !== i && other.wallStart < span.wallEnd && span.wallStart < other.wallEnd,
+      ),
+    };
+  });
 }

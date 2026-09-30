@@ -14,7 +14,9 @@
   no other card and no extra request pays for it. `labelWindow` moved to
   `src/lib/queries/labels.ts`, so the overview can import the history query without a cycle.
   Hours are keyed by the UTC instant each local hour starts, not by the hour number, because
-  review found a DST fall-back merging the two occurrences of `01:00` into one point.
+  review found a DST fall-back merging the two occurrences of `01:00` into one point. An hour
+  also ends at any offset change inside it, since a second review found Lord Howe's
+  thirty-minute fall-back still starting the repeated half hour before the change.
 - **Update**: the OpenCode Go live check passed with a key saved in dev-server Settings. The
   collector (`pnpm run collect --manual --provider=opencode_go` against the dev data directory),
   **Refresh** on the card with `AUD_DEV_LIVE_REFRESH=1`, and the OpenCode Go case of

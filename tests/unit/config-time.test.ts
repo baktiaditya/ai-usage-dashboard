@@ -332,6 +332,47 @@ describe('local clock hours', () => {
     ).toBe('2026-11-01T06:00:00.000Z');
   });
 
+  it('starts a new hour at a thirty-minute transition inside a clock hour', () => {
+    // Lord Howe goes from UTC+11 to UTC+10:30 at 15:00 UTC on 4 April 2026, so
+    // 01:45 after the change began at the transition, not at 01:00 before it.
+    expect(
+      startOfLocalHourUtc(
+        'Australia/Lord_Howe',
+        new Date('2026-04-04T15:15:00.000Z'),
+      ).toISOString(),
+    ).toBe('2026-04-04T15:00:00.000Z');
+    expect(
+      startOfLocalHourUtc(
+        'Australia/Lord_Howe',
+        new Date('2026-04-04T14:45:00.000Z'),
+      ).toISOString(),
+    ).toBe('2026-04-04T14:00:00.000Z');
+    // Going forward at 15:30 UTC on 3 October 2026, 02:00 becomes 02:30.
+    expect(
+      startOfLocalHourUtc(
+        'Australia/Lord_Howe',
+        new Date('2026-10-03T15:45:00.000Z'),
+      ).toISOString(),
+    ).toBe('2026-10-03T15:30:00.000Z');
+  });
+
+  it('marks both hours covering clock time that happens twice', () => {
+    const hours = localHoursBetween(
+      'Australia/Lord_Howe',
+      new Date('2026-04-04T13:00:00.000Z'),
+      new Date('2026-04-04T16:30:00.000Z'),
+    );
+    expect(
+      hours.map((h) => [h.startsAt.toISOString(), `${h.hour}:${h.minute}`, h.repeated]),
+    ).toEqual([
+      ['2026-04-04T13:00:00.000Z', '0:0', false],
+      ['2026-04-04T14:00:00.000Z', '1:0', true],
+      ['2026-04-04T15:00:00.000Z', '1:30', true],
+      ['2026-04-04T15:30:00.000Z', '2:0', false],
+      ['2026-04-04T16:30:00.000Z', '3:0', false],
+    ]);
+  });
+
   it('lists 25 hours on the day the clocks go back and 23 on the day they go forward', () => {
     const hoursIn = (from: string, to: string) =>
       localHoursBetween('America/New_York', new Date(from), new Date(to)).length;

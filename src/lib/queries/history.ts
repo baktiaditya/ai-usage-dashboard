@@ -21,6 +21,7 @@ import type { QuotaHistoryPoint } from '../db/repository';
 import type { MoneyString } from '../money';
 import { compareMoney, subtractMoney } from '../money';
 import { localHoursBetween, startOfLocalDayNDaysAgoUtc, startOfLocalHourUtc } from '../time';
+import type { LocalHour } from '../time';
 import { labelWindow } from './labels';
 
 export type HistoryRange = 'today' | '7d' | '30d';
@@ -208,25 +209,19 @@ export interface QuotaTodayResult {
 }
 
 /**
- * Label each hour by its local clock. When the clocks go back the same hour
- * happens twice, so both occurrences carry their zone name (`1:00 EDT`,
- * `1:00 EST`) to stay distinguishable.
+ * Label each hour by its local clock. When the clocks go back, a stretch of
+ * clock time happens twice, so both hours covering it carry their zone name
+ * (`1:00 EDT`, `1:00 EST`) to stay distinguishable. An hour a thirty-minute
+ * transition splits keeps its minutes (`1:30`).
  */
-function labelHours(hours: readonly Date[], timezone: string): QuotaTodayHour[] {
-  const clock = new Intl.DateTimeFormat('en-GB', {
-    timeZone: timezone,
-    hour: 'numeric',
-    hourCycle: 'h23',
-  });
+function labelHours(hours: readonly LocalHour[], timezone: string): QuotaTodayHour[] {
   const zone = new Intl.DateTimeFormat('en-US', { timeZone: timezone, timeZoneName: 'short' });
-  const clocks = hours.map((h) => `${Number(clock.format(h))}:00`);
-  const repeated = new Set(clocks.filter((c, i) => clocks.indexOf(c) !== i));
-  return hours.map((h, i) => {
-    const label = clocks[i]!;
-    const zoneName = zone.formatToParts(h).find((p) => p.type === 'timeZoneName')?.value;
+  return hours.map(({ startsAt, hour, minute, repeated }) => {
+    const label = `${hour}:${String(minute).padStart(2, '0')}`;
+    const zoneName = zone.formatToParts(startsAt).find((p) => p.type === 'timeZoneName')?.value;
     return {
-      startsAt: h.toISOString(),
-      label: repeated.has(label) && zoneName ? `${label} ${zoneName}` : label,
+      startsAt: startsAt.toISOString(),
+      label: repeated && zoneName ? `${label} ${zoneName}` : label,
     };
   });
 }

@@ -243,6 +243,28 @@ describe('today per hour', () => {
     ]);
   });
 
+  it('keeps apart the half hour repeated by a thirty-minute transition', () => {
+    // Lord Howe goes from UTC+11 to UTC+10:30 at 15:00 UTC, when 02:00 becomes
+    // 01:30 again. NOW is 03:00 local.
+    const lordHowe = testConfig({ AUD_TIMEZONE: 'Australia/Lord_Howe' });
+    writeQuota('codex', '2026-04-04T14:45:00.000Z', [80, 50]); // 01:45 before
+    writeQuota('codex', '2026-04-04T15:15:00.000Z', [10, 51]); // 01:45 after
+
+    const today = buildQuotaToday(t.db, lordHowe, 'codex', new Date('2026-04-04T16:30:00.000Z'));
+
+    expect(today.hours.map((h) => h.label)).toEqual([
+      '0:00',
+      '1:00 GMT+11',
+      '1:30 GMT+10:30',
+      '2:00',
+      '3:00',
+    ]);
+    expect(today.series[0]!.points.map((p) => [p.startsAt, p.latestPercent])).toEqual([
+      ['2026-04-04T14:00:00.000Z', 80],
+      ['2026-04-04T15:00:00.000Z', 10],
+    ]);
+  });
+
   it('leaves out the hour skipped when the clocks go forward', () => {
     const newYork = testConfig({ AUD_TIMEZONE: 'America/New_York' });
     writeQuota('codex', '2026-03-08T07:30:00.000Z'); // 03:30 EDT
