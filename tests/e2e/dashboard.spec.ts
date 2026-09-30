@@ -11,10 +11,20 @@ test.beforeEach(async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'AI Usage Dashboard' })).toBeVisible();
 });
 
-test('shows all five providers on one screen', async ({ page }) => {
-  for (const provider of ['codex', 'claude', 'deepseek', 'openrouter', 'opencode_go']) {
+const DISPLAY_ORDER = ['codex', 'claude', 'opencode_go', 'deepseek', 'openrouter'];
+
+test('shows all five providers on one screen, quota before balance', async ({ page }) => {
+  for (const provider of DISPLAY_ORDER) {
     await expect(page.getByTestId(`card-${provider}`)).toBeVisible();
   }
+  const cards = page.locator('[data-testid^="card-"]');
+  expect(await cards.evaluateAll((els) => els.map((el) => el.dataset['testid']))).toEqual(
+    DISPLAY_ORDER.map((provider) => `card-${provider}`),
+  );
+  const picker = page.locator('[data-testid^="history-provider-"]');
+  expect(await picker.evaluateAll((els) => els.map((el) => el.dataset['testid']))).toEqual(
+    DISPLAY_ORDER.map((provider) => `history-provider-${provider}`),
+  );
 });
 
 test('renders every card state', async ({ page }) => {

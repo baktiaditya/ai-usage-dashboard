@@ -189,9 +189,9 @@ describe('overview', () => {
     expect(overview.cards.map((c) => c.provider)).toEqual([
       'codex',
       'claude',
+      'opencode_go',
       'deepseek',
       'openrouter',
-      'opencode_go',
     ]);
     expect(overview.cards.every((c) => c.status === 'unavailable')).toBe(true);
     // An empty dashboard must not pretend to have advice.

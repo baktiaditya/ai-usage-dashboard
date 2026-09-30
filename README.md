@@ -10,9 +10,9 @@ Five providers, three kinds of number, deliberately never mixed:
 | --------------- | ------------------------------------------------------- | ------------------------------------------- |
 | **Codex**       | `codex app-server` JSON-RPC (`account/rateLimits/read`) | quota gauge per window                      |
 | **Claude Code** | status-line bridge → local spool; optional quota probe  | quota gauge per window                      |
+| **OpenCode Go** | `GET opencode.ai/zen/go/v1/usage`                       | quota gauge per window                      |
 | **DeepSeek**    | `GET api.deepseek.com/user/balance`                     | money balance per currency                  |
 | **OpenRouter**  | `GET openrouter.ai/api/v1/credits`                      | money: credits, cumulative usage, remaining |
-| **OpenCode Go** | `GET opencode.ai/zen/go/v1/usage`                       | quota gauge per window                      |
 
 ## Quick start
 

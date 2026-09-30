@@ -17,7 +17,12 @@
 import type { MoneyString } from './money';
 import type { ErrorCode } from './errors';
 
-export const PROVIDERS = ['codex', 'claude', 'deepseek', 'openrouter', 'opencode_go'] as const;
+/**
+ * Display order too: the overview returns cards in this order, and both the
+ * card grid and the history picker render them left to right. Subscription
+ * quota providers come first, prepaid balances after.
+ */
+export const PROVIDERS = ['codex', 'claude', 'opencode_go', 'deepseek', 'openrouter'] as const;
 export type Provider = (typeof PROVIDERS)[number];
 
 export function isProvider(v: string): v is Provider {
