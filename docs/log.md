@@ -1,5 +1,12 @@
 # Bundle Update Log
 
+## 2026-09-30
+
+- **Restructure**: the Claude Code skill entrypoints under `.claude/skills/` are now relative
+  symlinks into `.agents/skills/`, so each skill has one `SKILL.md` source of truth. The
+  "update both SKILL.md files" rule in
+  [`okf-sync`](../.agents/skills/okf-sync/SKILL.md) no longer applies.
+
 ## 2026-09-17
 
 - **Decision**: [issue #15](https://github.com/baktiaditya/ai-usage-dashboard/issues/15)
