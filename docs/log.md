@@ -2,6 +2,24 @@
 
 ## 2026-09-30
 
+- **Update**: the OpenCode Go live check passed with a key saved in dev-server Settings. The
+  collector (`pnpm run collect --manual --provider=opencode_go` against the dev data directory),
+  **Refresh** on the card with `AUD_DEV_LIVE_REFRESH=1`, and the OpenCode Go case of
+  `pnpm run test:live` each recorded `success`. The card rendered three healthy windows, and the
+  weekly reset fell on Monday 00:00 UTC. No key or percentage is recorded here.
+- **Discovery**: the card can read one point lower than the OpenCode console. On a
+  side-by-side check, rolling and weekly were one point lower and monthly matched. Our side
+  caches nothing: requests use `cache: 'no-store'`, and a reading taken after the console
+  screenshot still matched the earlier ones. The cause is upstream rounding, read from
+  anomalyco/opencode `dev`:
+  - `/zen/go/v1/usage` rounds down: `Math.floor` in
+    `packages/console/core/src/subscription.ts`.
+  - The console rounds to the nearest value: `getUsagePercent` uses `Math.round` in
+    `packages/console/app/src/lib/lite-usage.ts`.
+
+  The dashboard keeps the source value unchanged, as plan §3.1 requires.
+  [Setup](operations/setup.md) §4 explains the difference.
+
 - **Update**: [add-opencode-go-quota](backlog/ready-for-agent/add-opencode-go-quota.md) is
   implemented on branch `feat/opencode-go-quota`. It is not merged or deployed. The pieces:
   - the adapter, `src/lib/adapters/opencode-go.ts`;

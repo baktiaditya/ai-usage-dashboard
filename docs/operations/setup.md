@@ -377,6 +377,11 @@ any of them. A window OpenCode marks `rate-limited` sets the card's advisory to
 **Switch suggested**. If **Use balance** is enabled in the console, requests may
 still succeed on Zen credit.
 
+A card can read one point lower than the OpenCode console. The usage endpoint rounds
+each percentage down to a whole number, while the console rounds to the nearest, so
+40.6 % used shows as 40 % here and 41 % there. The dashboard stores the value exactly
+as the endpoint reports it.
+
 | Card shows                       | Meaning                                                |
 | -------------------------------- | ------------------------------------------------------ |
 | `unavailable` · `not_configured` | no key is saved                                        |
