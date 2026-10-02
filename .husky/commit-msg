@@ -1,5 +1,16 @@
-# Husky can run with a minimal PATH. Fail loudly when node or corepack's pnpm
-# shim is missing instead of assuming an nvm installation.
+# Husky can run from a Git GUI with a minimal PATH. Keep node and corepack's
+# pnpm reachable without assuming where Node lives: use PATH when it already
+# has them, otherwise fall back to an nvm installation when present and to the
+# usual user and system locations.
+if ! command -v node >/dev/null 2>&1 || ! command -v pnpm >/dev/null 2>&1; then
+  nvm_dir="${NVM_DIR:-$HOME/.nvm}"
+  nvm_bin=$(ls -d "$nvm_dir"/versions/node/*/bin 2>/dev/null | sort -V | tail -1)
+  if [ -n "$nvm_bin" ]; then
+    PATH="$nvm_bin:$PATH"
+  fi
+  PATH="$HOME/.local/bin:/usr/local/bin:/usr/bin:$PATH"
+  export PATH
+fi
 if ! command -v node >/dev/null 2>&1 || ! command -v pnpm >/dev/null 2>&1; then
   echo "commit-msg: node and pnpm must be on PATH; run 'corepack enable pnpm' once" >&2
   exit 1
