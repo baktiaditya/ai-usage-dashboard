@@ -2,6 +2,12 @@
 
 ## 2026-10-02
 
+- **Update**: [prepare-open-source-release](backlog/ready-for-agent/prepare-open-source-release.md)
+  is tracked by [#25](https://github.com/baktiaditya/ai-usage-dashboard/issues/25), labelled
+  `ready-for-agent`, and the brief links back to it. The fixture fix in the entry below landed as
+  [#24](https://github.com/baktiaditya/ai-usage-dashboard/pull/24) (`59eb129`): the OpenCode Go
+  collector cases pin `Date` before the earliest fixture reset, and `pnpm run verify` passes on
+  `main` again, so the brief's green-`verify` gate is met.
 - **Decision**: the open-source release removes `scripts/spike-claude-oauth-usage.ts`, its unit
   test, the `spike:claude-usage` package script, and its README row. The user chose removal over
   keeping it as a maintainer-only script. By default it reads the full-login token in
