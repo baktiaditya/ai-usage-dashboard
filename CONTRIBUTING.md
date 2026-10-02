@@ -66,9 +66,10 @@ complete example; follow its shape. Confirm each path against `src/` before you 
 provider lists are hard-coded.
 
 1. **Domain.** Add the provider id to `PROVIDERS` in `src/lib/domain.ts` (that order is the display
-   order), plus `PROVIDER_LABELS` and `PROVIDER_KIND`. If the provider takes a key saved in
-   Settings, add it to `CREDENTIAL_PROVIDERS` there too, and to `PROVIDER_PATTERN` in
-   `src/lib/config.ts` so `AUD_THRESHOLDS` accepts it.
+   order), plus `PROVIDER_LABELS` and `PROVIDER_KIND`. Add it to `PROVIDER_PATTERN` in
+   `src/lib/config.ts` too: that regex gates `AUD_THRESHOLDS` for every provider, keyless ones
+   included. Only if the provider takes a key saved in Settings, also add it to
+   `CREDENTIAL_PROVIDERS`.
 2. **Adapter.** Add `src/lib/adapters/<provider>.ts` implementing `ProviderAdapter`, with sanitized
    fixtures under `tests/fixtures/<provider>/` and an adapter unit test. Wire it into
    `buildAdapters` in `src/lib/collector/index.ts`, and into the credential map in
