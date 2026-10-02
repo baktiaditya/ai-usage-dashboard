@@ -1,5 +1,35 @@
 # Bundle Update Log
 
+## 2026-10-02
+
+- **Update**: [prepare-open-source-release](backlog/ready-for-agent/prepare-open-source-release.md)
+  is tracked by [#25](https://github.com/baktiaditya/ai-usage-dashboard/issues/25), labelled
+  `ready-for-agent`, and the brief links back to it. The fixture fix in the entry below landed as
+  [#24](https://github.com/baktiaditya/ai-usage-dashboard/pull/24) (`59eb129`): the OpenCode Go
+  collector cases pin `Date` before the earliest fixture reset, and `pnpm run verify` passes on
+  `main` again, so the brief's green-`verify` gate is met.
+- **Decision**: the open-source release removes `scripts/spike-claude-oauth-usage.ts`, its unit
+  test, the `spike:claude-usage` package script, and its README row. The user chose removal over
+  keeping it as a maintainer-only script. By default it reads the full-login token in
+  `~/.claude/.credentials.json`, which plan §2 forbids for the product, and the quota probe that
+  shipped in #16 does not use it. Dated entries, M0 Discovery, and archived briefs that cite it keep
+  their wording. Recorded in
+  [prepare-open-source-release](backlog/ready-for-agent/prepare-open-source-release.md).
+- **Update**: [prepare-open-source-release](backlog/ready-for-agent/prepare-open-source-release.md)
+  is re-checked against `main` at `69def69`, after pnpm (#11), the Claude quota probe (#16), and
+  OpenCode Go (#20) landed. The brief now:
+  - counts four saved secrets for `SECURITY.md`, including the OpenCode key and the optional Claude
+    token, and the probe's subscription usage;
+  - names OpenCode Go's undocumented usage endpoint and the probe's unified rate-limit headers in
+    the interface-stability caveat;
+  - drops the Node work already done by the pnpm migration, leaving only `.nvmrc`;
+  - points the add-a-provider guide at the OpenCode Go delivery and its history-preserving
+    migration `0004`;
+  - names the Setup references to repoint and the `v0.1.0` tag;
+  - requires `pnpm run verify` to pass on `main` before starting. On this date it fails two
+    OpenCode Go collector cases, because their fixtures carry fixed reset times that are now in
+    the past; that fix lands on `main` separately.
+
 ## 2026-09-30
 
 - **Update**: [PR #20](https://github.com/baktiaditya/ai-usage-dashboard/pull/20) is merged as
@@ -410,6 +440,18 @@
   timer's first run, a manual Codex refresh from the dashboard, and the next scheduled run all
   recorded successful attempts for every provider they collected.
 
+- **Decision**: the open-source release adopts pnpm.
+  [prepare-open-source-release](backlog/ready-for-agent/prepare-open-source-release.md) now depends
+  on the [npm to pnpm migration](backlog/archive/migrate-from-npm-to-pnpm.md), which
+  lands first. The user ordered the migration before the release so that the first public README,
+  contributing guide, and CI already use pnpm. CI runs `pnpm run verify` only, installing with
+  `pnpm install --frozen-lockfile` through corepack; this supersedes "CI runs `npm run verify`" in
+  the entry below. The brief's Testing and Acceptance Criteria name pnpm commands, and the portable
+  hook `PATH` must still find corepack's `pnpm` shim. The readiness evidence, gathered with npm,
+  stays as recorded. The migration narrows `engines.node` to `^24.15.0`, so the brief no longer
+  tests Node 22.12: it adds `.nvmrc` for Node 24, CI runs on Node 24 only, and widening to Node 22
+  or 26 is a later decision once CI exists.
+
 - **Decision**: the package manager moves from npm to pnpm, and
   [migrate-from-npm-to-pnpm](backlog/archive/migrate-from-npm-to-pnpm.md) is promoted to
   `ready-for-agent/`. The user chose each term:
@@ -442,6 +484,36 @@
   the documented `db:backup -- <file>` and `db:restore -- <file>` forms. The brief waits on the
   user to order it against the open-source release and to choose how pnpm is installed.
   Plan §4.1 still pins npm, and [Setup](operations/setup.md) still describes it.
+
+- **Decision**: the open-source release gates are closed, and
+  [prepare-open-source-release](backlog/ready-for-agent/prepare-open-source-release.md) moves to
+  `ready-for-agent/`. The user chose each term. The license is MIT. The timezone default follows the
+  system timezone as Node resolves it, falling back to `UTC` when none resolves; an explicit
+  `AUD_TIMEZONE` still wins, and an invalid one is still rejected.
+  [Plan](plan/ai-usage-dashboard-implementation-plan.md) §3.2 now states that default;
+  `src/lib/config.ts`, Setup §7, and `.env.example` change on delivery, and until then
+  `Asia/Jakarta` is what runs. This machine resolves `Asia/Jakarta` and production sets no
+  `AUD_TIMEZONE`, so production's day boundary does not move. Maintainer-only content: `docs/log.md`,
+  the implementation prompt, the Tailscale brief, `AGENTS.md`, `.mcp.json`, `.claude/`, and
+  `.agents/` stay, the prompt gains a historical-record note, and `CONTRIBUTING.md` marks the agent
+  tooling optional. The production-checkout deploy and rollback runbook moves out of Setup §6 into
+  its own maintainer operations document. The Setup §4 steps for upgrading from keys in
+  `collector.env` stay, with a note that only an install predating the Settings dialog needs them.
+  Commits keep the current author email, and history is not rewritten. CI runs `npm run verify`
+  only; `npm run test:e2e` stays local. Changing the repository's visibility remains the user's
+  step after delivery.
+
+- **Proposed**: prepare the repository for an open-source release, in
+  [prepare-open-source-release](backlog/ready-for-agent/prepare-open-source-release.md). A readiness
+  assessment at `e1d6923`, re-run against `e2d553c` after provider keys moved into the database,
+  found the code ready: `npm run verify` passes, `npm audit` is clean, a fresh clone installs,
+  collects, and builds, and the git history holds no real key. The re-run added the second
+  archived brief carrying a maintainer path and the plaintext key storage to the brief. The gaps are
+  packaging: no license, maintainer paths in tracked docs, an unstated platform scope and provider
+  affiliation, maintainer-only agent tooling, and no CI or contributor policy. Publishing the source
+  leaves the plan's "Public or multi-user access" non-goal intact. The brief waits on the user: the
+  license, whether to keep the `Asia/Jakarta` timezone default, what to do with maintainer-only
+  content, and the commit author email. Nothing is executed yet.
 
 - **Update**: the Claude status line now runs its bridge from the production checkout. It was
   installed on 2026-09-12 from the development repository, and the 2026-09-14 move to a
