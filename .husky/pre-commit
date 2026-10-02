@@ -5,10 +5,9 @@
 if ! command -v node >/dev/null 2>&1 || ! command -v pnpm >/dev/null 2>&1; then
   nvm_dir="${NVM_DIR:-$HOME/.nvm}"
   nvm_bin=$(ls -d "$nvm_dir"/versions/node/*/bin 2>/dev/null | sort -V | tail -1)
-  if [ -n "$nvm_bin" ]; then
-    PATH="$nvm_bin:$PATH"
-  fi
-  PATH="$HOME/.local/bin:/usr/local/bin:/usr/bin:$PATH"
+  # A found nvm toolchain stays ahead of the general locations, so an older
+  # system Node can never shadow the supported one.
+  PATH="${nvm_bin:+$nvm_bin:}$HOME/.local/bin:/usr/local/bin:/usr/bin:$PATH"
   export PATH
 fi
 if ! command -v node >/dev/null 2>&1 || ! command -v pnpm >/dev/null 2>&1; then
