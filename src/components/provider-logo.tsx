@@ -10,9 +10,10 @@
  *
  * Colors live beside the other theme tokens as `--logo-*` in `globals.css`.
  * Paths come from Lobe Icons (`@lobehub/icons-static-svg` 1.95.0, MIT,
- * © LobeHub): `codex-color`, `claudecode-color`, `deepseek-color` and
- * `openrouter-color`. The marks are trademarks of their owners, shown only to
- * identify each provider.
+ * © LobeHub): `codex-color`, `claudecode-color`, `deepseek-color`,
+ * `openrouter-color`, and `opencode`, which ships only as a monochrome mark and
+ * so takes the heading's text color on both themes. The marks are trademarks of
+ * their owners, shown only to identify each provider.
  */
 import type { SVGProps } from 'react';
 import type { Provider } from '@/lib/domain';
@@ -47,6 +48,12 @@ const MARKS: Record<Provider, Mark> = {
     viewBox: '0 0 24 24',
     d: 'M18.654 3.87a5.087 5.087 0 110 10.174L23.7 19.09c.64.641.187 1.737-.72 1.737H8.48a8.479 8.479 0 010-16.958h10.175zM8.479 7.26a5.087 5.087 0 100 10.176 5.087 5.087 0 000-10.175z',
     fill: 'var(--logo-openrouter)',
+  },
+  opencode_go: {
+    viewBox: '0 0 24 24',
+    d: 'M16 6H8v12h8V6zm4 16H4V2h16v20z',
+    fill: 'var(--logo-opencode-go)',
+    fillRule: 'evenodd',
   },
 };
 

@@ -1,7 +1,7 @@
 /**
  * User-supplied filesystem paths.
  *
- * Every entry point — the systemd collector, `npm run collect`, the dashboard —
+ * Every entry point — the systemd collector, `pnpm run collect`, the dashboard —
  * must open the same database and read the same credential file. A relative
  * path resolves against whichever directory each process happened to start in,
  * so it is refused rather than resolved. A leading `~/` is expanded, because

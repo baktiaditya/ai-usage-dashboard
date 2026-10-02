@@ -26,6 +26,21 @@ const BUSY_TIMEOUT_MS = 5000;
  * code path works in the bundled Next.js server, in the tsx CLI, and in Vitest.
  */
 export function runMigrations(sqlite: Database.Database): number {
+  // A migration that widens a CHECK constraint must rebuild the table, and two
+  // tables are parents of `ON DELETE CASCADE` keys: dropping one with
+  // enforcement on deletes every child row. SQLite's documented rebuild turns
+  // enforcement off for the transaction and checks the result before commit
+  // instead. The pragma is a no-op inside a transaction, so it is set first.
+  const enforced = sqlite.pragma('foreign_keys', { simple: true }) === 1;
+  if (enforced) sqlite.pragma('foreign_keys = OFF');
+  try {
+    return applyPending(sqlite);
+  } finally {
+    if (enforced) sqlite.pragma('foreign_keys = ON');
+  }
+}
+
+function applyPending(sqlite: Database.Database): number {
   // The web server and the collector can open a fresh database at the same
   // moment. Reading the applied set outside a write lock lets both see it empty
   // and both run the same DDL. `BEGIN IMMEDIATE` takes the write lock before
@@ -50,6 +65,16 @@ export function runMigrations(sqlite: Database.Database): number {
         .prepare('INSERT OR REPLACE INTO schema_migrations (version, applied_at) VALUES (?, ?)')
         .run(migration.version, new Date().toISOString());
       count += 1;
+    }
+    // With enforcement off, a faulty rebuild would commit dangling references
+    // silently. Throwing here rolls the whole pending set back.
+    if (count > 0) {
+      const violations = sqlite.pragma('foreign_key_check') as unknown[];
+      if (violations.length > 0) {
+        throw new Error(
+          `migrations left ${violations.length} foreign key violation(s); rolled back`,
+        );
+      }
     }
     return count;
   });

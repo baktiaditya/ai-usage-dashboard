@@ -50,7 +50,7 @@ export async function POST(
         error: {
           code: 'refresh_disabled',
           message:
-            'Manual refresh is disabled on this development server. Restart npm run dev with AUD_DEV_LIVE_REFRESH=1 to enable it.',
+            'Manual refresh is disabled on this development server. Restart pnpm run dev with AUD_DEV_LIVE_REFRESH=1 to enable it.',
         },
       },
       { status: 409 },

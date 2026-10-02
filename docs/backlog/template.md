@@ -66,7 +66,7 @@ statuses may label uncertain entries as provisional.
 ## Testing
 
 Name the exact focused commands that prove each changed behavior and the broader completion gates
-justified by the change. Use `npm run verify` as the final gate and focused checks (`vitest`,
+justified by the change. Use `pnpm run verify` as the final gate and focused checks (`vitest`,
 `playwright`) while iterating; browser-visible claims need the Playwright specs, happy-dom alone
 does not prove geometry, overflow, focus, scrolling, or paint. For documentation-only work, name
 the OKF validator instead of requiring unrelated runtime suites. Keep any unperformed live,

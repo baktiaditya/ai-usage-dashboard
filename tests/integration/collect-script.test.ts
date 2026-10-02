@@ -22,7 +22,7 @@ afterEach(() => {
 });
 
 /**
- * `npm run collect` in a throwaway home and data directory, restricted to the
+ * `pnpm run collect` in a throwaway home and data directory, restricted to the
  * two credential providers so no local CLI runs.
  */
 function collect(extra: Record<string, string> = {}) {
@@ -65,7 +65,7 @@ function attempts(): unknown[] {
   }
 }
 
-describe('npm run collect and the retired provider key variables', () => {
+describe('pnpm run collect and the retired provider key variables', () => {
   it('warns once by name, prints no value, and still reads keys only from the database', () => {
     const file = join(home, 'collector.env');
     writeFileSync(file, `${RETIRED_CREDENTIAL_ENV_VARS[1]}=${FILE_KEY}\n`, { mode: 0o600 });

@@ -3,7 +3,7 @@
  *
  * The overview is built on the server so the first paint carries real data
  * rather than a spinner. If the database cannot be opened at all — a brand new
- * checkout before `npm run db:migrate` — the page still renders with a clear
+ * checkout before `pnpm run db:migrate` — the page still renders with a clear
  * setup message instead of a stack trace.
  */
 import { Dashboard } from '@/components/dashboard';
@@ -37,7 +37,7 @@ export default function Page() {
         <div className="border-border rounded-lg border border-dashed px-4 py-3 text-sm">
           <p className="mb-2 font-medium">Set it up:</p>
           <pre className="bg-surface-muted overflow-x-auto rounded p-2 text-xs">
-            npm run db:migrate{'\n'}npm run collect
+            pnpm run db:migrate{'\n'}pnpm run collect
           </pre>
           <p className="text-muted-foreground mt-2 text-xs">
             See docs/operations/setup.md for the full guide.

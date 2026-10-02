@@ -1,0 +1,11 @@
+{
+  "_fixture": {
+    "source": "GET https://opencode.ai/zen/go/v1/usage",
+    "note": "Synthetic: the weekly allowance is spent. The rolling window is still ok, so weekly is the first rate-limited window."
+  },
+  "usage": {
+    "rolling": { "status": "ok", "percent": 12, "resetsAt": "2026-09-30T16:30:00.000Z" },
+    "weekly": { "status": "rate-limited", "percent": 100, "resetsAt": "2026-10-05T00:00:00.000Z" },
+    "monthly": { "status": "rate-limited", "percent": 100, "resetsAt": "2026-10-14T09:15:00.000Z" }
+  }
+}

@@ -80,7 +80,7 @@ export function Dashboard({ initialOverview }: DashboardProps) {
           <div>
             <h1 className="text-xl font-semibold sm:text-2xl">AI Usage Dashboard</h1>
             <p className="text-muted-foreground mt-0.5 text-sm">
-              Subscription quota and prepaid balance across four providers · {overview.timezone}
+              Subscription quota and prepaid balance across five providers · {overview.timezone}
             </p>
           </div>
           <div className="flex items-center gap-2">

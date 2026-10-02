@@ -83,7 +83,7 @@ describe('codex app-server over a real child process', () => {
     });
     const record = await runAdapter(missing);
     expect(record.result.outcome).toBe('error');
-    if (record.result.outcome !== 'success') {
+    if (record.result.outcome === 'error') {
       expect(record.result.failure.code).toBe('process_failed');
     }
   });

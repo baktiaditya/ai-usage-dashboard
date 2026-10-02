@@ -20,6 +20,9 @@ import { providerCredentials } from './schema';
 export interface ProviderCredentials {
   readonly deepseekApiKey: string | null;
   readonly openrouterManagementKey: string | null;
+  /** Optional: a `claude setup-token` token that enables the Claude quota probe. */
+  readonly claudeUsageToken: string | null;
+  readonly opencodeGoApiKey: string | null;
 }
 
 /** A key shorter than this shows no hint, so it is never mostly revealed. */
@@ -70,10 +73,12 @@ export function readProviderCredentials(db: Db): ProviderCredentials {
   return {
     deepseekApiKey: secrets.get('deepseek') ?? null,
     openrouterManagementKey: secrets.get('openrouter') ?? null,
+    claudeUsageToken: secrets.get('claude') ?? null,
+    opencodeGoApiKey: secrets.get('opencode_go') ?? null,
   };
 }
 
-/** Both providers, in `CREDENTIAL_PROVIDERS` order. */
+/** Every credential provider, in `CREDENTIAL_PROVIDERS` order. */
 export function listCredentialStatus(db: Db): CredentialStatus[] {
   const rows = new Map(
     db

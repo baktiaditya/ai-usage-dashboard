@@ -86,7 +86,7 @@ describe('the Next.js wrapper keeps the validated bind address', () => {
   });
 });
 
-describe('npm run start keeps its production contract', () => {
+describe('pnpm run start keeps its production contract', () => {
   it('binds AUD_HOST/AUD_PORT and passes the environment through untouched', () => {
     const r = launch('start', { AUD_PORT: '4400' }, ['--keepAliveTimeout', '5']);
     expect(r.status).toBe(0);
@@ -128,7 +128,7 @@ describe('npm run start keeps its production contract', () => {
   });
 });
 
-describe('npm run dev is isolated from production', () => {
+describe('pnpm run dev is isolated from production', () => {
   it('defaults to port 3839 and its own data directory', () => {
     const production = join(home, 'production');
     const file = writeEnvFile(`AUD_DATA_DIR=${production}\n`);

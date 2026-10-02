@@ -1,10 +1,418 @@
 # Bundle Update Log
 
+## 2026-09-30
+
+- **Update**: [PR #20](https://github.com/baktiaditya/ai-usage-dashboard/pull/20) is merged as
+  `ad85dcf` and deployed to the production checkout from `2614f5a`, after a `db:backup` of the live
+  database. The Setup §6 deploy and verify blocks from `origin/main` passed with no rollback:
+  `verify` passed (38 files, 647 tests), migration `0004` applied with no foreign key violation and
+  `integrity_check` returning `ok`, and all collector runs and the saved Claude, DeepSeek and
+  OpenRouter keys were kept. The first collector run after the deploy succeeded for every configured
+  provider and reported OpenCode Go as `not_configured`. With the key then saved in production
+  Settings, **Refresh** on the card recorded `success` and the card drew its three windows and the
+  **Today** chart.
+  [The OpenCode Go brief](backlog/archive/add-opencode-go-quota.md) moves to `archive/`.
+- **Design**: the OpenCode Go card spans the full grid width. It shows the windows on the left
+  and a **Today** chart on the right: each window's utilisation at the end of every local hour,
+  drawn from the collector's own snapshots. The user asked for a layout like the OpenCode
+  console's overview. Most of that page (cost, requests, tokens, per-model usage, request log,
+  credits) is only in the console, behind a browser session. The API key reads no more than the
+  three percentages, upstream has no usage-history endpoint (anomalyco/opencode#43983), and
+  scraping or reading `opencode.db` stays out of scope under plan §3.1. The hourly chart is the
+  one widget our own data supports. It takes the history chart's series slots, keeps the latest
+  reading of each hour, and never sums a gauge. The overview carries it only for OpenCode Go, so
+  no other card and no extra request pays for it. `labelWindow` moved to
+  `src/lib/queries/labels.ts`, so the overview can import the history query without a cycle.
+  Hours are keyed by the UTC instant each local hour starts, not by the hour number, because
+  review found a DST fall-back merging the two occurrences of `01:00` into one point. An hour
+  also ends at any offset change inside it, since a second review found Lord Howe's
+  thirty-minute fall-back still starting the repeated half hour before the change.
+- **Update**: the OpenCode Go live check passed with a key saved in dev-server Settings. The
+  collector (`pnpm run collect --manual --provider=opencode_go` against the dev data directory),
+  **Refresh** on the card with `AUD_DEV_LIVE_REFRESH=1`, and the OpenCode Go case of
+  `pnpm run test:live` each recorded `success`. The card rendered three healthy windows, and the
+  weekly reset fell on Monday 00:00 UTC. No key or percentage is recorded here.
+- **Discovery**: the card can read one point lower than the OpenCode console. On a
+  side-by-side check, rolling and weekly were one point lower and monthly matched. Our side
+  caches nothing: requests use `cache: 'no-store'`, and a reading taken after the console
+  screenshot still matched the earlier ones. The cause is upstream rounding, read from
+  anomalyco/opencode `dev`:
+  - `/zen/go/v1/usage` rounds down: `Math.floor` in
+    `packages/console/core/src/subscription.ts`.
+  - The console rounds to the nearest value: `getUsagePercent` uses `Math.round` in
+    `packages/console/app/src/lib/lite-usage.ts`.
+
+  The dashboard keeps the source value unchanged, as plan §3.1 requires.
+  [Setup](operations/setup.md) §4 explains the difference.
+
+- **Update**: [add-opencode-go-quota](backlog/archive/add-opencode-go-quota.md) is
+  implemented on branch `feat/opencode-go-quota`. It is not merged or deployed. The pieces:
+  - the adapter, `src/lib/adapters/opencode-go.ts`;
+  - migration `0004`;
+  - the Settings field;
+  - the card, logo, and demo seed;
+  - [setup](operations/setup.md) §4.
+
+  `pnpm run verify` (626 tests) and `pnpm run test:e2e` (66 tests) pass. The live check with a
+  key saved in Settings is still to be run by the user. Two deviations from the brief:
+  - **Credential order.** `CREDENTIAL_PROVIDERS` lists OpenCode Go before Claude, so the optional
+    Claude token stays the last field in Settings.
+  - **Deploy backup.** The deploy procedure in setup §6 does not take a backup. Before deploying
+    this build, run `pnpm run db:backup` in the production checkout by hand, because `0004` is
+    the first migration that rebuilds tables holding history.
+
+- **Discovery**: `getJsonLossless` hands every JSON number to an adapter as its source text,
+  `{ __rawNumber: "41" }`, not as a number. A schema that expects `z.number()` for OpenCode Go's
+  `percent` would therefore reject every live response as `schema_mismatch`, while fixture tests
+  that use plain `JSON.parse` still pass. The adapter accepts both forms, and its tests drive the
+  real HTTP path. A scratch run of the `0004` SQL with `foreign_keys = ON` confirmed the history
+  risk: every `provider_snapshots` and `quota_windows` row was deleted. The runner change is
+  load-bearing.
+
+- **Decision**: OpenCode Go is added as a fifth provider, a quota provider like Codex and Claude,
+  at the user's request. [Plan](plan/ai-usage-dashboard-implementation-plan.md) §3.1 gains an
+  OpenCode Go contract, and §1, §3.5, §5 and §7 now count five providers and name its key.
+  - **Source.** `GET https://opencode.ai/zen/go/v1/usage` with the user's OpenCode API key,
+    saved in Settings. OpenCode's `auth.json` and local database are never read, and the console
+    is never scraped.
+  - **What it shows.** The response carries only used percentages and reset times for the
+    `rolling`, `weekly`, and `monthly` windows. The card never shows dollars, the plan tier, or a
+    Zen balance.
+  - **`usageAllowed` stays `null`.** A `rate-limited` window becomes a limit-reached code and
+    never sets `usageAllowed` to false, because the console's "Use balance" option can keep
+    requests flowing and the response does not say whether it is on.
+  - **Migration `0004` must not lose history.** It widens the `provider` CHECK on
+    `collector_attempts` and `provider_snapshots`, and both are parents of `ON DELETE CASCADE`
+    keys. So the migration runner switches to SQLite's documented rebuild with foreign keys off
+    and a `foreign_key_check` before commit, rather than dropping the tables with enforcement on,
+    which would delete history.
+- **Discovery**: the OpenCode Go gate passed live. The user's key got a `200` with the shape now
+  recorded in [M0 discovery](discovery/m0-discovery.md), and requests with no key or a bogus key
+  got `401` JSON. The endpoint is upstream PR anomalyco/opencode#16513 and is not yet in OpenCode's
+  public docs. Evidence is shape-only; no key or percentage is recorded.
+- **Proposed**: [add-opencode-go-quota](backlog/archive/add-opencode-go-quota.md) files
+  the implementation directly in `ready-for-agent/`, tracked by
+  [#21](https://github.com/baktiaditya/ai-usage-dashboard/issues/21). The scope decision and live
+  gate above close every dependency, so no user decision is outstanding.
+- **Restructure**: the Claude Code skill entrypoints under `.claude/skills/` are now relative
+  symlinks into `.agents/skills/`, so each skill has one `SKILL.md` source of truth. The
+  "update both SKILL.md files" rule in
+  [`okf-sync`](../.agents/skills/okf-sync/SKILL.md) no longer applies.
+
+## 2026-09-17
+
+- **Decision**: [issue #15](https://github.com/baktiaditya/ai-usage-dashboard/issues/15)
+  resolves the status divergence recorded in the Risk entry below. An unrecognised format or
+  version guard (`schema_mismatch` or `version_unsupported`) is an `error` attempt for every
+  provider: the source should be available, but its response cannot be trusted. `unavailable`
+  remains for sources that are not configured, not entitled, or have no event yet. The
+  [plan](plan/ai-usage-dashboard-implementation-plan.md) §4.5, the §9 format-change mitigation, and
+  the Claude spool comment now match the existing collector mapping; no runtime status mapping changes. Tests pin both codes across
+  all four providers. This supersedes the 2026-09-17 Risk entry about the divergence.
+- **Update**: [PR #16](https://github.com/baktiaditya/ai-usage-dashboard/pull/16) is merged as
+  `b46205e` and deployed to the production checkout from `820d873`, after a `db:backup` of the live
+  database. The Setup §6 deploy and verify blocks from `origin/main` passed with no rollback:
+  `verify` passed (36 files, 589 tests), migration `0003` applied and kept the saved DeepSeek and
+  OpenRouter keys, and the next collector run recorded a successful attempt for every provider. The
+  Claude token is saved in production Settings. While a Claude Code session was reporting, Claude
+  readings still came from the status line and no probe was claimed, as designed; the first idle
+  probe, and whether it opens a five-hour window, is still to be observed.
+  [The poll brief](backlog/archive/poll-claude-quota-without-a-session.md) moves to `archive/`.
+- **Update**: plan §2's read-only principle now names the Claude quota probe as its one
+  exception. The probe's `POST /v1/messages` is real inference that spends subscription usage, so
+  "only performs read operations" was no longer true. Found in PR #16 review.
+- **Discovery**: a `claude setup-token` token cannot read `GET /api/oauth/usage`. Saved from
+  dashboard Settings on 2026-09-17, it got `403`. Public reports (anthropics/claude-code#11985,
+  #22450, #24200) show why: such a token is scoped to `user:inference` only, and the endpoint
+  requires `user:profile`. The 2026-09-16 gate's `200`s most likely came from the spike's fallback
+  to the full-login token in `~/.claude/.credentials.json`, which carries that scope. The poll as
+  built on PR #16 could never have answered with the token setup §3 told users to mint.
+  [M0 discovery](discovery/m0-discovery.md) records the correction.
+- **Decision**: the Claude pull source is now a quota probe, replacing the usage poll on PR #16.
+  It sends `POST /v1/messages` to `claude-haiku-4-5` with one output token and no system prompt,
+  discards the body unread, and reads the `anthropic-ratelimit-unified-5h-*` and `-7d-*`
+  utilisation and reset headers. A live probe with a saved `setup-token` token returned `200` and
+  those headers. Haiku accepts a subscription token without Claude Code's identity prompt, so the
+  probe never impersonates Claude Code. Reading a full-login token out of
+  `~/.claude/.credentials.json` was rejected: it breaks the plan's extraction rule, and refreshing
+  it would race Claude Code's own refresh-token rotation. The probe is real inference and spends a
+  few tokens of subscription usage, which the user accepted. So it runs only when the spool has no
+  reading within the probe's freshness budget; an active session never pays for one. The
+  five-minute floor, durable claim, deferral rule, and fallback semantics are unchanged. Plan §3.1,
+  §3.3, §4.4 and §7 and setup §3 are rewritten for it.
+- **Superseded**: the two earlier 2026-09-17 decisions below, to refuse unlabelled `limits[].kind`
+  values and to keep status-line and polled Claude windows as separate history series. The probe
+  produces the status line's own `five_hour` and `seven_day` windows from the headers that feed the
+  status line, so `session` and `weekly_all` labels are gone and a Claude window is one series again,
+  whichever source observed it. The history legend still shows window labels instead of raw
+  identifiers.
+- **Update**: [the poll brief](backlog/archive/poll-claude-quota-without-a-session.md)
+  is implemented on branch `feat/poll-claude-quota-without-a-session`, tracked by
+  [#13](https://github.com/baktiaditya/ai-usage-dashboard/issues/13). Migration `0003` rebuilds
+  `provider_credentials` with `claude` in its `CHECK` and creates the `claude_poll_state` singleton
+  that plan §4.4 now describes as implemented. `src/lib/adapters/claude-usage.ts` holds the poll and
+  the single composite Claude adapter. Freshness now keys the Claude budget on the snapshot's
+  `sourceVersion`, and [setup](operations/setup.md) §3 documents enabling the poll and the whole
+  token lifecycle.
+- **Decision**: a `limits[].kind` without a label is refused in the adapter, not rendered. The
+  brief left the choice open between labelling and refusing. Refusing there keeps an undocumented
+  internal name out of the database, the history legend, and the advisory subject, not only the
+  card. A payload whose active limits all carry unknown kinds is `schema_mismatch`, because
+  `not_entitled` would misstate an account that does have limits. The two kinds seen live, `session`
+  and `weekly_all`, read as window names and are labelled `Session` and `Weekly, all models`.
+- **Discovery**: one re-probe with `--show-limit-kinds` returned 13 unrecognised top-level keys
+  instead of the 12 recorded on 2026-09-16, one still carrying a value. The drift signal fired on a
+  field the adapter does not read. Recorded as a count in
+  [M0 discovery](discovery/m0-discovery.md); the names stay withheld.
+- **Decision**: a run that loses the poll claim and has no usable spool records no Claude attempt.
+  The first implementation let it record the spool's `no_event_yet`, so with a token saved and no
+  bridge, a **Refresh** inside the five-minute interval — or a scheduled run landing just under it
+  from start-up jitter — turned a fresh polled reading `unavailable`. Pre-merge review of PR #16
+  ruled that out, because it defeats the point of polling. Any row that run could write would be a
+  verdict about a poll it never made, and since the loser starts later it would also mask the
+  claimant's result, including a request still in flight. The adapter now throws
+  `CollectionDeferred`, the collector records nothing and reports the provider as `deferred`, and
+  the card keeps the claimant's reading, aged by the polled budget, or its error. It reads
+  `unavailable` only when no poll result exists. This amends plan §3.3 and is the one exception to
+  "one run, one attempt per provider"; the brief's criterion that `getLatestAttempts` sees one
+  Claude row per run holds for every run that polled or read a usable spool.
+- **Decision**: history keeps status-line and polled Claude windows as separate series, labelled
+  `(status line)` and `(usage poll)`, and no longer prints raw bucket and window identifiers in the
+  legend. `session` is not mapped onto `five_hour`: the names look equivalent, but nothing has
+  verified that they measure the same window, and one merged line could mislead. Runs that
+  alternate sources leave gaps in both lines, which [setup](operations/setup.md) §3 records as a
+  limitation. Merging the series waits on evidence that the metrics are equal.
+- **Risk**: plan §4.5 and the implementation disagree on how a failed format or version guard is
+  shown. §4.5 lists it under `unavailable`, and the comment in
+  `src/lib/ingestors/claude-statusline.ts` says the same, but `UNAVAILABLE_CODES` in
+  `src/lib/errors.ts` holds only `not_configured`, `not_entitled`, and `no_event_yet`. The collector
+  therefore records `schema_mismatch` and `version_unsupported` as an `error` attempt, and
+  `evaluateFreshness` renders `error`, for Codex, DeepSeek, OpenRouter, and the Claude spool alike.
+  The divergence predates the Claude poll. It is annotated in §4.5 rather than resolved there,
+  because either direction is a cross-provider change that belongs in its own brief. The decision
+  is tracked in [#15](https://github.com/baktiaditya/ai-usage-dashboard/issues/15).
+- **Decision**: the Claude usage poll follows the implemented mapping, not §4.5. A review of PR #14
+  found that [the poll brief](backlog/archive/poll-claude-quota-without-a-session.md)
+  required `schema_mismatch` on drift while its acceptance criteria required the card to render
+  `unavailable`, which the existing collector cannot produce. Drift now renders `error` when no
+  spool snapshot is usable, and no Claude-specific status mapping is added. This supersedes the
+  2026-09-16 shorthand "render drift as `unavailable`" in plan §3.1.
+- **Decision**: every poll failure falls back to the spool, not only a `429`. A `401`, a transport
+  failure, a timeout, or a drifted shape leaves the spool exactly as valid as a refusal does. When
+  the spool has nothing usable, the composite surfaces the poll's failure code, because the user
+  configured the token and that code is the one that explains the card.
+- **Update**: the brief now states that `src/lib/adapters/http.ts` must be extended, rather than
+  "only if" needed. `HttpGetOptions` accepts no extra headers and `getJsonLossless` hard-codes its
+  `User-Agent`, while the poll requires `anthropic-beta` and a `claude-cli/<version>` agent. It
+  also forbids wrapping the poll in `withBoundedRetry`, since `rate_limited` is a retryable code.
+
+## 2026-09-16
+
+- **Decision**: [the plan](plan/ai-usage-dashboard-implementation-plan.md) now gives a Claude
+  usage refusal conditional, not unconditional, status semantics. The
+  composite falls back to the spool without retrying. A usable spool snapshot produces one
+  successful Claude attempt and ordinary source freshness decides `healthy` or `stale`; without a
+  usable spool the attempt is `error`, and any older snapshot is historical. This replaces the
+  earlier shorthand below that said every refusal degrades to `stale`, which contradicted the
+  canonical latest-attempt precedence.
+- **Design**: [the poll brief](backlog/archive/poll-claude-quota-without-a-session.md)
+  specifies that the five-minute Claude usage floor is enforced by an atomic, durable SQLite claim,
+  not by configuration or process memory. The systemd collector is a new oneshot process on every
+  run, while manual refresh runs in the web process; only shared state prevents either path, or two
+  overlapping paths, from calling the endpoint inside the interval. The planned migration `0003`
+  must therefore create singleton `claude_poll_state(last_attempted_at)` alongside the
+  credential-table rebuild; it has not been implemented yet.
+  Claiming happens before the request, so a refusal or crash conservatively spends the interval;
+  a caller that loses the claim reads the spool without polling.
+- **Update**: the hand-run usage probe now validates the contract recorded in
+  [M0 discovery](discovery/m0-discovery.md). It accepts real
+  ISO-8601 offsets without accepting impossible calendar dates, distinguishes missing nullable
+  fields from explicit `null`, maps absent/empty/all-inactive `limits[]` to `not_entitled`, rejects
+  malformed credential JSON and whitespace-only file tokens cleanly, counts withheld names through
+  every array row, and never reads or prints a non-2xx provider body. Focused unit tests cover those
+  boundaries.
+- **Decision**: Claude keeps exactly one collector adapter. A second review found that the brief's
+  two-source design could not be built as written: `src/lib/collector/index.ts` states "one run,
+  one attempt per provider", `getLatestAttempts` partitions by provider alone, and
+  `evaluateFreshness` lets a failed attempt dominate any snapshot. Two adapters both named `claude`
+  would overwrite each other's latest attempt, and a poll refused with `429` would drive the card
+  to `error` on top of a perfectly good spool reading. The poll and the spool are therefore
+  composed behind a single adapter that emits one attempt and one snapshot, with precedence by
+  `observedAt` decided inside it rather than in `src/lib/queries/overview.ts`. `sourceVersion`
+  records which source won; `sourceEventId` stays the spool's event id when the spool wins and is
+  `null` when the poll wins, which is what the partial unique index already expects. The
+  alternative — a source discriminator on attempts and snapshots, with matching partition and
+  freshness keys — was rejected as a large schema change bought for one provider.
+- **Discovery**: `freshnessBudgetMs` keys on the provider, so it cannot tell a polled Claude
+  observation from a spooled one. It needs the source passed in. Widening `PULL_PROVIDERS` to
+  include `claude` was considered and rejected: it would silently change how a spool-only install
+  ages out.
+- **Update**: the same review found the poll was cited as plan §3.2 throughout the bundle. §3.2 is
+  the Dashboard; the poll lives in §3.1 under Claude Code. Corrected in the plan, discovery and
+  this log. The probe count is reconciled to three everywhere, the brief's acceptance criteria now
+  name the credential row and the normalised observations as the two deliberate exceptions to
+  "nothing sensitive in the database" rather than forbidding what the feature exists to do, and
+  [#13](https://github.com/baktiaditya/ai-usage-dashboard/issues/13) has had its body rewritten:
+  it still carried the open questions and the `ready-for-human` path after promotion.
+- **Decision**: the plan's Claude-poll amendment is completed. The first pass amended
+  [the plan](plan/ai-usage-dashboard-implementation-plan.md) §2 and §3.1 only, and code review
+  found three further passages still asserting the pre-amendment world, which left the canonical
+  document contradicting itself and the brief unexecutable.
+  - §3.3 said the collector pulls Codex, DeepSeek and OpenRouter and ingests the Claude spool. It
+    now records the optional poll joining that parallel pull, and states that the five-minute floor
+    belongs to the poll rather than to the timer, so a manual refresh cannot bypass it.
+  - §4.4 said the database stores no OAuth tokens and exactly two API keys. The Claude token from
+    `claude setup-token` is an OAuth token, so that sentence forbade the very thing §3.1 now
+    permits. It now names the token as the single exception — user-supplied, never read from a
+    CLI's auth file — and the prohibition on reading `~/.claude/.credentials.json` is restated
+    unchanged.
+  - §7 said Claude shows quota only when the bridge receives a payload. It now accepts either
+    source, spool by default.
+  - §3.5 gains the optional third key, with the reason it differs in kind: DeepSeek and OpenRouter
+    report nothing without their key, while Claude keeps reporting through the spool, so Settings
+    must say the Claude field is optional or an empty field reads as a broken provider.
+- **Discovery**: widening `CREDENTIAL_PROVIDERS` does not reach the database. The provider column
+  is constrained twice more — a Drizzle `enum` in `src/lib/db/schema.ts` and
+  `CHECK (provider IN ('deepseek', 'openrouter'))` in `drizzle/0002_provider_credentials.sql` —
+  and `readProviderCredentials` in `src/lib/db/credentials.ts` returns a hand-written two-field
+  object rather than following the constant. The brief's impact map claimed the credential store
+  would follow automatically; had it been implemented as written, saving a Claude token would have
+  been refused by the `CHECK`. The brief now carries the migration, the regenerated
+  `migrations.generated.ts`, the read model, and their tests. SQLite cannot alter a `CHECK` in
+  place, so `0003` rebuilds the table and `0002` stays untouched as history.
+- **Update**: the usage-endpoint gate is now recorded in
+  [M0 discovery](discovery/m0-discovery.md), superseding the note in the `Proposed` entry below
+  that deliberately left that document unchanged. That note was right while the source was a
+  proposal; the plan has since accepted it, and
+  [the sync map](../.agents/skills/okf-sync/references/repo-sync-map.md) puts a passing provider
+  gate in discovery. The record withholds the codenamed key names and keeps only their count, which
+  is the drift signal. `pnpm run spike:claude-usage` is also added to the README command table.
+- **Decision**: Claude quota may be polled, as an optional source that is off by default. This
+  amends [the plan](plan/ai-usage-dashboard-implementation-plan.md) §2 and §3.1.
+  - §2 "Structured source first" previously forbade calling internal endpoints with extracted
+    tokens outright. It now carries one narrow exception, for Claude quota only, and only because
+    no documented interface answers while no session is live. The token must be minted
+    deliberately with `claude setup-token`; extracting one from `~/.claude/.credentials.json` stays
+    forbidden, which is what that clause was written to prevent.
+  - §2 "Separate pull and event ingestion" now records that Claude may also be polled.
+  - §3.1 previously ruled `/usage` out as an MVP source. It stays ruled out as a _source_:
+    `claude -p "/usage"` is a diagnostic, and no value it prints is stored, because its percentages
+    are integers and its reset time is a rounded relative duration.
+  - §3.1 gains the optional poll: read the normalised `limits[]` projection, at most one request
+    per five minutes, never retry a refusal, fall back to the spool on refusal, and render drift as
+    `unavailable`. The newer decision above records the exact status when the fallback succeeds or
+    fails. The status-line spool stays the default and the fallback.
+  - Default-off was chosen so that cloning this repository never causes an undocumented Anthropic
+    endpoint to be called without the user opting in.
+  - The codenamed keys the endpoint returns are deliberately not recorded anywhere in this
+    repository. `scripts/spike-claude-oauth-usage.ts` reports them at runtime without hard-coding
+    them, so drift stays visible without the bundle publishing the list.
+- **Discovery**: `CREDENTIAL_PROVIDERS` in `src/lib/domain.ts` is not an internal list.
+  `src/components/settings-dialog.tsx` maps over it, so adding a provider renders a new field in
+  Settings on its own, and `src/app/api/settings/credentials/[provider]/route.ts`,
+  `tests/unit/settings-dialog.test.tsx` and `tests/e2e/settings.spec.ts` all follow it. Widening it
+  for Claude is therefore a browser-visible change that Playwright must cover, and the doc comment
+  above the constant — "Codex and Claude authenticate through their own CLIs and have no key here"
+  — has to be rewritten. The Claude token is also optional in a way the other two are not: the
+  status-line spool keeps reporting quota without it, so the Settings copy must say so. The brief's
+  impact map and testing plan were corrected accordingly; its first version understated both.
+- **Update**: [poll-claude-quota-without-a-session](backlog/archive/poll-claude-quota-without-a-session.md)
+  is promoted to `ready-for-agent/` on the decision above, and
+  [#13](https://github.com/baktiaditya/ai-usage-dashboard/issues/13) is relabelled to match.
+  Whether `claude -p "/usage"` calls the same endpoint underneath was probed with `claude --debug`
+  and stayed inconclusive; it no longer blocks anything, because that path is a diagnostic rather
+  than a fallback source.
+
+- **Discovery**: Claude quota can be read without a live Claude Code session. Two pull-shaped
+  sources were probed live on the development machine, and both answered while no session was
+  running.
+  - `GET /api/oauth/usage`, the source Claude Code reads for `/usage`, returned `200 OK` on every
+    probe. Two were run when this entry was first written and a third followed the same day, each
+    at least five minutes apart. Active windows carry `utilization` plus an absolute ISO-8601
+    `resets_at`, and the payload also exposes a normalised `limits[]` projection, per-model
+    breakdown rows, and credits in minor units with an explicit currency and decimal places. The
+    endpoint is undocumented, its upstream issue is labelled `invalid`, and refusals escalate
+    30/60/120/240/300s with no `Retry-After`, so one request per five minutes or slower is the
+    only safe cadence. Its OAuth token expires and is rotated by Claude Code, so a collector that
+    refreshes it races the CLI for the same file.
+  - `claude -p "/usage"` consumes no quota — the `--output-format json` envelope reports zero
+    turns, zero tokens, zero API duration and `local_command: "usage"` — but returns the numbers
+    as human-rendered prose with integer percentages, and its reset time is a rounded relative
+    duration that differed between two runs seconds apart. It is a good health check and a poor
+    data source.
+  - `claude auth status` reports `loggedIn` reliably but `subscriptionType` is `null` on this Pro
+    account, so it cannot confirm plan tier. It also returns an email address and an organisation
+    ID, which must never reach the database or this bundle.
+  - Evidence is shape-only. No quota value, token, email address or account ID was recorded, here
+    or anywhere in the repository.
+  - `scripts/spike-claude-oauth-usage.ts` (`pnpm run spike:claude-usage`) is the gate probe. It
+    sends exactly one request, never retries a refusal, never writes the credentials file, and
+    prints structure with every leaf elided.
+- **Proposed**: [poll-claude-quota-without-a-session](backlog/archive/poll-claude-quota-without-a-session.md)
+  files the above as a brief, first in `ready-for-human/` and promoted the same day, tracked by
+  [#13](https://github.com/baktiaditya/ai-usage-dashboard/issues/13). It is blocked on a user decision, because the
+  plan §2 and §3.1 both state that Claude quota arrives via the status line; that contradiction
+  must be resolved in the plan before the brief can be worked. `docs/discovery/m0-discovery.md` is
+  deliberately left unchanged — it records gates for accepted provider contracts, and this source
+  is a proposal, not yet a contract.
+
 ## 2026-09-15
+
+- **Update**: the move to pnpm is delivered in
+  [PR #11](https://github.com/baktiaditya/ai-usage-dashboard/pull/11), merged as `820d873` and
+  deployed to the production checkout, and
+  [migrate-from-npm-to-pnpm](backlog/archive/migrate-from-npm-to-pnpm.md) moves to `archive/`.
+  In that PR:
+  - `pnpm import` kept all 739 resolved versions.
+  - `allowBuilds` names exactly `@tailwindcss/oxide@4.1.13`, `better-sqlite3@12.4.1`,
+    `esbuild@0.25.12` and `unrs-resolver@1.12.2`. Dropping one entry makes
+    `pnpm install --frozen-lockfile` fail with `ERR_PNPM_IGNORED_BUILDS` naming it.
+  - `packageManager` pins `pnpm@12.4.2` with the sha512 hash corepack's `lastKnownGood.json`
+    records, and `engines.node` is `^24.15.0`.
+  - Existing installs run `corepack enable pnpm` once per Node installation, on Node 24.15 or a
+    later Node 24 release.
+  - `db:backup` and `db:restore` accept both `<file>` and `-- <file>`.
+  - `pnpm-workspace.yaml` sets `pmOnFail: ignore`, so `pnpm-lock.yaml` is one YAML document with
+    the same resolved versions. Otherwise pnpm 12 writes an environment document first, which
+    GitHub's dependency graph reads as zero dependencies
+    ([dependabot-core#15904](https://github.com/dependabot/dependabot-core/issues/15904), open).
+    Dependabot alerts are off for this repository, so no alert was hidden. Corepack alone enforces
+    the pin; a pnpm run outside corepack ignores `packageManager` instead of switching to it. With
+    this lockfile the Setup §6 deploy and rollback passed in zsh and bash, and
+    `pnpm install --frozen-lockfile` left the checkout clean.
+  - [Setup](operations/setup.md) §6 caches the candidate's pinned pnpm before any unit stops, and
+    rolls back with `npm ci` to a commit that has only `package-lock.json`. Its deploy preflight
+    also requires `pnpm-lock.yaml` and a `pnpm@<version>+sha512.<hash>` pin, and its rollback
+    preflight refuses any other pin. In rehearsals, candidates with the lockfile and no pin, a bare
+    `pnpm@12.4.2` pin, or a hash corepack rejected all stopped at the preflight, and no unit was
+    stopped. A candidate with the hashed pin still deployed and rolled back in zsh and bash.
+
+  Plan §4.1, §3.3, §3.4 and §3.5, Setup, the README and `AGENTS.md` describe pnpm in that PR. In
+  throwaway clones, with an empty `COREPACK_HOME` and standard input closed, the Setup §6 blocks ran
+  verbatim in zsh and bash against shimmed units. Each pass:
+  1. cached pnpm and its platform binary during the preflight;
+  2. replaced the npm-built `node_modules` without a prompt;
+  3. passed `verify` and `build`;
+  4. rolled back to `e2d553c` with `npm ci`.
+
+  `pnpm run verify`, `pnpm run test:e2e`, `pnpm audit`, a fresh-clone install, migrate and build, and
+  the pre-commit hook passed through pnpm.
+
+  The production checkout then moved from `e2d553c` to `820d873`. The Setup §6 blocks from
+  `origin/main` ran verbatim in bash with standard input closed:
+  1. the preflight cached the pinned pnpm before any unit stopped;
+  2. `pnpm install --frozen-lockfile` replaced the npm-built `node_modules` without a prompt;
+  3. `verify` and `build` passed;
+  4. no rollback was needed.
+
+  The verify block showed a clean checkout on `origin/main`, both units running from the production
+  checkout with installed units identical to the rendered ones, and the dashboard answering. The
+  timer's first run, a manual Codex refresh from the dashboard, and the next scheduled run all
+  recorded successful attempts for every provider they collected.
 
 - **Decision**: the open-source release adopts pnpm.
   [prepare-open-source-release](backlog/ready-for-agent/prepare-open-source-release.md) now depends
-  on the [npm to pnpm migration](backlog/ready-for-agent/migrate-from-npm-to-pnpm.md), which
+  on the [npm to pnpm migration](backlog/archive/migrate-from-npm-to-pnpm.md), which
   lands first. The user ordered the migration before the release so that the first public README,
   contributing guide, and CI already use pnpm. CI runs `pnpm run verify` only, installing with
   `pnpm install --frozen-lockfile` through corepack; this supersedes "CI runs `npm run verify`" in
@@ -15,7 +423,7 @@
   or 26 is a later decision once CI exists.
 
 - **Decision**: the package manager moves from npm to pnpm, and
-  [migrate-from-npm-to-pnpm](backlog/ready-for-agent/migrate-from-npm-to-pnpm.md) is promoted to
+  [migrate-from-npm-to-pnpm](backlog/archive/migrate-from-npm-to-pnpm.md) is promoted to
   `ready-for-agent/`. The user chose each term:
   - pnpm and `pnpm-lock.yaml` replace npm and `package-lock.json`. This supersedes the
     "npm + `package-lock.json`" pin in [plan](plan/ai-usage-dashboard-implementation-plan.md) §4.1
@@ -38,7 +446,7 @@
   runs.
 
 - **Proposed**: migrating the package manager from npm to pnpm, filed as
-  [migrate-from-npm-to-pnpm](backlog/ready-for-agent/migrate-from-npm-to-pnpm.md). A trial at
+  [migrate-from-npm-to-pnpm](backlog/archive/migrate-from-npm-to-pnpm.md). A trial at
   `e2d553c` in a throwaway clone, with pnpm 12.4.2, found no blocker: `pnpm import` kept every
   resolved version, and `verify`, `build`, `test:e2e`, and `pnpm audit` passed once the native build
   allowlist moved to `allowBuilds` in `pnpm-workspace.yaml` and `pnpm-lock.yaml` joined

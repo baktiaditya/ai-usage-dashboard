@@ -118,7 +118,7 @@ The user closed every gate on 2026-09-15, recorded as a `Decision` in [log](../.
 - **Commit author email:** kept. History is not rewritten.
 - **CI:** `pnpm run verify` only; `pnpm run test:e2e` stays a local check.
 - **Package manager:** pnpm, provided through corepack, as the
-  [npm to pnpm migration brief](migrate-from-npm-to-pnpm.md) decides.
+  [npm to pnpm migration brief](../archive/migrate-from-npm-to-pnpm.md) decides.
   That migration is a preceding change and lands first. Before starting, confirm that `main` has
   `pnpm-lock.yaml` and no `package-lock.json`; otherwise stop and report that the migration has not
   landed.

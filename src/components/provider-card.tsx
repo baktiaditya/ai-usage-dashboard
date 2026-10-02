@@ -14,6 +14,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { ProviderLogo } from '@/components/provider-logo';
+import { TodayQuotaChart } from '@/components/today-quota-chart';
 import type { ProviderCard as ProviderCardData } from '@/lib/queries/overview';
 import type { AdvisoryState, CardStatus } from '@/lib/domain';
 import { formatMoney } from '@/lib/money';
@@ -90,7 +91,13 @@ export function ProviderCardView({ card, timezone, onRefreshed }: ProviderCardPr
   }
 
   return (
-    <Card data-testid={`card-${card.provider}`} data-status={card.status}>
+    <Card
+      data-testid={`card-${card.provider}`}
+      data-status={card.status}
+      // A card that charts today spans the whole grid row, windows on the
+      // left and the chart on the right; on a narrow screen the chart follows.
+      className={cn(card.today !== null && 'lg:col-span-2')}
+    >
       <CardHeader>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <CardTitle className="flex items-center gap-2 pb-1">
@@ -112,38 +119,51 @@ export function ProviderCardView({ card, timezone, onRefreshed }: ProviderCardPr
         </div>
       </CardHeader>
 
-      <CardContent className="flex flex-col gap-4">
-        {/*
+      <CardContent
+        className={cn(
+          'flex flex-col gap-4',
+          card.today !== null && 'lg:grid lg:grid-cols-2 lg:items-start lg:gap-8',
+        )}
+      >
+        <div className="flex min-w-0 flex-col gap-4">
+          {/*
           A card that is not healthy still shows its last known numbers, but it
           must never let them read as current. This banner is that contract.
         */}
-        {card.showingLastKnownValues ? (
-          <p
-            className="bg-stale-bg text-stale flex items-start gap-2 rounded-lg px-3 py-2 text-xs"
-            data-testid={`last-known-${card.provider}`}
-          >
-            <AlertTriangle aria-hidden className="mt-0.5 size-3.5 shrink-0" />
-            <span>
-              Showing last known values from{' '}
-              {card.dataAgeMs !== null ? `${formatAge(card.dataAgeMs)} ago` : 'an earlier run'}.
-              These are not current.
-            </span>
-          </p>
+          {card.showingLastKnownValues ? (
+            <p
+              className="bg-stale-bg text-stale flex items-start gap-2 rounded-lg px-3 py-2 text-xs"
+              data-testid={`last-known-${card.provider}`}
+            >
+              <AlertTriangle aria-hidden className="mt-0.5 size-3.5 shrink-0" />
+              <span>
+                Showing last known values from{' '}
+                {card.dataAgeMs !== null ? `${formatAge(card.dataAgeMs)} ago` : 'an earlier run'}.
+                These are not current.
+              </span>
+            </p>
+          ) : null}
+
+          {card.status === 'unavailable' &&
+          card.windows.length === 0 &&
+          card.balances.length === 0 ? (
+            <EmptyState reason={card.statusReason} hint={card.diagnostics.hint} />
+          ) : null}
+
+          {card.kind === 'quota' ? (
+            <QuotaWindows card={card} timezone={timezone} tone={status.tone} />
+          ) : (
+            <CreditBalances card={card} />
+          )}
+
+          <AdvisoryReasons card={card} />
+        </div>
+
+        {card.today !== null ? (
+          <div className="min-w-0">
+            <TodayQuotaChart provider={card.provider} today={card.today} />
+          </div>
         ) : null}
-
-        {card.status === 'unavailable' &&
-        card.windows.length === 0 &&
-        card.balances.length === 0 ? (
-          <EmptyState reason={card.statusReason} hint={card.diagnostics.hint} />
-        ) : null}
-
-        {card.kind === 'quota' ? (
-          <QuotaWindows card={card} timezone={timezone} tone={status.tone} />
-        ) : (
-          <CreditBalances card={card} />
-        )}
-
-        <AdvisoryReasons card={card} />
       </CardContent>
 
       <CardFooter className="flex-col items-stretch gap-3">

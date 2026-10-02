@@ -29,7 +29,9 @@ export const collectorAttempts = sqliteTable(
     runId: integer('run_id')
       .notNull()
       .references(() => collectorRuns.id, { onDelete: 'cascade' }),
-    provider: text('provider', { enum: ['codex', 'claude', 'deepseek', 'openrouter'] }).notNull(),
+    provider: text('provider', {
+      enum: ['codex', 'claude', 'deepseek', 'openrouter', 'opencode_go'],
+    }).notNull(),
     outcome: text('outcome', { enum: ['success', 'unavailable', 'error'] }).notNull(),
     startedAt: text('started_at').notNull(),
     finishedAt: text('finished_at').notNull(),
@@ -50,7 +52,9 @@ export const providerSnapshots = sqliteTable(
     collectorAttemptId: integer('collector_attempt_id')
       .notNull()
       .references(() => collectorAttempts.id, { onDelete: 'cascade' }),
-    provider: text('provider', { enum: ['codex', 'claude', 'deepseek', 'openrouter'] }).notNull(),
+    provider: text('provider', {
+      enum: ['codex', 'claude', 'deepseek', 'openrouter', 'opencode_go'],
+    }).notNull(),
     kind: text('kind', { enum: ['quota', 'credit'] }).notNull(),
     sourceObservedAt: text('source_observed_at').notNull(),
     collectedAt: text('collected_at').notNull(),
@@ -115,9 +119,20 @@ export const creditBalances = sqliteTable(
  * means no key is saved. Read only through `src/lib/db/credentials.ts`.
  */
 export const providerCredentials = sqliteTable('provider_credentials', {
-  provider: text('provider', { enum: ['deepseek', 'openrouter'] }).primaryKey(),
+  provider: text('provider', {
+    enum: ['deepseek', 'openrouter', 'claude', 'opencode_go'],
+  }).primaryKey(),
   secret: text('secret').notNull(),
   updatedAt: text('updated_at').notNull(),
+});
+
+/**
+ * Singleton (`id = 1`) recording the last claimed Claude quota probe. Written
+ * only through `claimClaudePoll` in `src/lib/db/repository.ts`.
+ */
+export const claudePollState = sqliteTable('claude_poll_state', {
+  id: integer('id').primaryKey(),
+  lastAttemptedAt: text('last_attempted_at').notNull(),
 });
 
 export const schemaMigrations = sqliteTable('schema_migrations', {

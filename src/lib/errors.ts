@@ -84,6 +84,24 @@ export const ERROR_CODE_HINTS: Record<ErrorCode, string> = {
   unknown_error: 'An unclassified error occurred.',
 };
 
+/**
+ * Thrown when an adapter has nothing to report for this run *and* another run
+ * owns the answer. The collector records no attempt for it, so the latest
+ * attempt stays the one that actually did the work.
+ *
+ * Only the composite Claude adapter uses it: a run that lost the quota-probe
+ * claim and has no usable spool reading neither probed nor observed anything.
+ * Recording `unavailable` or `error` there would be a verdict about a probe it
+ * never made, and because it started later it would mask the claimant's result
+ * — even one still in flight.
+ */
+export class CollectionDeferred extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'CollectionDeferred';
+  }
+}
+
 /** Error carrying a taxonomy code. Adapters throw this; the collector maps it. */
 export class CollectionError extends Error {
   readonly code: ErrorCode;

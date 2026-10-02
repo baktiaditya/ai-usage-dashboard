@@ -113,6 +113,96 @@ gauge exactly like the other two, so the bridge allowlists it and the ingestor
 labels it. This account did not report one, so it simply never appeared — which
 is the intended behaviour, not a gap.
 
+#### Optional quota probe — PASSED (live, 2026-09-17)
+
+The status line is push-shaped: it answers only while a session is live and only
+after that session's first API response, so the card goes blind exactly when
+nobody is working. The plan admits one pull-shaped source for that gap, an
+optional, default-off probe (§3.1), delivered from the now archived brief
+[poll-claude-quota-without-a-session](../backlog/archive/poll-claude-quota-without-a-session.md).
+
+Every Messages API response to a subscription token carries the account's
+unified rate-limit state in its headers. Probed once on 2026-09-17 with a
+`claude setup-token` token saved in the development database and no session
+reporting: `POST https://api.anthropic.com/v1/messages`, model `claude-haiku-4-5`,
+`max_tokens: 1`, one character of input, no system prompt, headers
+`anthropic-version: 2023-06-01` and `anthropic-beta: oauth-2025-04-20`, the
+dashboard's own `User-Agent`. It returned `200 OK` with 8 input and 1 output
+tokens billed to the subscription. Header names and value shapes, values elided:
+
+```
+anthropic-ratelimit-unified-5h-utilization   <decimal 0..1>
+anthropic-ratelimit-unified-5h-reset         <epoch seconds>
+anthropic-ratelimit-unified-5h-status        allowed
+anthropic-ratelimit-unified-7d-utilization   <decimal 0..1>
+anthropic-ratelimit-unified-7d-reset         <epoch seconds>
+anthropic-ratelimit-unified-7d-status        allowed
+anthropic-ratelimit-unified-status           allowed
+anthropic-ratelimit-unified-reset            <epoch seconds>
+anthropic-ratelimit-unified-representative-claim  five_hour
+anthropic-ratelimit-unified-fallback-percentage   <decimal 0..1>
+anthropic-ratelimit-unified-overage-status   rejected
+anthropic-ratelimit-unified-overage-disabled-reason  org_level_disabled
+```
+
+The adapter reads the four `5h`/`7d` utilisation and reset headers only, and
+maps them to the status line's `five_hour` and `seven_day` windows. That mapping
+rests on public reports, not on this probe: Claude Code's status-line
+`rate_limits` are fed from these headers. It is why the two sources share one
+history series. Properties that constrain the implementation:
+
+1. **It costs usage.** The probe is real inference, so it runs only when the
+   spool has no fresh reading, at most once per five minutes.
+2. **Haiku needs no Claude Code identity.** Public reports
+   (anthropics/claude-code#40515) show other models refusing a subscription
+   token unless the first system block is Claude Code's own identity string;
+   Haiku accepts it without. The probe therefore never impersonates Claude Code.
+3. **An exhausted window still reports.** A subscription at its limit is refused
+   with `429` carrying the same headers; that is a reading, not a failure. A
+   `429` without them is `rate_limited`. Not observed live.
+4. **Overage.** This account reported overage disabled, so a probe cannot bill
+   extra usage here. An account with overage enabled is unproven.
+
+Not gated, and still unproven: whether a probe sent while idle starts a new
+five-hour window (the probe ran while a window was already open), a second
+machine, and a non-Pro plan.
+
+The probe depends on one model. `claude-haiku-4-5` is the newest Haiku as of
+2026-09-17, and the only current model public reports show accepting a
+subscription token without Claude Code's identity prompt; `claude-opus-5` and
+`claude-sonnet-5` refuse it (anthropics/claude-code#87420). When Haiku 4.5 is
+retired, the probe fails as `schema_mismatch` and the card falls back to the
+spool until the model is changed. A successor Haiku is not known to share the
+exemption; if it does not, a probe without impersonation stops working and the
+source decision has to be reopened rather than patched.
+
+#### Usage endpoint — SUPERSEDED for `setup-token` tokens (2026-09-17)
+
+`GET https://api.anthropic.com/api/oauth/usage` was gated on 2026-09-16 as the
+poll source. Three probes with `pnpm run spike:claude-usage`, spaced at least
+five minutes apart with no session running, returned `200 OK`, and the record
+said the token came from `claude setup-token`. That attribution does not hold:
+
+- On 2026-09-17 a `claude setup-token` token saved from dashboard Settings got
+  `403` from the endpoint.
+- Public reports agree (anthropics/claude-code#11985, #22450, #24200): a
+  `setup-token` token is scoped to inference only, and the endpoint requires the
+  `user:profile` scope, answering
+  `OAuth token does not meet scope requirement user:profile`.
+- The spike falls back to `~/.claude/.credentials.json` when no token is in its
+  environment, and that full-login token carries `user:profile`. The 2026-09-16
+  `200`s most likely came from it.
+
+The only tokens that can read the endpoint are therefore full-login tokens, which
+the plan forbids the collector to extract, so the poll was replaced by the
+header probe above. What that gate recorded about the endpoint itself stays true
+and is kept for reference: it serves a normalised `limits[]` list (active kinds
+`session` and `weekly_all` on 2026-09-17), escalates refusals with no
+`Retry-After` (a 2026-09-17 `429` did carry one), and carries 12–13
+non-descriptive top-level keys whose names this bundle withholds.
+`claude -p "/usage"` remains a diagnostic only: integer percentages and a
+rounded relative reset.
+
 ### DeepSeek — PASSED (live)
 
 Passed live on 2026-09-14, once `DEEPSEEK_API_KEY` was provisioned in `collector.env`:
@@ -176,6 +266,52 @@ running `npm run test:live`.
 > database ([plan §3.5](../plan/ai-usage-dashboard-implementation-plan.md)); the environment variable
 > is no longer read. The gate evidence above stays as recorded. It was gathered with the key in
 > `collector.env` and has not been re-run with a key saved in Settings.
+
+### OpenCode Go — PASSED (live, 2026-09-30)
+
+Added after M0 when scope grew to a fifth provider (see the [log](../log.md)). On 2026-09-30 the
+user ran `curl` with their own OpenCode API key against the endpoint. The response had exactly the
+shape below, with all three windows `ok`. No key, percentage, or reset time is recorded here.
+
+OpenCode added the endpoint in
+[anomalyco/opencode#16513](https://github.com/anomalyco/opencode/pull/16513). The public Go docs
+(<https://opencode.ai/docs/go/>) do not document it yet, so this shape is observed rather than
+contractual:
+
+```
+GET https://opencode.ai/zen/go/v1/usage
+Authorization: Bearer <OpenCode API key>
+
+200 { usage: { rolling: { status, percent, resetsAt },
+               weekly:  { status, percent, resetsAt },
+               monthly: { status, percent, resetsAt } } }
+    status   "ok" | "rate-limited"
+    percent  integer, percentage *used*
+    resetsAt ISO-8601 UTC with milliseconds
+```
+
+Probes run from this machine without a valid key, same day:
+
+| Request                             | Result                                               |
+| ----------------------------------- | ---------------------------------------------------- |
+| no auth header                      | `401` JSON, `AuthError` "Missing API key."           |
+| `Authorization: Bearer` + bogus key | `401` JSON, `AuthError` "Unauthorized"               |
+| `x-api-key` + bogus key             | `401` JSON, "Missing API key." (only Bearer is read) |
+
+Facts that drove the contract in [plan §3.1](../plan/ai-usage-dashboard-implementation-plan.md):
+
+1. **No money on the wire.** The response carries no dollar limit, plan tier (Go or Go Plus), or
+   account identifier. The card can only show percentages.
+2. **Windows have different reset rules.** In the live response, `weekly` reset at Monday
+   00:00 UTC. `monthly` reset on a mid-month day and time, which is the billing anniversary, not a
+   calendar month.
+3. **`403` has not been observed here.** The upstream PR discussion and downstream integrations
+   report that a valid key without a Go subscription gets `403`. It is fixture-tested only.
+
+**Gate closed** by the live `200` above. The saved-in-Settings live check passed on the
+development server and again in production after the deploy, both with `success`. The work was
+delivered from the now archived
+[implementation brief](../backlog/archive/add-opencode-go-quota.md).
 
 ## Decisions fixed at M0
 

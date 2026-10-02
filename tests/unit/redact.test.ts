@@ -12,6 +12,33 @@ describe('redactText', () => {
     ['lowercase header', 'authorization=Bearer sk-xyzxyzxyzxyzxyzxyz', 'sk-xyzxyzxyzxyzxyzxyz'],
     ['openrouter key', 'key sk-or-v1-0123456789abcdef0123', 'sk-or-v1-0123456789abcdef0123'],
     ['generic api key', 'sk-0123456789abcdefghij', 'sk-0123456789abcdefghij'],
+    // OpenCode Go keys are not documented; these cover a shaped key in every
+    // place one could surface: a header, a bearer string, an assignment, bare.
+    [
+      'opencode key in a header',
+      'Authorization: Bearer sk-OpEnCoDe0123456789abcdefXYZ',
+      'sk-OpEnCoDe0123456789abcdefXYZ',
+    ],
+    [
+      'opencode key as bearer',
+      'sent bearer sk-OpEnCoDe0123456789abcdefXYZ upstream',
+      'sk-OpEnCoDe0123456789abcdefXYZ',
+    ],
+    [
+      'opencode key assignment',
+      'opencode_go api_key=sk-OpEnCoDe0123456789abcdefXYZ',
+      'sk-OpEnCoDe0123456789abcdefXYZ',
+    ],
+    [
+      'opencode key bare',
+      'rejected sk-OpEnCoDe0123456789abcdefXYZ',
+      'sk-OpEnCoDe0123456789abcdefXYZ',
+    ],
+    [
+      'claude setup token',
+      'rejected sk-ant-oat01-0123456789abcdef-ghij',
+      'sk-ant-oat01-0123456789abcdef-ghij',
+    ],
     [
       'jwt',
       'token eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NQ.SflKxwRJSMeKKF2QT4',

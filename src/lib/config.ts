@@ -48,7 +48,7 @@ const balanceThresholdSchema = z
     },
   );
 
-const PROVIDER_PATTERN = '(?:codex|claude|deepseek|openrouter)';
+const PROVIDER_PATTERN = '(?:codex|claude|deepseek|openrouter|opencode_go)';
 
 /**
  * `AUD_THRESHOLDS`: a JSON object merged over the defaults, key by key.
@@ -99,6 +99,9 @@ const numericEnv = (fallback: number, min: number, max: number) =>
     .transform((v) => (v === undefined || v === '' ? fallback : Number(v)))
     .pipe(z.number().int().min(min).max(max));
 
+/** Plan §3.1: never send the Claude quota probe more often than this. */
+export const CLAUDE_POLL_MIN_INTERVAL_MINUTES = 5;
+
 const envSchema = z.object({
   AUD_DATA_DIR: z.string().optional(),
   AUD_TIMEZONE: z.string().optional(),
@@ -106,6 +109,14 @@ const envSchema = z.object({
   AUD_PORT: numericEnv(3838, 1, 65535),
   AUD_RETENTION_DAYS: numericEnv(90, 1, 3650),
   AUD_COLLECT_INTERVAL_MINUTES: numericEnv(5, 1, 1440),
+  // Each Claude quota probe spends a little of the subscription usage it
+  // measures, so five minutes is a hard floor: a shorter value is rejected
+  // here, never clamped.
+  AUD_CLAUDE_POLL_INTERVAL_MINUTES: numericEnv(
+    CLAUDE_POLL_MIN_INTERVAL_MINUTES,
+    CLAUDE_POLL_MIN_INTERVAL_MINUTES,
+    1440,
+  ),
   AUD_LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).optional(),
   AUD_THRESHOLDS: z.string().optional(),
   // Internal: set only by the development launcher (src/lib/dev-environment.ts).
@@ -114,7 +125,7 @@ const envSchema = z.object({
 
 /**
  * Provider key variables that are no longer read from any environment
- * (plan §3.5). They are listed only so `npm run collect` can warn that a stale
+ * (plan §3.5). They are listed only so `pnpm run collect` can warn that a stale
  * value is being ignored.
  */
 export const RETIRED_CREDENTIAL_ENV_VARS = [
@@ -131,6 +142,11 @@ export interface AppConfig {
   readonly port: number;
   readonly retentionDays: number;
   readonly collectIntervalMinutes: number;
+  /**
+   * Minimum spacing between Claude quota probes, shared by every process
+   * through the durable claim in `claude_poll_state`. Never below five.
+   */
+  readonly claudePollIntervalMinutes: number;
   readonly logLevel: 'debug' | 'info' | 'warn' | 'error';
   /**
    * Whether manual refresh may collect. Always on in production; a development
@@ -146,9 +162,10 @@ export interface AppConfig {
      */
     readonly pullMissedIntervals: number;
     /**
-     * Claude only emits while a session is live, so its event can legitimately
-     * be much older than a poll without being wrong. It still goes stale once
-     * the observed window has reset.
+     * A Claude status-line event only arrives while a session is live, so it
+     * can legitimately be much older than a poll without being wrong. It still
+     * goes stale once the observed window has reset. A probed Claude
+     * observation uses the pull budget instead.
      */
     readonly claudeEventMaxAgeMinutes: number;
   };
@@ -261,6 +278,7 @@ export function loadConfig(env: EnvLike = process.env): AppConfig {
     port: e.AUD_PORT,
     retentionDays: e.AUD_RETENTION_DAYS,
     collectIntervalMinutes: e.AUD_COLLECT_INTERVAL_MINUTES,
+    claudePollIntervalMinutes: e.AUD_CLAUDE_POLL_INTERVAL_MINUTES,
     logLevel: e.AUD_LOG_LEVEL ?? 'info',
     refreshEnabled: e.AUD_REFRESH_ENABLED !== '0',
     freshness: {

@@ -1,6 +1,6 @@
 # AGENTS.md
 
-npm single-package repo for the AI Usage Dashboard. Product overview and commands live in
+pnpm single-package repo for the AI Usage Dashboard. Product overview and commands live in
 `README.md`; setup, credentials, and the systemd timer live in `docs/operations/setup.md`; the current
 implementation lives in `src/`.
 
@@ -11,13 +11,18 @@ implementation lives in `src/`.
 1. Use code-review-graph before Grep/Glob/Read-style codebase exploration. Start with
    `get_minimal_context_tool`, then use semantic/relationship queries for exploration, impact/flow
    tools for blast radius, `detect_changes_tool` for review, and `tests_for` before concluding
-   coverage is missing. Confirm graph freshness when the exact head matters. If the tools are
-   unavailable, `get_minimal_context_tool` returns `not_ready`, or the graph does not cover the
-   target, state that limitation and continue with filesystem search. Semantic search degrades
-   silently: `code-review-graph update` never refreshes embeddings, so nodes added since the last
-   `embed` are absent from vector results while `search_mode` still reports `semantic`. Re-run
-   `code-review-graph embed --provider local` before relying on it, or treat a semantic miss as
-   inconclusive.
+   coverage is missing. Confirm graph freshness when the exact head matters: each tool result
+   carries `_graph.head_matches_build`, and when it is `false`, run `code-review-graph build`.
+   After a branch switch, `code-review-graph update` can report no changed files and leave the
+   graph on the old branch. If the tools are unavailable, `get_minimal_context_tool` returns
+   `not_ready`, or the graph does not cover the target, state that limitation and continue with
+   filesystem search. Semantic search degrades silently: `code-review-graph update` never
+   refreshes embeddings, so nodes added since the last `embed` are absent from vector results
+   while `search_mode` still reports `semantic`. Re-run `code-review-graph embed --provider local`
+   before relying on it, or treat a semantic miss as inconclusive. A `search_mode` of `fts` means
+   the running server has no embeddings at all. Local embedding needs the
+   `code-review-graph[embeddings]` install, which the `uvx` entry in `.mcp.json` lacks. Read `fts`
+   results as keyword matches and state that limitation.
 2. Inspect `git status --short` and the relevant diff before editing. Preserve unrelated worktree
    changes.
 3. Load only the task branches that apply:
@@ -40,7 +45,7 @@ implementation lives in `src/`.
 For ad-hoc inspection outside the spec lane — the running dashboard, a rendered card or chart, a
 layout at a given viewport — use the global `agent-browser` CLI rather than the Playwright MCP
 server. Its targeted accessibility snapshots keep interaction compact. It is machine tooling, not a
-project dependency; Playwright remains the automated runner behind `npm run test:e2e`.
+project dependency; Playwright remains the automated runner behind `pnpm run test:e2e`.
 
 Work in a named session: the default session is one browser shared by every agent and conversation
 on the machine, and using it can navigate away from a page someone else has open. Start with
@@ -50,7 +55,7 @@ finish with `agent-browser close`.
 Core loop:
 
 1. `agent-browser open <url>` — the production dashboard defaults to `http://127.0.0.1:3838/`;
-   `npm run dev` serves `http://127.0.0.1:3839/` from its own database.
+   `pnpm run dev` serves `http://127.0.0.1:3839/` from its own database.
 2. `agent-browser snapshot -i`
 3. `click`, `fill`, or `press` by `@eN` ref.
 4. Re-snapshot after each page change.
@@ -63,7 +68,7 @@ evidence.
 
 ## Completion and Git
 
-- Verification must match the risk and the claim. `npm run verify` (format + lint + typecheck +
+- Verification must match the risk and the claim. `pnpm run verify` (format + lint + typecheck +
   unit + integration) is the final gate; use focused checks while iterating.
 - Create no commit unless the user explicitly asks in the same message.
 

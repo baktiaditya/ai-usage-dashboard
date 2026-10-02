@@ -11,20 +11,31 @@ test.beforeEach(async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'AI Usage Dashboard' })).toBeVisible();
 });
 
-test('shows all four providers on one screen', async ({ page }) => {
-  for (const provider of ['codex', 'claude', 'deepseek', 'openrouter']) {
+const DISPLAY_ORDER = ['codex', 'claude', 'opencode_go', 'deepseek', 'openrouter'];
+
+test('shows all five providers on one screen, quota before balance', async ({ page }) => {
+  for (const provider of DISPLAY_ORDER) {
     await expect(page.getByTestId(`card-${provider}`)).toBeVisible();
   }
+  const cards = page.locator('[data-testid^="card-"]');
+  expect(await cards.evaluateAll((els) => els.map((el) => el.dataset['testid']))).toEqual(
+    DISPLAY_ORDER.map((provider) => `card-${provider}`),
+  );
+  const picker = page.locator('[data-testid^="history-provider-"]');
+  expect(await picker.evaluateAll((els) => els.map((el) => el.dataset['testid']))).toEqual(
+    DISPLAY_ORDER.map((provider) => `history-provider-${provider}`),
+  );
 });
 
 test('renders every card state', async ({ page }) => {
   // Seeded deliberately: healthy / unavailable / stale / error.
   await expect(page.getByTestId('status-codex')).toHaveText(/Healthy/);
+  await expect(page.getByTestId('status-opencode_go')).toHaveText(/Healthy/);
   await expect(page.getByTestId('status-claude')).toHaveText(/Unavailable/);
   await expect(page.getByTestId('status-deepseek')).toHaveText(/Stale/);
   await expect(page.getByTestId('status-openrouter')).toHaveText(/Error/);
 
-  await expect(page.getByTestId('summary-counts')).toContainText('1 healthy');
+  await expect(page.getByTestId('summary-counts')).toContainText('2 healthy');
 });
 
 test('renders both Codex quota windows with reset times', async ({ page }) => {
@@ -38,6 +49,42 @@ test('renders both Codex quota windows with reset times', async ({ page }) => {
 
   await expect(secondary).toContainText('7 day');
   await expect(secondary).toContainText('48.0%');
+});
+
+test('renders the three OpenCode Go windows, and watches the one running low', async ({ page }) => {
+  await expect(page.getByTestId('window-opencode_go-rolling')).toContainText('5 hour');
+  await expect(page.getByTestId('window-opencode_go-rolling')).toContainText('used 18.0%');
+  const weekly = page.getByTestId('window-opencode_go-weekly');
+  await expect(weekly).toContainText('7 day');
+  await expect(weekly).toContainText('16.0%');
+  await expect(weekly).toContainText('resets');
+  await expect(page.getByTestId('window-opencode_go-monthly')).toContainText('Monthly');
+  await expect(page.getByTestId('window-opencode_go-monthly')).toContainText('39.0%');
+  await expect(page.getByTestId('advisory-opencode_go')).toHaveText(/Watch/);
+  // Percentages only: the source reports no dollars, and none are derived.
+  await expect(page.getByTestId('card-opencode_go')).not.toContainText('$');
+});
+
+test('the OpenCode Go card spans the grid on desktop and charts today', async ({ page }) => {
+  const wide = page.getByTestId('card-opencode_go');
+  const codex = await page.getByTestId('card-codex').boundingBox();
+  const box = await wide.boundingBox();
+  if (!codex || !box) throw new Error('both cards must have a box');
+  const desktop = (page.viewportSize()?.width ?? 0) >= 1024;
+  if (desktop) {
+    // Two columns plus the gap between them.
+    expect(box.width).toBeGreaterThan(codex.width * 2);
+  } else {
+    expect(Math.abs(box.width - codex.width)).toBeLessThanOrEqual(1);
+  }
+
+  const chart = page.getByTestId('today-chart-opencode_go');
+  await expect(chart).toBeVisible();
+  await expect(chart.locator('svg.recharts-surface')).toBeVisible();
+  const legend = page.getByTestId('today-legend-opencode_go');
+  await expect(legend).toContainText('5 hour');
+  await expect(legend).toContainText('7 day');
+  await expect(legend).toContainText('Monthly');
 });
 
 test('renders every DeepSeek currency separately', async ({ page }) => {
@@ -104,6 +151,21 @@ test('history renders a quota chart for a quota provider', async ({ page }) => {
   await expect(page.getByTestId('history-quota-chart')).toContainText('never summed');
   // The daily min/max the API computes is drawn, not discarded.
   await expect(page.getByTestId('history-quota-chart')).toContainText('lowest to highest');
+  // The legend names windows by label, never by raw bucket and window identifiers.
+  const legend = page.getByTestId('history-quota-chart').locator('ul').last();
+  await expect(legend).toContainText('5 hour');
+  await expect(legend).toContainText('7 day');
+  await expect(legend).not.toContainText('codex · primary');
+});
+
+test('history charts every OpenCode Go window by its label', async ({ page }) => {
+  await page.getByTestId('history-provider-opencode_go').click();
+  await expect(page.getByTestId('history-quota-chart')).toBeVisible({ timeout: 10_000 });
+  const legend = page.getByTestId('history-quota-chart').locator('ul').last();
+  await expect(legend).toContainText('5 hour');
+  await expect(legend).toContainText('7 day');
+  await expect(legend).toContainText('Monthly');
+  await expect(legend).not.toContainText('go · ');
 });
 
 test('history states insufficient data rather than drawing a zero line', async ({ page }) => {
@@ -161,7 +223,7 @@ test('switching history keeps the panel in place while the next selection loads'
 test('every card heading carries its provider mark, hidden from assistive technology', async ({
   page,
 }) => {
-  for (const provider of ['codex', 'claude', 'deepseek', 'openrouter']) {
+  for (const provider of ['codex', 'claude', 'deepseek', 'openrouter', 'opencode_go']) {
     const logo = page.getByTestId(`card-${provider}`).locator('h2').getByTestId(`logo-${provider}`);
     await expect(logo).toBeVisible();
     await expect(logo).toHaveAttribute('aria-hidden', 'true');
@@ -210,11 +272,11 @@ test('the refresh endpoint rejects GET', async ({ request }) => {
   expect(res.status()).toBe(405);
 });
 
-test('the overview API returns all four providers and leaks nothing', async ({ request }) => {
+test('the overview API returns all five providers and leaks nothing', async ({ request }) => {
   const res = await request.get('/api/overview');
   expect(res.ok()).toBe(true);
   const body = await res.text();
-  expect(JSON.parse(body).cards).toHaveLength(4);
+  expect(JSON.parse(body).cards).toHaveLength(5);
   expect(body).not.toMatch(/sk-[A-Za-z0-9]{8,}/);
   expect(body).not.toMatch(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/);
   expect(body).not.toContain('accountId');

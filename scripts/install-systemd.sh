@@ -83,12 +83,12 @@ if [[ -z "$NODE_BIN" ]]; then
 fi
 TSX_BIN="$WORKDIR/node_modules/tsx/dist/cli.mjs"
 if [[ ! -f "$TSX_BIN" ]]; then
-  echo "tsx not found at $TSX_BIN — run 'npm install' first" >&2
+  echo "tsx not found at $TSX_BIN — run 'pnpm install' first" >&2
   exit 1
 fi
 # The web unit serves an existing production build and never builds at boot.
 if [[ $do_web -eq 1 && $do_install -eq 1 && ! -f "$WORKDIR/.next/BUILD_ID" ]]; then
-  echo "no production build in $WORKDIR/.next — run 'npm run build' first; nothing was installed" >&2
+  echo "no production build in $WORKDIR/.next — run 'pnpm run build' first; nothing was installed" >&2
   exit 1
 fi
 
@@ -178,7 +178,7 @@ if [[ $do_enable -eq 1 ]]; then
   systemctl --user list-timers "$TIMER" --no-pager || true
 
   if [[ $do_web -eq 1 ]]; then
-    # Another process on the port (a `npm run dev` left running) would make the
+    # Another process on the port (a `pnpm run dev` left running) would make the
     # service crash-loop into its start limit; say so instead.
     if ! systemctl --user is-active --quiet "$WEB" \
       && [[ -n "$(ss -ltnH "sport = :$PORT" 2>/dev/null)" ]]; then
@@ -191,7 +191,7 @@ if [[ $do_enable -eq 1 ]]; then
     systemctl --user restart "$WEB"
     echo
     echo "Enabled and started $WEB on http://$HOST:$PORT/."
-    echo "After pulling changes: npm run build && systemctl --user restart $WEB"
+    echo "After pulling changes: pnpm run build && systemctl --user restart $WEB"
   fi
 else
   cat <<EOF

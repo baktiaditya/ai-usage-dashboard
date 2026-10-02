@@ -20,6 +20,8 @@ import type { CreditHistoryResult, HistoryRange, QuotaHistoryResult } from '@/li
 import { formatMoney, formatMoneyTick, moneyToPlotNumber } from '@/lib/money';
 import type { MoneyString } from '@/lib/money';
 import { cn } from '@/lib/cn';
+import { EndLabel, SERIES_COLORS, formatPercent } from '@/components/chart-parts';
+import type { EndLabelProps } from '@/components/chart-parts';
 
 type HistoryResult = QuotaHistoryResult | CreditHistoryResult;
 
@@ -28,15 +30,6 @@ const RANGES: readonly { value: HistoryRange; label: string }[] = [
   { value: '7d', label: '7 days' },
   { value: '30d', label: '30 days' },
 ];
-
-/**
- * Categorical series slots, assigned in fixed order and never cycled.
- *
- * These resolve to CSS custom properties so the light and dark steps — each
- * validated against its own chart surface — swap in one place rather than being
- * flipped algorithmically. See `--series-*` in globals.css.
- */
-const SERIES_COLORS = ['var(--series-1)', 'var(--series-2)', 'var(--series-3)', 'var(--series-4)'];
 
 export interface HistoryPanelProps {
   readonly cards: readonly ProviderCard[];
@@ -242,7 +235,7 @@ function QuotaChart({ result }: { result: QuotaHistoryResult }) {
                 <Area
                   type="monotone"
                   dataKey={`${s.bucketId}:${s.windowKind}:range`}
-                  name={`${s.bucketId} · ${s.windowKind} daily min–max`}
+                  name={`${s.label} daily min–max`}
                   stroke="none"
                   fill={SERIES_COLORS[i % SERIES_COLORS.length]}
                   fillOpacity={0.14}
@@ -253,7 +246,7 @@ function QuotaChart({ result }: { result: QuotaHistoryResult }) {
                 <Line
                   type="monotone"
                   dataKey={`${s.bucketId}:${s.windowKind}:latest`}
-                  name={`${s.bucketId} · ${s.windowKind} latest`}
+                  name={`${s.label} latest`}
                   stroke={SERIES_COLORS[i % SERIES_COLORS.length]}
                   strokeWidth={2}
                   dot={false}
@@ -286,7 +279,7 @@ function QuotaChart({ result }: { result: QuotaHistoryResult }) {
               className="size-2.5 rounded-full"
               style={{ background: SERIES_COLORS[i % SERIES_COLORS.length] }}
             />
-            {s.bucketId} · {s.windowKind}
+            {s.label}
           </li>
         ))}
       </ul>
@@ -358,11 +351,6 @@ function CreditSummary({
       </p>
     </div>
   );
-}
-
-function formatPercent(v: unknown): string {
-  const n = Number(v);
-  return Number.isFinite(n) ? `${n.toFixed(1)}%` : '—';
 }
 
 /**
@@ -481,41 +469,3 @@ function CreditTrend({ result, timezone }: { result: CreditHistoryResult; timezo
 }
 
 /** Recharts' label content props, narrowed to what this renderer reads. */
-interface EndLabelProps {
-  x?: number | string;
-  y?: number | string;
-  value?: unknown;
-  index?: number;
-  lastIndex: number;
-}
-
-/**
- * Renders a value label at the last point of a line only.
- *
- * Recharts hands every point to the label content renderer, so the index check
- * is what keeps this a *selective* direct label rather than a number on every
- * point.
- */
-function EndLabel(props: EndLabelProps) {
-  const { x, y, value, index, lastIndex } = props;
-  if (index !== lastIndex || value === null || value === undefined) return null;
-  if (x === undefined || y === undefined) return null;
-  // Recharts types `value` loosely (it also carries renderable nodes); only a
-  // finite number is a utilisation reading worth drawing.
-  const numeric = typeof value === 'number' ? value : Number(value);
-  if (!Number.isFinite(numeric)) return null;
-  return (
-    <text
-      x={Number(x) + 6}
-      y={Number(y)}
-      dy={4}
-      // Text wears text ink, never the series colour; the stroke beside it
-      // carries identity.
-      fill="var(--muted-foreground)"
-      fontSize={11}
-      textAnchor="start"
-    >
-      {`${Math.round(numeric)}%`}
-    </text>
-  );
-}

@@ -146,9 +146,9 @@ kebab-case brief names, no frontmatter on briefs, and no open questions left in
 - `scripts/validate_okf_bundle.py`
   - Run after every edit.
 
-A Claude Code counterpart lives at `.claude/skills/okf-sync/SKILL.md`. It shares the
-reference map and validator in this directory — only the SKILL.md differs. When the bundle
-rules change, update both SKILL.md files.
+The Claude Code entrypoints under `.claude/skills/` are relative symlinks into
+`.agents/skills/`, so each skill has one `SKILL.md` source of truth; there is no second
+file to keep in sync.
 
 ## Guardrails
 

@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { buildOverview, findEndedWindows, labelWindow } from '@/lib/queries/overview';
-import { buildCreditHistory, buildQuotaHistory } from '@/lib/queries/history';
+import { buildCreditHistory, buildQuotaHistory, buildQuotaToday } from '@/lib/queries/history';
 import { recordAttempt, startRun } from '@/lib/db/repository';
+import { CLAUDE_PROBE_SOURCE_VERSION } from '@/lib/domain';
 import type { CreditSnapshot, Provider, QuotaSnapshot } from '@/lib/domain';
 import type { MoneyString } from '@/lib/money';
 import { createTestDb, testConfig } from '../helpers/db';
@@ -168,14 +169,138 @@ describe('window labelling', () => {
       }),
     ).toBe('Spend limit');
   });
+
+  it('labels the OpenCode Go billing month, which has no fixed duration', () => {
+    expect(
+      labelWindow({
+        bucketId: 'go',
+        windowKind: 'monthly',
+        usedPercent: 0,
+        windowDurationMinutes: null,
+        resetsAt: '2026-10-14T09:15:00.000Z',
+      }),
+    ).toBe('Monthly');
+  });
+});
+
+describe('today per hour', () => {
+  // NOW is 19:00 in Asia/Jakarta (UTC+7), so local today began at 17:00 UTC
+  // the day before.
+  it('keeps latest, min and max per local hour, and leaves out yesterday', () => {
+    writeQuota('codex', '2026-09-11T16:50:00.000Z', [90, 90]); // 23:50 yesterday
+    writeQuota('codex', '2026-09-12T02:10:00.000Z', [10, 40]); // 09:10
+    writeQuota('codex', '2026-09-12T02:40:00.000Z', [15, 41]); // 09:40
+    writeQuota('codex', '2026-09-12T11:55:00.000Z', [30, 50]); // 18:55
+
+    const today = buildQuotaToday(t.db, config, 'codex', NOW);
+
+    expect(today.availability).toEqual({ available: true });
+    expect(today.hours).toHaveLength(20);
+    expect(today.hours[0]).toEqual({ startsAt: '2026-09-11T17:00:00.000Z', label: '0:00' });
+    expect(today.hours.at(-1)).toEqual({ startsAt: '2026-09-12T12:00:00.000Z', label: '19:00' });
+    expect(today.series.map((s) => s.label)).toEqual(['5 hour', '7 day']);
+    expect(today.series[0]!.points).toEqual([
+      {
+        startsAt: '2026-09-12T02:00:00.000Z',
+        latestPercent: 15,
+        minPercent: 10,
+        maxPercent: 15,
+        samples: 2,
+      },
+      {
+        startsAt: '2026-09-12T11:00:00.000Z',
+        latestPercent: 30,
+        minPercent: 30,
+        maxPercent: 30,
+        samples: 1,
+      },
+    ]);
+  });
+
+  it('keeps both occurrences of the hour repeated when the clocks go back', () => {
+    // New York leaves EDT at 06:00 UTC on 1 November 2026, so 01:00-02:00
+    // local happens twice. NOW is 07:00 EST.
+    const newYork = testConfig({ AUD_TIMEZONE: 'America/New_York' });
+    writeQuota('codex', '2026-11-01T05:59:00.000Z', [80, 50]); // 01:59 EDT
+    writeQuota('codex', '2026-11-01T06:59:00.000Z', [10, 51]); // 01:59 EST
+
+    const today = buildQuotaToday(t.db, newYork, 'codex', new Date('2026-11-01T12:00:00.000Z'));
+
+    expect(today.hours.map((h) => h.label)).toEqual([
+      '0:00',
+      '1:00 EDT',
+      '1:00 EST',
+      '2:00',
+      '3:00',
+      '4:00',
+      '5:00',
+      '6:00',
+      '7:00',
+    ]);
+    expect(today.series[0]!.points.map((p) => [p.startsAt, p.latestPercent, p.samples])).toEqual([
+      ['2026-11-01T05:00:00.000Z', 80, 1],
+      ['2026-11-01T06:00:00.000Z', 10, 1],
+    ]);
+  });
+
+  it('keeps apart the half hour repeated by a thirty-minute transition', () => {
+    // Lord Howe goes from UTC+11 to UTC+10:30 at 15:00 UTC, when 02:00 becomes
+    // 01:30 again. NOW is 03:00 local.
+    const lordHowe = testConfig({ AUD_TIMEZONE: 'Australia/Lord_Howe' });
+    writeQuota('codex', '2026-04-04T14:45:00.000Z', [80, 50]); // 01:45 before
+    writeQuota('codex', '2026-04-04T15:15:00.000Z', [10, 51]); // 01:45 after
+
+    const today = buildQuotaToday(t.db, lordHowe, 'codex', new Date('2026-04-04T16:30:00.000Z'));
+
+    expect(today.hours.map((h) => h.label)).toEqual([
+      '0:00',
+      '1:00 GMT+11',
+      '1:30 GMT+10:30',
+      '2:00',
+      '3:00',
+    ]);
+    expect(today.series[0]!.points.map((p) => [p.startsAt, p.latestPercent])).toEqual([
+      ['2026-04-04T14:00:00.000Z', 80],
+      ['2026-04-04T15:00:00.000Z', 10],
+    ]);
+  });
+
+  it('leaves out the hour skipped when the clocks go forward', () => {
+    const newYork = testConfig({ AUD_TIMEZONE: 'America/New_York' });
+    writeQuota('codex', '2026-03-08T07:30:00.000Z'); // 03:30 EDT
+
+    const today = buildQuotaToday(t.db, newYork, 'codex', new Date('2026-03-08T08:00:00.000Z'));
+
+    expect(today.hours.map((h) => h.label)).toEqual(['0:00', '1:00', '3:00', '4:00']);
+    expect(today.series[0]!.points.map((p) => p.startsAt)).toEqual(['2026-03-08T07:00:00.000Z']);
+  });
+
+  it('says so, instead of drawing zeros, when nothing was observed today', () => {
+    writeQuota('codex', '2026-09-11T16:50:00.000Z');
+
+    const today = buildQuotaToday(t.db, config, 'codex', NOW);
+
+    expect(today.availability.available).toBe(false);
+    expect(today.series).toEqual([]);
+    expect(today.hours).toHaveLength(20);
+  });
+
+  it('is charted on the OpenCode Go card only', () => {
+    const overview = buildOverview(t.db, config, NOW);
+    for (const card of overview.cards) {
+      if (card.provider === 'opencode_go') expect(card.today).not.toBeNull();
+      else expect(card.today).toBeNull();
+    }
+  });
 });
 
 describe('overview', () => {
-  it('always returns all four providers, even with an empty database', () => {
+  it('always returns all five providers, even with an empty database', () => {
     const overview = buildOverview(t.db, config, NOW);
     expect(overview.cards.map((c) => c.provider)).toEqual([
       'codex',
       'claude',
+      'opencode_go',
       'deepseek',
       'openrouter',
     ]);
@@ -392,6 +517,80 @@ describe('quota history', () => {
     const result = buildQuotaHistory(t.db, config, 'codex', '7d', NOW);
     const primary = result.series.find((s) => s.windowKind === 'primary')!;
     expect(primary.points.map((p) => p.day)).toEqual(['2026-09-11', '2026-09-12']);
+  });
+});
+
+describe('quota history labels', () => {
+  function writeSnapshot(snapshot: Omit<QuotaSnapshot, 'kind' | 'collectedAt' | 'schemaVersion'>) {
+    return recordAttempt(t.db, {
+      runId: startRun(t.db, 'scheduled'),
+      provider: snapshot.provider,
+      startedAt: snapshot.observedAt,
+      finishedAt: snapshot.observedAt,
+      retryCount: 0,
+      result: {
+        outcome: 'success',
+        snapshot: {
+          ...snapshot,
+          kind: 'quota',
+          collectedAt: snapshot.observedAt,
+          schemaVersion: 1,
+        },
+      },
+    });
+  }
+
+  const gauge = (bucketId: string, windowKind: string, windowDurationMinutes: number | null) => ({
+    bucketId,
+    windowKind,
+    usedPercent: 40,
+    windowDurationMinutes,
+    resetsAt: null,
+  });
+
+  it('draws a Claude window as one labelled series whichever source observed it', () => {
+    writeSnapshot({
+      provider: 'claude',
+      observedAt: '2026-09-12T01:00:00.000Z',
+      sourceVersion: 'claude-code/2.1.269',
+      usageAllowed: null,
+      limitReachedCode: null,
+      sourceEventId: 'event-0000000001',
+      windows: [gauge('five_hour', 'five_hour', 300), gauge('seven_day', 'seven_day', 10080)],
+    });
+    writeSnapshot({
+      provider: 'claude',
+      observedAt: '2026-09-12T02:00:00.000Z',
+      sourceVersion: CLAUDE_PROBE_SOURCE_VERSION,
+      usageAllowed: null,
+      limitReachedCode: null,
+      sourceEventId: null,
+      windows: [gauge('five_hour', 'five_hour', 300), gauge('seven_day', 'seven_day', 10080)],
+    });
+
+    const result = buildQuotaHistory(t.db, config, 'claude', '7d', NOW);
+    // The probe reads the same headers the status line forwards, so one line per window.
+    expect(result.series.map((s) => s.label)).toEqual(['5 hour', '7 day']);
+    expect(result.series.map((s) => s.points[0]?.samples)).toEqual([2, 2]);
+  });
+
+  it('names a Codex bucket only when two series would otherwise share a label', () => {
+    writeSnapshot({
+      provider: 'codex',
+      observedAt: '2026-09-12T01:00:00.000Z',
+      sourceVersion: 'codex-cli/0.154.0',
+      usageAllowed: true,
+      limitReachedCode: null,
+      sourceEventId: null,
+      windows: [
+        gauge('codex', 'primary', 300),
+        gauge('codex_other', 'primary', 300),
+        gauge('codex', 'secondary', 10080),
+      ],
+    });
+
+    const labels = buildQuotaHistory(t.db, config, 'codex', '7d', NOW).series.map((s) => s.label);
+    expect(labels.sort()).toEqual(['5 hour · codex', '5 hour · codex_other', '7 day']);
   });
 });
 

@@ -19,7 +19,15 @@ import { readSavedCredentials } from '../helpers/saved-credentials';
 const DEEPSEEK_KEY = 'sk-fake-live-deepseek-000abcd';
 const OPENROUTER_KEY = 'sk-or-fake-live-openrouter-wxyz';
 
-const NO_KEYS = { deepseekApiKey: null, openrouterManagementKey: null };
+const CLAUDE_TOKEN = 'sk-ant-oat01-fake-live-claude-token-0000abcd';
+
+const OPENCODE_GO_KEY = 'sk-fake-live-opencode-go-0000efgh';
+const NO_KEYS = {
+  deepseekApiKey: null,
+  openrouterManagementKey: null,
+  claudeUsageToken: null,
+  opencodeGoApiKey: null,
+};
 
 let dir: string;
 beforeEach(() => {
@@ -81,15 +89,19 @@ describe('live gate credential reading', () => {
     expect(() => readSavedCredentials(path)).toThrow('file is not a database');
   });
 
-  it('reads both saved keys', () => {
+  it('reads every saved key, the Claude token and OpenCode Go key included', () => {
     const t = createTestDb();
     try {
       saveProviderCredential(t.db, 'deepseek', DEEPSEEK_KEY);
       saveProviderCredential(t.db, 'openrouter', OPENROUTER_KEY);
+      saveProviderCredential(t.db, 'claude', CLAUDE_TOKEN);
+      saveProviderCredential(t.db, 'opencode_go', OPENCODE_GO_KEY);
 
       expect(readSavedCredentials(t.path)).toEqual({
         deepseekApiKey: DEEPSEEK_KEY,
         openrouterManagementKey: OPENROUTER_KEY,
+        claudeUsageToken: CLAUDE_TOKEN,
+        opencodeGoApiKey: OPENCODE_GO_KEY,
       });
     } finally {
       t.cleanup();

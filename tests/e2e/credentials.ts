@@ -5,11 +5,12 @@ import type { APIRequestContext } from '@playwright/test';
 export const E2E_ORIGIN = 'http://127.0.0.1:3939';
 
 /**
- * Remove both saved provider keys, so no spec inherits one from another — the
- * mobile project runs refresh.spec.ts after the desktop project's settings spec.
+ * Remove every saved provider key, the Claude token included, so no spec
+ * inherits one from another — the mobile project runs refresh.spec.ts after the
+ * desktop project's settings spec.
  */
 export async function clearProviderKeys(request: APIRequestContext): Promise<void> {
-  for (const provider of ['deepseek', 'openrouter']) {
+  for (const provider of ['deepseek', 'openrouter', 'opencode_go', 'claude']) {
     const res = await request.delete(`/api/settings/credentials/${provider}`, {
       headers: { origin: E2E_ORIGIN },
     });

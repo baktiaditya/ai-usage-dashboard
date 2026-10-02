@@ -17,7 +17,12 @@
 import type { MoneyString } from './money';
 import type { ErrorCode } from './errors';
 
-export const PROVIDERS = ['codex', 'claude', 'deepseek', 'openrouter'] as const;
+/**
+ * Display order too: the overview returns cards in this order, and both the
+ * card grid and the history picker render them left to right. Subscription
+ * quota providers come first, prepaid balances after.
+ */
+export const PROVIDERS = ['codex', 'claude', 'opencode_go', 'deepseek', 'openrouter'] as const;
 export type Provider = (typeof PROVIDERS)[number];
 
 export function isProvider(v: string): v is Provider {
@@ -25,10 +30,13 @@ export function isProvider(v: string): v is Provider {
 }
 
 /**
- * Providers whose key is saved in dashboard Settings (plan §3.5). Codex and
- * Claude authenticate through their own CLIs and have no key here.
+ * Providers whose key is saved in dashboard Settings (plan §3.5). DeepSeek,
+ * OpenRouter and OpenCode Go report nothing without theirs. The Claude token is optional and
+ * belongs to a source, not the provider: it only enables the quota probe of plan
+ * §3.1, and Claude keeps reporting through the status-line spool without it.
+ * Codex authenticates through its own CLI and has no key here.
  */
-export const CREDENTIAL_PROVIDERS = ['deepseek', 'openrouter'] as const;
+export const CREDENTIAL_PROVIDERS = ['deepseek', 'openrouter', 'opencode_go', 'claude'] as const;
 export type CredentialProvider = (typeof CREDENTIAL_PROVIDERS)[number];
 
 export function isCredentialProvider(value: string): value is CredentialProvider {
@@ -47,11 +55,20 @@ export interface CredentialStatus {
   readonly updatedAt: string | null;
 }
 
+/**
+ * `sourceVersion` of a Claude observation read by the optional quota probe
+ * (plan §3.1): the rate-limit headers of a minimal Messages API request. A
+ * status-line observation carries `claude-code/<version>` instead, which is how
+ * freshness tells the two sources apart.
+ */
+export const CLAUDE_PROBE_SOURCE_VERSION = 'claude-api/ratelimit-headers';
+
 export const PROVIDER_LABELS: Record<Provider, string> = {
   codex: 'Codex',
   claude: 'Claude Code',
   deepseek: 'DeepSeek',
   openrouter: 'OpenRouter',
+  opencode_go: 'OpenCode Go',
 };
 
 /** What the provider card is measuring. Drives which component renders it. */
@@ -62,6 +79,7 @@ export const PROVIDER_KIND: Record<Provider, SnapshotKind> = {
   claude: 'quota',
   deepseek: 'credit',
   openrouter: 'credit',
+  opencode_go: 'quota',
 };
 
 // ---------------------------------------------------------------------------
@@ -168,6 +186,12 @@ export type CollectionResult =
   | {
       readonly outcome: 'unavailable' | 'error';
       readonly failure: CollectionFailure;
+      readonly retryCount: number;
+    }
+  | {
+      /** Nothing observed and another run owns the answer; never persisted. */
+      readonly outcome: 'deferred';
+      readonly reason: string;
       readonly retryCount: number;
     };
 
