@@ -1,5 +1,29 @@
 # Bundle Update Log
 
+## 2026-10-02
+
+- **Decision**: the open-source release removes `scripts/spike-claude-oauth-usage.ts`, its unit
+  test, the `spike:claude-usage` package script, and its README row. The user chose removal over
+  keeping it as a maintainer-only script. By default it reads the full-login token in
+  `~/.claude/.credentials.json`, which plan §2 forbids for the product, and the quota probe that
+  shipped in #16 does not use it. Dated entries, M0 Discovery, and archived briefs that cite it keep
+  their wording. Recorded in
+  [prepare-open-source-release](backlog/ready-for-agent/prepare-open-source-release.md).
+- **Update**: [prepare-open-source-release](backlog/ready-for-agent/prepare-open-source-release.md)
+  is re-checked against `main` at `69def69`, after pnpm (#11), the Claude quota probe (#16), and
+  OpenCode Go (#20) landed. The brief now:
+  - counts four saved secrets for `SECURITY.md`, including the OpenCode key and the optional Claude
+    token, and the probe's subscription usage;
+  - names OpenCode Go's undocumented usage endpoint and the probe's unified rate-limit headers in
+    the interface-stability caveat;
+  - drops the Node work already done by the pnpm migration, leaving only `.nvmrc`;
+  - points the add-a-provider guide at the OpenCode Go delivery and its history-preserving
+    migration `0004`;
+  - names the Setup references to repoint and the `v0.1.0` tag;
+  - requires `pnpm run verify` to pass on `main` before starting. On this date it fails two
+    OpenCode Go collector cases, because their fixtures carry fixed reset times that are now in
+    the past; that fix lands on `main` separately.
+
 ## 2026-09-30
 
 - **Update**: [PR #20](https://github.com/baktiaditya/ai-usage-dashboard/pull/20) is merged as
