@@ -2,6 +2,14 @@
 
 ## 2026-10-03
 
+- **Update**: the [README](../README.md) keeps the product overview and quick start while
+  linking changing details to their owning sources: Node and pnpm requirements to
+  `package.json` and `.nvmrc`, commands to package scripts and Setup, and dated provider
+  verification to Discovery. The architecture diagram describes the shared collection flow
+  without enumerating adapters, the screenshot is labelled as illustrative demo data, and
+  repeated provider counts, CLI versions, endpoint details, port defaults, and historical
+  credential setup are removed from the entry point. Product behavior and scope are unchanged.
+
 - **Update**: [prepare-open-source-release](backlog/archive/prepare-open-source-release.md) is
   implemented on branch `feat/open-source-release-prep` and moves to `archive/`. The repository
   gains an MIT [LICENSE](../LICENSE) with
