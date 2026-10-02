@@ -2,6 +2,15 @@
   "name": "ai-usage-dashboard",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/baktiaditya/ai-usage-dashboard.git"
+  },
+  "bugs": {
+    "url": "https://github.com/baktiaditya/ai-usage-dashboard/issues"
+  },
+  "homepage": "https://github.com/baktiaditya/ai-usage-dashboard#readme",
   "type": "module",
   "engines": {
     "node": "^24.15.0"
@@ -28,8 +37,7 @@
     "verify": "pnpm run format:check && pnpm run lint && pnpm run typecheck && pnpm run test",
     "db:build-migrations": "tsx scripts/build-migrations.ts",
     "seed:demo": "tsx scripts/seed-demo.ts",
-    "seed:dev": "tsx scripts/seed-demo.ts --dev",
-    "spike:claude-usage": "tsx scripts/spike-claude-oauth-usage.ts"
+    "seed:dev": "tsx scripts/seed-demo.ts --dev"
   },
   "dependencies": {
     "@floating-ui/react": "0.27.20",

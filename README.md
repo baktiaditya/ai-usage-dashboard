@@ -4,6 +4,8 @@ A localhost-first dashboard that answers three questions on one screen: how much
 subscription quota is left, how much prepaid credit is left, and whether any
 provider is worth switching away from right now.
 
+![AI Usage Dashboard with seeded demo data for all five providers](docs/assets/dashboard.png)
+
 Five providers, three kinds of number, deliberately never mixed:
 
 | Provider        | Source                                                  | Measures                                    |
@@ -16,8 +18,10 @@ Five providers, three kinds of number, deliberately never mixed:
 
 ## Quick start
 
-Requires Node.js 24.15 or a later Node 24 release. Its bundled corepack runs the exact pnpm
-version `package.json` pins.
+Runs on **Linux only**: scheduling uses user `systemd`, and the database restore
+guard reads `/proc`. Requires Node.js 24.15 or a later Node 24 release (`.nvmrc`
+names Node 24). Its bundled corepack runs the exact pnpm version `package.json`
+pins.
 
 ```bash
 corepack enable pnpm
@@ -126,7 +130,33 @@ so scheduled and manual runs cannot drift apart in behaviour.
 | `pnpm run verify`                            | format + lint + typecheck + unit + integration                                                            |
 | `pnpm run test:e2e`                          | browser smoke at desktop and mobile widths                                                                |
 | `pnpm run test:live`                         | opt-in live checks; skips gates whose credential is absent                                                |
-| `pnpm run spike:claude-usage`                | hand-run gate probe for Claude's usage endpoint (needs a full-login token, not a `setup-token` one)       |
+
+## Platform, affiliation, and interface stability
+
+**Linux only.** Scheduling uses user `systemd`, and the database restore guard reads `/proc`; macOS
+and Windows are not supported. Node.js 24.15 or a later Node 24 release is required (`.nvmrc` names
+Node 24).
+
+This project is not affiliated with, endorsed by, or sponsored by OpenAI, Anthropic, DeepSeek,
+OpenRouter, or OpenCode. Provider names and marks belong to their respective owners and are shown
+only to identify the services the dashboard reads; see
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+Several sources are not stable public APIs and may change without notice:
+
+- Codex is read through `codex app-server` JSON-RPC;
+- Claude is read through the status-line bridge, and the optional quota probe reads the
+  `anthropic-ratelimit-unified-5h-*` and `-7d-*` response headers;
+- OpenCode Go is read from `GET opencode.ai/zen/go/v1/usage`, which is not yet in OpenCode's public
+  documentation.
+
+A source that changes shape is reported as `schema_mismatch`, never as a wrong number.
+
+## Contributing and license
+
+Contributions are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md) for setup, the `pnpm run verify`
+gate, and how to add a provider. Report vulnerabilities privately as described in
+[SECURITY.md](SECURITY.md). Released under the [MIT License](LICENSE).
 
 ## Status
 

@@ -46,7 +46,7 @@ database collisions, but not this one.
 - Resolved: PR #1 is merged into `main` as `a695a09`, including the web unit and the installer's
   `--with-web` flag (introduced in `f80c013`).
 - Resolved: the production checkout is a separate clone at
-  `/home/bago/Workspace/ai-usage-dashboard-prod`.
+  `~/Workspace/ai-usage-dashboard-prod`.
 - Resolved: brief dashboard and collection downtime during deploy and rollback is acceptable.
 - Resolved: the user authorizes creating the production clone, reinstalling and restarting both
   user units from it, and performing the rollback rehearsal required by this brief.

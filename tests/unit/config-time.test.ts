@@ -1,6 +1,6 @@
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   ConfigError,
   RETIRED_CREDENTIAL_ENV_VARS,
@@ -23,7 +23,6 @@ describe('configuration', () => {
     const c = loadConfig({});
     expect(c.host).toBe('127.0.0.1');
     expect(c.port).toBe(3838);
-    expect(c.timezone).toBe('Asia/Jakarta');
     expect(c.retentionDays).toBe(90);
   });
 
@@ -105,8 +104,54 @@ describe('configuration', () => {
     );
   });
 
-  it('rejects an invalid timezone instead of silently falling back', () => {
-    expect(() => loadConfig({ AUD_TIMEZONE: 'Mars/Olympus' })).toThrow(ConfigError);
+  describe('timezone default', () => {
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    function stubSystemZone(timeZone: string): void {
+      vi.spyOn(Intl.DateTimeFormat.prototype, 'resolvedOptions').mockReturnValue({
+        ...new Intl.DateTimeFormat('en-US').resolvedOptions(),
+        timeZone,
+      });
+    }
+
+    it('follows the system timezone when AUD_TIMEZONE is unset', () => {
+      stubSystemZone('America/New_York');
+      expect(loadConfig({}).timezone).toBe('America/New_York');
+    });
+
+    it('follows the system timezone when AUD_TIMEZONE is blank', () => {
+      stubSystemZone('Europe/London');
+      expect(loadConfig({ AUD_TIMEZONE: '' }).timezone).toBe('Europe/London');
+      expect(loadConfig({ AUD_TIMEZONE: '  ' }).timezone).toBe('Europe/London');
+    });
+
+    it('falls back to UTC when Node resolves no system timezone', () => {
+      stubSystemZone('');
+      expect(loadConfig({}).timezone).toBe('UTC');
+    });
+
+    it('falls back to UTC when the resolved system timezone is not a valid IANA name', () => {
+      stubSystemZone('Mars/Olympus');
+      expect(loadConfig({}).timezone).toBe('UTC');
+    });
+
+    it('falls back to UTC when resolving the system timezone throws', () => {
+      vi.spyOn(Intl.DateTimeFormat.prototype, 'resolvedOptions').mockImplementation(() => {
+        throw new Error('no timezone data');
+      });
+      expect(loadConfig({}).timezone).toBe('UTC');
+    });
+
+    it('lets an explicit AUD_TIMEZONE win over the system timezone', () => {
+      stubSystemZone('America/New_York');
+      expect(loadConfig({ AUD_TIMEZONE: 'Europe/London' }).timezone).toBe('Europe/London');
+    });
+
+    it('rejects an invalid timezone instead of silently falling back', () => {
+      expect(() => loadConfig({ AUD_TIMEZONE: 'Mars/Olympus' })).toThrow(ConfigError);
+    });
   });
 
   it('rejects out-of-range numeric settings', () => {

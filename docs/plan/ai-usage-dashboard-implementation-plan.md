@@ -144,7 +144,7 @@ Added 2026-09-30 (see the [log](../log.md)), delivered from the now archived bri
   - OpenRouter: `total_usage` deltas for today/7/30 days only when a pre-period baseline exists;
   - DeepSeek: balance changes labeled **balance change**, not usage, since top-ups/grants can move the value;
   - insufficient history shown explicitly, never as zero.
-- The “today” boundary follows the dashboard's configured timezone: `AUD_TIMEZONE` when set, otherwise the system timezone as Node resolves it, falling back to `UTC` when none resolves; timestamps are stored in UTC and converted only at query/presentation time. (Decided 2026-09-15; until [prepare-open-source-release](../backlog/ready-for-agent/prepare-open-source-release.md) is delivered, the running default is `Asia/Jakarta`.)
+- The “today” boundary follows the dashboard's configured timezone: `AUD_TIMEZONE` when set, otherwise the system timezone as Node resolves it, falling back to `UTC` when none resolves; timestamps are stored in UTC and converted only at query/presentation time. (Decided 2026-09-15.)
 - The diagnostics panel shows only error codes, adapter/source versions, and redacted safe messages.
 - Per-provider manual refresh uses `POST` and never blocks other providers.
 

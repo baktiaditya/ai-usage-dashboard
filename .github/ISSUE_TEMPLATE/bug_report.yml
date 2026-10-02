@@ -1,0 +1,61 @@
+name: Bug report
+description: Report a reproducible problem with the dashboard.
+labels: [needs-triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not include API keys, tokens, account identifiers, quota values, or raw provider
+        payloads. For a suspected security vulnerability, use the private reporting path in
+        SECURITY.md instead of this form.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. ...
+        2. ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      description: The release tag, or the output of `git rev-parse HEAD`.
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: Node and pnpm versions
+      description: The output of `node --version` and `pnpm --version`.
+    validations:
+      required: true
+  - type: dropdown
+    id: provider
+    attributes:
+      label: Affected provider
+      options:
+        - Codex
+        - Claude Code
+        - OpenCode Go
+        - DeepSeek
+        - OpenRouter
+        - Not provider-specific
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Redact anything sensitive before pasting.
+      render: shell
+    validations:
+      required: false

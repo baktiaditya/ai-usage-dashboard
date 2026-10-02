@@ -23,7 +23,7 @@ provider is worth switching away from right now. This bundle follows
 # Operations
 
 - [Operations](operations/index.md) - Install, per-provider setup, systemd timer,
-  config reference, and troubleshooting.
+  config reference, troubleshooting, and the maintainer production-checkout runbook.
 
 # Agents
 

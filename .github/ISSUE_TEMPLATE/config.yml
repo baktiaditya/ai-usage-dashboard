@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/baktiaditya/ai-usage-dashboard/security/advisories/new
+    about: Report privately through GitHub security advisories. Do not open a public issue.

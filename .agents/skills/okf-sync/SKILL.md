@@ -25,6 +25,7 @@ docs/
   operations/                      — install, credentials, timer, troubleshooting
   backlog/                         — triaged work briefs; non-canonical
   agents/                          — per-repo configuration read by agent skills
+  assets/                          — images referenced by the bundle and the README; not concept pages
 ```
 
 Each folder has a plain `index.md` navigation list with no frontmatter. Concept pages carry YAML frontmatter with at

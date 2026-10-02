@@ -2,7 +2,14 @@
 
 ## Status
 
-Ready for agent
+Archived
+
+Delivered on 2026-10-03 on branch `feat/open-source-release-prep`; the delivery is recorded in the
+[log](../../log.md). The contract lives in the
+[plan](../../plan/ai-usage-dashboard-implementation-plan.md) §3.2,
+[Setup](../../operations/setup.md) §4/§6/§7, the
+[production checkout runbook](../../operations/production-checkout.md), and the
+[README](../../../README.md). This brief is not updated further.
 
 The status above must match the directory that contains this brief. Move the file with
 `git mv` when its readiness changes.
@@ -57,8 +64,8 @@ The assessment found these gaps:
 2. **Maintainer-specific detail in tracked files.**
    - The maintainer's absolute home path to the production checkout appears in two 2026-09-14
      entries of [log](../../log.md) and in the archived briefs
-     [separate-production-checkout](../archive/separate-production-checkout.md) and
-     [store-provider-keys-in-settings](../archive/store-provider-keys-in-settings.md).
+     [separate-production-checkout](separate-production-checkout.md) and
+     [store-provider-keys-in-settings](store-provider-keys-in-settings.md).
    - [Setup](../../operations/setup.md) §6 clones over SSH, which needs a GitHub SSH key that
      outside users will not have for this repository.
    - `loadConfig` in `src/lib/config.ts` defaults `AUD_TIMEZONE` to `Asia/Jakarta`, and Setup §7
@@ -109,7 +116,7 @@ The assessment found these gaps:
    - Adding a provider means editing hard-coded lists, such as `PROVIDER_PATTERN` in
      `src/lib/config.ts`, and no guide describes the path. OpenCode Go
      ([PR #20](https://github.com/baktiaditya/ai-usage-dashboard/pull/20),
-     [its brief](../archive/add-opencode-go-quota.md)) is the most recent complete example.
+     [its brief](add-opencode-go-quota.md)) is the most recent complete example.
    - Every commit carries the maintainer's author email, which becomes public with the repository.
      The user accepted this.
 
@@ -139,7 +146,7 @@ The user closed every gate on 2026-09-15, recorded as a `Decision` in [log](../.
 - **Commit author email:** kept. History is not rewritten.
 - **CI:** `pnpm run verify` only; `pnpm run test:e2e` stays a local check.
 - **Package manager:** pnpm, provided through corepack, as the
-  [npm to pnpm migration brief](../archive/migrate-from-npm-to-pnpm.md) decides.
+  [npm to pnpm migration brief](migrate-from-npm-to-pnpm.md) decides.
   That migration is a preceding change and lands first. Before starting, confirm that `main` has
   `pnpm-lock.yaml` and no `package-lock.json`; otherwise stop and report that the migration has not
   landed.
