@@ -859,7 +859,16 @@ describe('OpenCode Go through the collector', () => {
     vi.stubGlobal('fetch', upstream);
   }
 
+  // The fixtures carry fixed reset times, and a card whose window has reset reads `stale`.
+  // Pin the clock before the earliest one (rolling, 2026-09-30T16:30Z) so the cases stay
+  // true after that date.
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-09-30T12:00:00.000Z'));
+  });
+
   afterEach(() => {
+    vi.useRealTimers();
     vi.unstubAllGlobals();
   });
 
