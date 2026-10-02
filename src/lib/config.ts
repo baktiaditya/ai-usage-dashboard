@@ -209,6 +209,30 @@ function validateTimezone(tz: string): string {
 }
 
 /**
+ * With `AUD_TIMEZONE` unset or blank, follow the system timezone as Node
+ * resolves it, falling back to `UTC` when none resolves or the resolved zone
+ * is not a valid IANA name. An explicit non-blank value is validated and used
+ * as given, so a typo still fails at startup rather than silently drifting.
+ */
+function resolveTimezone(explicit: string | undefined): string {
+  if (explicit !== undefined && explicit.trim() !== '') {
+    return validateTimezone(explicit);
+  }
+  let system: string;
+  try {
+    system = Intl.DateTimeFormat().resolvedOptions().timeZone ?? '';
+  } catch {
+    system = '';
+  }
+  if (system === '') return 'UTC';
+  try {
+    return validateTimezone(system);
+  } catch {
+    return 'UTC';
+  }
+}
+
+/**
  * Loopback-only by policy. A non-loopback host is rejected outright rather than
  * warned about: the plan requires authentication and TLS before this dashboard
  * is ever reachable off-machine, and neither exists yet.
@@ -273,7 +297,7 @@ export function loadConfig(env: EnvLike = process.env): AppConfig {
     dataDir,
     databasePath: join(dataDir, 'usage.db'),
     spoolPath: join(dataDir, 'spool', 'claude-statusline.json'),
-    timezone: validateTimezone(e.AUD_TIMEZONE ?? 'Asia/Jakarta'),
+    timezone: resolveTimezone(e.AUD_TIMEZONE),
     host,
     port: e.AUD_PORT,
     retentionDays: e.AUD_RETENTION_DAYS,

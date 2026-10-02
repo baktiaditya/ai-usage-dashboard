@@ -32,6 +32,7 @@ Keep this hierarchy intact:
 
 - `docs/operations/index.md`
 - `docs/operations/setup.md` — install, credentials, timer, troubleshooting
+- `docs/operations/production-checkout.md` — maintainer deploy and rollback runbook for the production checkout
 
 ### backlog/
 
@@ -48,6 +49,11 @@ Keep this hierarchy intact:
 - `docs/agents/issue-tracker.md` — where issues live and how briefs link to them
 - `docs/agents/triage-labels.md` — triage roles and their backlog folders
 - `docs/agents/domain.md` — single-context layout; decisions stay in `docs/log.md`
+
+### assets/
+
+- `docs/assets/` — images referenced by the bundle and the README, such as the demo-data
+  screenshot; not concept pages
 
 ## Change to document map
 

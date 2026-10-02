@@ -435,7 +435,7 @@ python3 .agents/skills/okf-sync/scripts/validate_okf_bundle.py
 ```
 
 The production web unit serves the separate checkout at
-`/home/bago/Workspace/ai-usage-dashboard-prod` (Setup §6). `npm run test:e2e`, which rebuilds
+`~/Workspace/ai-usage-dashboard-prod` (Setup §6). `npm run test:e2e`, which rebuilds
 `.next`, is safe in the development checkout or a worktree, and must never run inside the
 production checkout. For browser inspection outside the spec, AGENTS.md's `agent-browser` workflow
 against `npm run dev` (`http://127.0.0.1:3839/`) is enough. A key saved there stays in the

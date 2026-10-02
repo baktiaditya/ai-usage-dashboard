@@ -6,6 +6,11 @@ description: Historical record of the agent brief that built the plan end to end
 
 # Agent Prompt — Implement the AI Usage Dashboard
 
+> **Historical record.** This prompt is the brief that built the dashboard end to end; that work is
+> complete. It is kept for provenance and is not an instruction to re-run. Current scope lives in
+> [the implementation plan](./ai-usage-dashboard-implementation-plan.md), current operations in
+> [Setup](../operations/setup.md), and dated decisions in [the log](../log.md).
+
 You are the implementation agent for this repository. Build the application described in [`docs/plan/ai-usage-dashboard-implementation-plan.md`](./ai-usage-dashboard-implementation-plan.md) into a working, tested localhost-first dashboard.
 
 ## Objective

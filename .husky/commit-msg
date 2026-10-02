@@ -1,2 +1,7 @@
-export PATH="$HOME/.nvm/versions/node/$(ls $HOME/.nvm/versions/node 2>/dev/null | tail -1)/bin:$HOME/.local/bin:/usr/local/bin:$PATH"
+# Husky can run with a minimal PATH. Fail loudly when node or corepack's pnpm
+# shim is missing instead of assuming an nvm installation.
+if ! command -v node >/dev/null 2>&1 || ! command -v pnpm >/dev/null 2>&1; then
+  echo "commit-msg: node and pnpm must be on PATH; run 'corepack enable pnpm' once" >&2
+  exit 1
+fi
 pnpm exec commitlint --edit "$1"

@@ -1,8 +1,36 @@
 # Bundle Update Log
 
+## 2026-10-03
+
+- **Update**: [prepare-open-source-release](backlog/archive/prepare-open-source-release.md) is
+  implemented on branch `feat/open-source-release-prep` and moves to `archive/`. The repository
+  gains an MIT [LICENSE](../LICENSE) with
+  [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md) for the Lobe Icons marks,
+  `license`/`repository`/`bugs`/`homepage` package metadata, a `.nvmrc` naming Node 24, a
+  [CHANGELOG](../CHANGELOG.md), [CONTRIBUTING](../CONTRIBUTING.md), [SECURITY](../SECURITY.md),
+  GitHub issue templates, and CI that runs `pnpm run verify` on Node 24 from `.nvmrc`. With
+  `AUD_TIMEZONE` unset or blank, `loadConfig` now follows the system timezone as Node resolves it,
+  falling back to `UTC` when none resolves or the resolved zone is invalid; an explicit invalid
+  zone still throws `ConfigError`. Setup §7, `.env.example`, and plan §3.2 describe that default.
+  The production deploy and rollback runbook moves from Setup §6 to
+  [production-checkout](operations/production-checkout.md) with an HTTPS clone URL; Setup §3, §4,
+  §5, §6 and §10 point there, the implementation prompt carries a historical-record note, and the
+  Setup §4 upgrade steps note that only installs predating the Settings dialog need them. The
+  Claude usage spike script, its unit test, its package script, and its README row are removed;
+  dated entries and archived briefs keep their mentions. The Husky hooks no longer assume nvm and
+  fail with a clear message when `node` or corepack's `pnpm` is not on `PATH`. Maintainer home
+  paths in the two 2026-09-14 entries and in the archived
+  [separate-production-checkout](backlog/archive/separate-production-checkout.md) and
+  [store-provider-keys-in-settings](backlog/archive/store-provider-keys-in-settings.md) briefs are
+  redacted to `~/Workspace/ai-usage-dashboard-prod`; this is a redaction, not a decision change.
+  `pnpm run verify`, `pnpm run test:e2e`, the OKF validator, and a fresh-clone
+  install/migrate/collect/build/start pass. The README screenshot is captured from
+  `pnpm run seed:demo` data in an isolated data directory. Nothing is committed, pushed, tagged,
+  or made public in this session; `v0.1.0` is tagged after the change is merged.
+
 ## 2026-10-02
 
-- **Update**: [prepare-open-source-release](backlog/ready-for-agent/prepare-open-source-release.md)
+- **Update**: [prepare-open-source-release](backlog/archive/prepare-open-source-release.md)
   is tracked by [#25](https://github.com/baktiaditya/ai-usage-dashboard/issues/25), labelled
   `ready-for-agent`, and the brief links back to it. The fixture fix in the entry below landed as
   [#24](https://github.com/baktiaditya/ai-usage-dashboard/pull/24) (`59eb129`): the OpenCode Go
@@ -14,8 +42,8 @@
   `~/.claude/.credentials.json`, which plan §2 forbids for the product, and the quota probe that
   shipped in #16 does not use it. Dated entries, M0 Discovery, and archived briefs that cite it keep
   their wording. Recorded in
-  [prepare-open-source-release](backlog/ready-for-agent/prepare-open-source-release.md).
-- **Update**: [prepare-open-source-release](backlog/ready-for-agent/prepare-open-source-release.md)
+  [prepare-open-source-release](backlog/archive/prepare-open-source-release.md).
+- **Update**: [prepare-open-source-release](backlog/archive/prepare-open-source-release.md)
   is re-checked against `main` at `69def69`, after pnpm (#11), the Claude quota probe (#16), and
   OpenCode Go (#20) landed. The brief now:
   - counts four saved secrets for `SECURITY.md`, including the OpenCode key and the optional Claude
@@ -441,7 +469,7 @@
   recorded successful attempts for every provider they collected.
 
 - **Decision**: the open-source release adopts pnpm.
-  [prepare-open-source-release](backlog/ready-for-agent/prepare-open-source-release.md) now depends
+  [prepare-open-source-release](backlog/archive/prepare-open-source-release.md) now depends
   on the [npm to pnpm migration](backlog/archive/migrate-from-npm-to-pnpm.md), which
   lands first. The user ordered the migration before the release so that the first public README,
   contributing guide, and CI already use pnpm. CI runs `pnpm run verify` only, installing with
@@ -486,7 +514,7 @@
   Plan §4.1 still pins npm, and [Setup](operations/setup.md) still describes it.
 
 - **Decision**: the open-source release gates are closed, and
-  [prepare-open-source-release](backlog/ready-for-agent/prepare-open-source-release.md) moves to
+  [prepare-open-source-release](backlog/archive/prepare-open-source-release.md) moves to
   `ready-for-agent/`. The user chose each term. The license is MIT. The timezone default follows the
   system timezone as Node resolves it, falling back to `UTC` when none resolves; an explicit
   `AUD_TIMEZONE` still wins, and an invalid one is still rejected.
@@ -504,7 +532,7 @@
   step after delivery.
 
 - **Proposed**: prepare the repository for an open-source release, in
-  [prepare-open-source-release](backlog/ready-for-agent/prepare-open-source-release.md). A readiness
+  [prepare-open-source-release](backlog/archive/prepare-open-source-release.md). A readiness
   assessment at `e1d6923`, re-run against `e2d553c` after provider keys moved into the database,
   found the code ready: `npm run verify` passes, `npm audit` is clean, a fresh clone installs,
   collects, and builds, and the git history holds no real key. The re-run added the second
@@ -583,7 +611,7 @@
 - **Update**: production now runs from its own checkout, and
   [separate-production-checkout](backlog/archive/separate-production-checkout.md) moves to
   `archive/`. Both user units were reinstalled from the separate clone at
-  `/home/bago/Workspace/ai-usage-dashboard-prod`, detached at `f6fcb03` from `origin/main`. The
+  `~/Workspace/ai-usage-dashboard-prod`, detached at `f6fcb03` from `origin/main`. The
   data directory, `collector.env`, host, port, 5-minute interval and boot enablement are unchanged,
   and the rendered units are byte-identical to the installed ones. Before cutover, `npm ci`,
   `npm run verify` and `npm run build` passed in the clone while the old units kept serving. After
@@ -603,7 +631,7 @@
 - **Decision**: production-checkout isolation is fixed and ready for implementation in
   [separate-production-checkout](backlog/archive/separate-production-checkout.md).
   Production deploys only commits from `origin/main` through the separate clone at
-  `/home/bago/Workspace/ai-usage-dashboard-prod`; no development or hotfix commit originates there.
+  `~/Workspace/ai-usage-dashboard-prod`; no development or hotfix commit originates there.
   Brief downtime is accepted so the timer, any active collector service, and the web unit can stop
   before source, dependencies, or `.next` change. Each deploy records its candidate and previous
   SHA, and rollback restores source, dependencies, build, and rendered units from one known-good
