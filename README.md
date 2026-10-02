@@ -4,24 +4,30 @@ A localhost-first dashboard that answers three questions on one screen: how much
 subscription quota is left, how much prepaid credit is left, and whether any
 provider is worth switching away from right now.
 
-![AI Usage Dashboard with seeded demo data for all five providers](docs/assets/dashboard.png)
+![AI Usage Dashboard with seeded demo data](docs/assets/dashboard.png)
 
-Five providers, three kinds of number, deliberately never mixed:
+_Illustrative screenshot using seeded demo data._
 
-| Provider        | Source                                                  | Measures                                    |
-| --------------- | ------------------------------------------------------- | ------------------------------------------- |
-| **Codex**       | `codex app-server` JSON-RPC (`account/rateLimits/read`) | quota gauge per window                      |
-| **Claude Code** | status-line bridge → local spool; optional quota probe  | quota gauge per window                      |
-| **OpenCode Go** | `GET opencode.ai/zen/go/v1/usage`                       | quota gauge per window                      |
-| **DeepSeek**    | `GET api.deepseek.com/user/balance`                     | money balance per currency                  |
-| **OpenRouter**  | `GET openrouter.ai/api/v1/credits`                      | money: credits, cumulative usage, remaining |
+Supported providers, with quota and money kept separate:
+
+| Provider        | Source                                                 | Measures                                    |
+| --------------- | ------------------------------------------------------ | ------------------------------------------- |
+| **Codex**       | Codex CLI interface                                    | quota gauge per window                      |
+| **Claude Code** | status-line bridge → local spool; optional quota probe | quota gauge per window                      |
+| **OpenCode Go** | OpenCode Go usage API                                  | quota gauge per window                      |
+| **DeepSeek**    | DeepSeek balance API                                   | money balance per currency                  |
+| **OpenRouter**  | OpenRouter credits API                                 | money: credits, cumulative usage, remaining |
+
+Source contracts and provider requirements live in the
+[implementation plan](docs/plan/ai-usage-dashboard-implementation-plan.md) and
+[Setup](docs/operations/setup.md).
 
 ## Quick start
 
 Runs on **Linux only**: scheduling uses user `systemd`, and the database restore
-guard reads `/proc`. Requires Node.js 24.15 or a later Node 24 release (`.nvmrc`
-names Node 24). Its bundled corepack runs the exact pnpm version `package.json`
-pins.
+guard reads `/proc`. Install Node.js matching `engines.node` in
+[package.json](package.json); [.nvmrc](.nvmrc) selects the supported release line.
+Corepack runs the pnpm version pinned by `packageManager` in the same package file.
 
 ```bash
 corepack enable pnpm
@@ -29,18 +35,22 @@ pnpm install --frozen-lockfile
 pnpm run db:migrate
 pnpm run collect
 pnpm run build
-pnpm run start        # http://127.0.0.1:3838
+pnpm run start
 ```
 
-Working on the dashboard itself? `pnpm run dev` runs beside production on
-`http://127.0.0.1:3839` with its own empty database (`pnpm run seed:dev` fills it)
-and manual refresh disabled unless `AUD_DEV_LIVE_REFRESH=1`.
+Open the local URL printed by the server. Ports, data directories, timezone, and
+other overrides are documented in [Setup](docs/operations/setup.md#7-configuration-reference).
+
+Working on the dashboard itself? `pnpm run dev` uses a separate port and database;
+`pnpm run seed:dev` fills that database with demo data. See
+[Development server](docs/operations/setup.md#development-server) for isolation and live-refresh options.
 
 It works with nothing configured. Providers you have not set up render as
 `unavailable` with a setup hint instead of blocking the page or failing the run.
-DeepSeek, OpenRouter and OpenCode Go keys are entered under **Settings**, next to **Reload view**. An optional
-Claude token entered there lets Claude report quota while no session is running, by sending a
-one-token request that counts toward your Claude usage.
+Enter provider credentials under **Settings**. The optional Claude quota probe can
+report quota while no session is running; it sends real inference that counts toward
+your Claude subscription usage. See [Setup](docs/operations/setup.md) for each
+provider's configuration.
 
 Full instructions, including the Claude status-line bridge, credentials, and the
 systemd timer: **[docs/operations/setup.md](docs/operations/setup.md)**.
@@ -55,14 +65,11 @@ average them, or render them through the same component by accident. It also
 means DeepSeek's balance is never called "usage": that endpoint reports no usage
 at all, and inferring it from a falling balance would be a fabricated number.
 
-**Money never touches binary floating point.** Every amount is a canonical
-decimal string, combined only through `decimal.js`, stored in `TEXT` columns and
-never in SQLite `REAL`. A chart converts an amount to a number only to position
-it, and draws nothing when that number would not read back as the same decimal.
-The subtle part is JSON: OpenRouter sends
-`{"total_credits": 100.5}` as a JSON _number_, and `response.json()` would round
-it before anything could react. The HTTP layer reads the body as text and uses
-Node 24's JSON source-text access to keep the literal digits from the wire.
+**Money keeps its decimal precision.** Amounts are canonical decimal strings,
+calculated with decimal arithmetic and stored without floating-point columns.
+A chart converts an amount to a number only to position it, and draws nothing
+when that number would not read back as the same decimal. Numeric JSON values
+are read losslessly, preserving the literal digits from the wire before arithmetic.
 
 **Freshness is derived, never stored.** Card status, data age and advisories all
 depend on the current clock and on configurable thresholds, so a persisted copy
@@ -74,22 +81,18 @@ computed from a two-day-old percentage is a guess wearing the costume of a fact.
 ## Architecture
 
 ```
-scripts/collect.ts ─┐                        ┌─ adapters/codex      (JSON-RPC child process)
-                    ├─ collector/  ──────────┼─ adapters/deepseek   (HTTPS)
-POST /api/.../refresh┘   parallel,           ├─ adapters/openrouter (HTTPS)
-                         isolated,           └─ adapters/claude-usage (optional HTTPS probe,
-                         one attempt/provider      composed with ingestors/claude-statusline)
-                              │
-                              ▼
-                      db/  SQLite + WAL
-                      immutable observations, full attempt audit trail
-                              │
-                              ▼
-                      queries/  overview + history
-                      freshness · advisory · aggregation by metric type
-                              │
-                              ▼
-                      app/  Next.js, bound to 127.0.0.1
+Scheduled collection ─┐
+                      ├─ Shared collector ── Provider APIs, CLI interfaces, local events
+Manual refresh ───────┘          │
+                                ▼
+                       SQLite observations + attempt audit
+                                │
+                                ▼
+                       Overview and history queries
+                       freshness · advisory · aggregation by metric type
+                                │
+                                ▼
+                       Loopback-only dashboard
 ```
 
 One idempotent collection path serves both the systemd timer and manual refresh,
@@ -97,7 +100,7 @@ so scheduled and manual runs cannot drift apart in behaviour.
 
 ## Security posture
 
-- binds explicitly to `127.0.0.1`; a non-loopback `AUD_HOST` fails at startup;
+- binds only to loopback; a non-loopback `AUD_HOST` fails at startup;
 - authentication is delegated to the source: no auth file is read, no token is
   extracted, no terminal UI is scraped. The one token the dashboard holds for a
   CLI provider is a Claude token the user mints with `claude setup-token` and
@@ -107,50 +110,36 @@ so scheduled and manual runs cannot drift apart in behaviour.
 - a redaction pass runs before every log write, persisted diagnostic, API
   response and rendered string, with tests asserting on each secret shape;
 - manual refresh is `POST`, same-origin enforced, and locally rate limited;
-- DeepSeek, OpenRouter and OpenCode Go keys, and the optional Claude token, are saved from the Settings dialog into the
-  owner-only (`0600`) database, are never read from the environment, and never
+- saved credentials live in the owner-only database, are never read from the environment, and never
   reach the browser in full: it receives at most a key's last four characters,
   and every settings route requires a same-origin request;
 - read-only toward providers: no plan change, no purchase, and no key is ever
   created, modified, or deleted at a provider. Saving or removing a key in
   Settings changes only the dashboard's local copy.
 
+Credential storage, backup handling, and the quota probe's subscription usage are
+covered in [SECURITY.md](SECURITY.md).
+
 ## Commands
 
-| Command                                      | Does                                                                                                      |
-| -------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| `pnpm run start`                             | production dashboard on `127.0.0.1:3838` (or `AUD_HOST`/`AUD_PORT`) from a `pnpm run build`               |
-| `pnpm run dev`                               | development server on `127.0.0.1:3839` (`AUD_DEV_PORT`), own database, refresh off by default             |
-| `pnpm run seed:dev`                          | fill the development database with every card state; never the production one                             |
-| `pnpm run collect`                           | one collection pass (`--manual`, `--provider=codex,deepseek`)                                             |
-| `pnpm run db:migrate`                        | apply migrations, print schema state                                                                      |
-| `pnpm run db:backup` / `pnpm run db:restore` | back up the database while it runs; restore one with the units stopped                                    |
-| `pnpm run claude:install-statusline`         | install the bridge (dry run by default)                                                                   |
-| `pnpm run systemd:install`                   | render the collector units and the optional web unit (install, enable, and `--with-web` are opt-in flags) |
-| `pnpm run verify`                            | format + lint + typecheck + unit + integration                                                            |
-| `pnpm run test:e2e`                          | browser smoke at desktop and mobile widths                                                                |
-| `pnpm run test:live`                         | opt-in live checks; skips gates whose credential is absent                                                |
+Run `pnpm run` to list the scripts available in your checkout. Their definitions live in
+[package.json](package.json).
 
-## Platform, affiliation, and interface stability
+For collection, credentials, scheduling, backup, and restore commands, follow
+[Setup](docs/operations/setup.md). For development and validation commands, follow
+[CONTRIBUTING.md](CONTRIBUTING.md).
 
-**Linux only.** Scheduling uses user `systemd`, and the database restore guard reads `/proc`; macOS
-and Windows are not supported. Node.js 24.15 or a later Node 24 release is required (`.nvmrc` names
-Node 24).
+## Affiliation and interface stability
 
-This project is not affiliated with, endorsed by, or sponsored by OpenAI, Anthropic, DeepSeek,
-OpenRouter, or OpenCode. Provider names and marks belong to their respective owners and are shown
+This project is not affiliated with, endorsed by, or sponsored by the providers it supports.
+Provider names and marks belong to their respective owners and are shown
 only to identify the services the dashboard reads; see
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
-Several sources are not stable public APIs and may change without notice:
-
-- Codex is read through `codex app-server` JSON-RPC;
-- Claude is read through the status-line bridge, and the optional quota probe reads the
-  `anthropic-ratelimit-unified-5h-*` and `-7d-*` response headers;
-- OpenCode Go is read from `GET opencode.ai/zen/go/v1/usage`, which is not yet in OpenCode's public
-  documentation.
-
-A source that changes shape is reported as `schema_mismatch`, never as a wrong number.
+CLI protocols, status-line payloads, and undocumented usage interfaces can change without
+notice. Adapters validate the fields they consume and report unsupported formats as errors.
+The [implementation plan](docs/plan/ai-usage-dashboard-implementation-plan.md) describes the
+source contracts and fallback behavior.
 
 ## Contributing and license
 
@@ -158,17 +147,15 @@ Contributions are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md) for setup, the
 gate, and how to add a provider. Report vulnerabilities privately as described in
 [SECURITY.md](SECURITY.md). Released under the [MIT License](LICENSE).
 
-## Status
+## Compatibility and verification
 
-**Codex** and **Claude Code** are verified live — Codex against
-`codex-cli 0.154.0`, Claude against a real status-line event from
-`claude-code 2.1.269` with both the 5-hour and 7-day windows.
+Provider requirements are documented in [Setup](docs/operations/setup.md). Dated live
+verification, tested CLI versions, and known limitations are recorded in
+[Discovery](docs/discovery/m0-discovery.md), alongside the distinction between live and
+fixture evidence. These are observations from their recorded dates.
 
-**DeepSeek** and **OpenRouter** are verified live as well, against their balance
-and credits endpoints, with keys that were then read from `collector.env`. Keys are
-now saved in the dashboard's Settings dialog. Without a saved key, each surfaces as
-`unavailable` with a precise setup hint. Per-gate evidence is in
-**[docs/discovery/m0-discovery.md](docs/discovery/m0-discovery.md)**.
+To check your own installation, follow [Verification](docs/operations/setup.md#9-verification).
+Live checks are opt-in and use your configured provider credentials.
 
 Design rationale and scope: [docs/plan/ai-usage-dashboard-implementation-plan.md](docs/plan/ai-usage-dashboard-implementation-plan.md).
 Knowledge bundle root: [docs/index.md](docs/index.md).
