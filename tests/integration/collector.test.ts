@@ -429,6 +429,20 @@ describe('scoped and idempotent collection', () => {
     };
     expect(run.finished_at).not.toBeNull();
   });
+  it('counts a missing CLI as unavailable so the run does not report an error', async () => {
+    const summary = await collectOnce({
+      db: t.db,
+      config,
+      trigger: 'scheduled',
+      adapters: [failingAdapter('codex', 'cli_not_found')],
+    });
+    expect(summary.error).toBe(0);
+    expect(summary.unavailable).toBe(1);
+    const attempt = t.db.$client
+      .prepare('SELECT outcome, error_code FROM collector_attempts WHERE run_id = ?')
+      .get(summary.runId) as { outcome: string; error_code: string };
+    expect(attempt).toEqual({ outcome: 'unavailable', error_code: 'cli_not_found' });
+  });
 });
 
 describe('credentials come from the database', () => {

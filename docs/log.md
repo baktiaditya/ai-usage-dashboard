@@ -2,6 +2,17 @@
 
 ## 2026-10-04
 
+- **Decision**: a local CLI that is not installed or not on `PATH` reads `unavailable`, not
+  `error` ([#33](https://github.com/baktiaditya/ai-usage-dashboard/issues/33)). Plan
+  [§4.5](plan/ai-usage-dashboard-implementation-plan.md#45-status-semantics) now lists it under
+  `unavailable`. Only a spawn-time `ENOENT` maps to the new code `cli_not_found`. It is not
+  retried and carries a hint to install the CLI or add it to `PATH`. A CLI that is found but
+  crashes, exits early, or overflows its buffer stays `process_failed`. A fresh install without
+  Codex therefore shows no red card, and `pnpm run collect` exits `0` when nothing else failed.
+  Accepted trade-off: an installed service whose baked `PATH` stops reaching `codex`, as after an
+  nvm switch, reads `unavailable` with that hint instead of `error`. Keeping `error` and
+  classifying by previous success were both declined.
+
 - **Update**: the bootstrap `uninstall --dry-run` preview now names only release, runtime,
   cache, and journal paths that exist, one per line, and reports a proven root with none of
   them left (and no owned unit or launcher) as nothing to remove. A real run already treated

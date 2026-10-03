@@ -345,7 +345,7 @@ supplied by the user, never read out of any CLI's auth file, and the prohibition
 
 - `healthy`: the last collection succeeded and is still within the freshness policy.
 - `stale`: previously succeeded, but data age passed the threshold or a quota reset passed with no new observation.
-- `unavailable`: source/credential not configured, account ineligible, or source field unavailable.
+- `unavailable`: source/credential not configured, a local CLI the source needs is not installed or not on `PATH` (`cli_not_found`), account ineligible, or source field unavailable. A CLI that is found but fails to start or exits early is an `error`.
 - `error`: the source should be available and an attempt failed due to timeout, network, auth rejection, upstream error, or an unrecognized format/version guard (`schema_mismatch` or `version_unsupported`).
 
 Attempt status and snapshot freshness are separate concepts and are not stored as a single status on the immutable snapshot. The overview computes the card state at query time with the following precedence: latest attempt `error`; source `unavailable` or no snapshot ever; snapshot past the freshness policy becomes `stale`; otherwise `healthy`. The last known value may remain visible in `error`/`unavailable` states with a clear timestamp and warning.

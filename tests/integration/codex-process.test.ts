@@ -75,13 +75,24 @@ describe('codex app-server over a real child process', () => {
     }
   });
 
-  it('reports a missing binary as process_failed rather than crashing', async () => {
-    const missing = createCodexAdapter({
-      command: '/nonexistent/definitely-not-here',
-      args: [],
-      timeoutMs: 1000,
-    });
+  it.each([
+    ['an absolute path that does not exist', '/nonexistent/definitely-not-here'],
+    ['a bare name that is not on PATH', 'aud-definitely-missing-codex-cli'],
+  ])('reports a missing CLI at %s as unavailable rather than an error', async (_, command) => {
+    const missing = createCodexAdapter({ command, args: [], timeoutMs: 1000 });
     const record = await runAdapter(missing);
+    expect(record.result.outcome).toBe('unavailable');
+    if (record.result.outcome === 'unavailable') {
+      expect(record.result.failure.code).toBe('cli_not_found');
+      expect(record.result.failure.retryable).toBe(false);
+    }
+  });
+
+  it('keeps a CLI that is found but cannot run as process_failed', async () => {
+    // A found executable whose own startup fails is a fault, not a setup state.
+    const record = await runAdapter(
+      createCodexAdapter({ command: '/bin/false', args: [], timeoutMs: 1000 }),
+    );
     expect(record.result.outcome).toBe('error');
     if (record.result.outcome === 'error') {
       expect(record.result.failure.code).toBe('process_failed');

@@ -100,8 +100,8 @@ installing from a checkout you manage yourself.
   - an API key for DeepSeek, OpenRouter (a _Management_ key), or OpenCode Go.
 
   None of these is needed to install. A key-based provider or Claude Code that you have not
-  set up shows as `unavailable` with a setup hint. Without a `codex` on `PATH`, the Codex card
-  shows an error instead.
+  set up shows as `unavailable` with a setup hint, and so does Codex when no `codex` is on
+  `PATH`.
 
 #### 1. Get the code and toolchain
 
@@ -123,8 +123,9 @@ pnpm run start
 ```
 
 Open the local URL that `pnpm run start` prints. The server binds to loopback only.
-`pnpm run collect` exits `1` when any provider errored, such as Codex without its CLI. It still
-saves every other provider's result, so a fresh install can continue past it.
+`pnpm run collect` exits `1` when any provider errored. A provider you have not set up, including
+Codex without its CLI, is `unavailable` rather than an error. Every other provider's result is
+still saved, so a fresh install can continue past a failure.
 
 #### 3. Connect your providers
 

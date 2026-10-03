@@ -13,6 +13,8 @@ export const ERROR_CODES = [
   'not_entitled',
   /** No event has ever arrived from an event-driven source. */
   'no_event_yet',
+  /** The local CLI executable was not found on `PATH`. Not a failure. */
+  'cli_not_found',
   /** The adapter exceeded its independent timeout. */
   'timeout',
   /** DNS/TCP/TLS failure reaching the upstream. */
@@ -48,6 +50,7 @@ export const UNAVAILABLE_CODES: ReadonlySet<ErrorCode> = new Set([
   'not_configured',
   'not_entitled',
   'no_event_yet',
+  'cli_not_found',
 ]);
 
 /** Codes where an immediate bounded retry is safe and potentially useful. */
@@ -71,6 +74,8 @@ export const ERROR_CODE_HINTS: Record<ErrorCode, string> = {
   not_configured: 'No credential is saved yet. Add it in Settings.',
   not_entitled: 'This account or plan does not expose the data.',
   no_event_yet: 'No event has been received from this source yet.',
+  cli_not_found:
+    "The CLI was not found on PATH. Install it or add it to the collector's PATH; an installed service keeps the PATH from install time, so re-run the installer afterwards.",
   timeout: 'The source did not respond within the adapter timeout.',
   network_error: 'The source could not be reached over the network.',
   auth_rejected: 'The credential was rejected by the provider.',
