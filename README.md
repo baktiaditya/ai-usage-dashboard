@@ -22,38 +22,112 @@ Source contracts and provider requirements live in the
 [implementation plan](docs/plan/ai-usage-dashboard-implementation-plan.md) and
 [Setup](docs/operations/setup.md).
 
-## Quick start
+## Installation
 
-Scheduled collection runs on **Linux only**: it uses user `systemd`. Install Node.js matching
-`engines.node` in
-[package.json](package.json); [.nvmrc](.nvmrc) selects the supported release line.
-Corepack runs the pnpm version pinned by `packageManager` in the same package file.
+**Linux** is the supported platform. Automatic collection and start-on-boot use a user
+`systemd` session. macOS should run the dashboard and manual collection, but it is untested
+there and has no scheduler yet (tracked in
+[#29](https://github.com/baktiaditya/ai-usage-dashboard/issues/29)). Windows is not supported.
+
+### Requirements
+
+- Git.
+- Node.js from the release line in [.nvmrc](.nvmrc). Other majors are not supported; the exact
+  range is `engines.node` in [package.json](package.json). Corepack, bundled with that Node,
+  runs the pnpm version pinned by `packageManager`.
+- For each provider you want to see:
+  - the Codex CLI, signed in;
+  - Claude Code;
+  - an API key for DeepSeek, OpenRouter (a _Management_ key), or OpenCode Go.
+
+  None of these is needed to install. A key-based provider or Claude Code that you have not
+  set up shows as `unavailable` with a setup hint. Without a `codex` on `PATH`, the Codex card
+  shows an error instead.
+
+### 1. Get the code and toolchain
 
 ```bash
-corepack enable pnpm
+git clone https://github.com/baktiaditya/ai-usage-dashboard.git
+cd ai-usage-dashboard
+nvm install            # reads .nvmrc; or install that Node release another way
+corepack enable pnpm   # once per Node installation
+```
+
+### 2. Install, collect once, and start
+
+```bash
 pnpm install --frozen-lockfile
-pnpm run db:migrate
-pnpm run collect
+pnpm run db:migrate    # creates the database and prints where it lives
+pnpm run collect       # one collection pass
 pnpm run build
 pnpm run start
 ```
 
-Open the local URL printed by the server. Ports, data directories, timezone, and
-other overrides are documented in [Setup](docs/operations/setup.md#7-configuration-reference).
+Open the local URL that `pnpm run start` prints. The server binds to loopback only.
+`pnpm run collect` exits `1` when any provider errored, such as Codex without its CLI. It still
+saves every other provider's result, so a fresh install can continue past it.
 
-Working on the dashboard itself? `pnpm run dev` uses a separate port and database;
-`pnpm run seed:dev` fills that database with demo data. See
-[Development server](docs/operations/setup.md#development-server) for isolation and live-refresh options.
+### 3. Connect your providers
 
-It works with nothing configured. Providers you have not set up render as
-`unavailable` with a setup hint instead of blocking the page or failing the run.
-Enter provider credentials under **Settings**. The optional Claude quota probe can
-report quota while no session is running; it sends real inference that counts toward
-your Claude subscription usage. See [Setup](docs/operations/setup.md) for each
-provider's configuration.
+- **Codex:** sign in to the Codex CLI with `codex login`. The dashboard reads quota through the CLI
+  and has nothing to configure. `codex` must be on `PATH` in the shell that runs the collector
+  or the systemd installer; a CLI installed under a different nvm Node version is not found
+  ([Setup §2](docs/operations/setup.md#2-codex)).
+- **Claude Code:** run `pnpm run claude:install-statusline` to preview the change, then run it
+  again with `--apply`. Start a Claude Code session and send one prompt. An optional quota probe
+  reads quota while no session runs, but it sends real inference that counts toward your
+  subscription ([Setup §3](docs/operations/setup.md#3-claude-code)).
+- **DeepSeek, OpenRouter, OpenCode Go:** open **Settings** in the dashboard, paste the key, and
+  select **Save** ([Setup §4](docs/operations/setup.md#4-deepseek-openrouter-and-opencode-go)).
 
-Full instructions, including the Claude status-line bridge, credentials, and the
-systemd timer: **[docs/operations/setup.md](docs/operations/setup.md)**.
+Then select **Refresh** on a card to collect it right away.
+
+### 4. Keep it running (Linux)
+
+Stop `pnpm run start` first (Ctrl+C), because the installer will not start the web unit while
+another process holds its port. Then install the collector timer and the web unit from the
+same checkout:
+
+```bash
+scripts/install-systemd.sh --install --enable --with-web
+loginctl enable-linger "$USER"   # keep running after logout, and start at boot
+scripts/install-systemd.sh --status
+```
+
+Run `scripts/install-systemd.sh` with no flags to render the units for reading without
+installing anything. Interval, port, data directory, and other overrides are in the
+[configuration reference](docs/operations/setup.md#7-configuration-reference). Re-run the
+installer after changing the interval, port, or data directory, because the units keep the
+values they were installed with.
+
+### Update
+
+```bash
+pnpm run db:backup                 # optional safety copy
+git pull
+pnpm install --frozen-lockfile
+pnpm run build
+scripts/install-systemd.sh --install --enable --with-web
+```
+
+Re-running the installer also restarts the web unit on the new build. Database migrations apply
+automatically when the collector or the server next opens the database. To keep a separate
+checkout with rollback, follow [Production checkout](docs/operations/production-checkout.md).
+
+### Uninstall
+
+`scripts/install-systemd.sh --disable --with-web` stops and disables both units. Data lives
+outside the repository, by default under `~/.local/share/ai-usage-dashboard/`. The Claude
+status-line bridge has its own removal step ([Setup §3](docs/operations/setup.md#remove)).
+
+### Developing
+
+`pnpm run dev` uses a separate port and database, and `pnpm run seed:dev` fills that database
+with demo data. See [Development server](docs/operations/setup.md#development-server) and
+[CONTRIBUTING.md](CONTRIBUTING.md).
+
+Full instructions, including the Claude status-line bridge, credentials, backup and restore,
+and the systemd units: **[docs/operations/setup.md](docs/operations/setup.md)**.
 
 ## The three ideas this is built around
 
