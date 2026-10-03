@@ -2,6 +2,26 @@
 
 ## 2026-10-03
 
+- **Update**: the [README](../README.md) Quick start becomes an Installation section. It now
+  covers:
+  - platform scope: Linux supported, macOS untested with no scheduler yet (#29), Windows
+    unsupported;
+  - requirements;
+  - clone and toolchain (`nvm install` reads `.nvmrc`), then install, collect, build, and start;
+  - per-provider connection steps;
+  - the systemd timer and web unit (`scripts/install-systemd.sh --install --enable --with-web`
+    and linger);
+  - updating, uninstalling, and development.
+
+  It keeps linking volatile details (Node range, port defaults, interval) to `package.json`,
+  `.nvmrc`, and Setup, as the earlier drift entry decided. A fresh HTTPS clone, run in an
+  isolated data directory on an alternate port, confirmed the install, migrate, collect, build,
+  and start steps. That run also found that the earlier wording "providers you have not set up
+  render as `unavailable`" does not hold for Codex. Without `codex` on `PATH`, the adapter fails
+  with `process_failed`: the card shows an error and `pnpm run collect` exits `1`, while Claude
+  (`no_event_yet`) and the key-based providers (`not_configured`) read `unavailable`. The README
+  now says so. Product behavior is unchanged.
+
 - **Update**: the collector timer's catch-up is attributed to the mechanism that provides it,
   for [#34](https://github.com/baktiaditya/ai-usage-dashboard/issues/34).
   - [Setup](operations/setup.md) §5 said `Persistent=true` catches up a missed run after a reboot,
