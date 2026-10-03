@@ -205,6 +205,18 @@ export function startUnit(name: UnitName, env: NodeJS.ProcessEnv = process.env):
   systemctl(['start', name], env);
 }
 
+/**
+ * Clear a unit's failed state and start-limit counter.
+ *
+ * A candidate that crash-looped before recovery leaves the unit failed; without
+ * this, systemd refuses the next start with "start request repeated too
+ * quickly" until the rate-limit window passes. Best effort: a unit with no
+ * failed state is a no-op.
+ */
+export function resetFailedUnit(name: UnitName, env: NodeJS.ProcessEnv = process.env): void {
+  systemctlQuiet(['reset-failed', name], env);
+}
+
 export function stopUnit(name: UnitName, env: NodeJS.ProcessEnv = process.env): void {
   systemctl(['stop', name], env);
 }

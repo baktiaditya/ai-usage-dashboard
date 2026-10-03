@@ -20,6 +20,7 @@ import {
   enabledState,
   lingerState,
   readUnit,
+  resetFailedUnit,
   startUnit,
   stopUnit,
 } from './systemd.ts';
@@ -382,8 +383,12 @@ export function applySnapshot(snapshot: ServiceSnapshot): void {
     }
     const wasActive = snapshot.active[name] === 'active';
     try {
-      if (wasActive) startUnit(name);
-      else stopUnit(name);
+      if (wasActive) {
+        resetFailedUnit(name);
+        startUnit(name);
+      } else {
+        stopUnit(name);
+      }
     } catch {
       // best effort; the caller reports the resulting state
     }

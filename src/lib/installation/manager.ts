@@ -80,6 +80,7 @@ import {
   ownedUnits,
   removeUnit,
   removeUnits,
+  resetFailedUnit,
   startTimer,
   startUnit,
   stopUnit,
@@ -677,6 +678,7 @@ async function cmdInstall(
 
   const removeUnitsOnFailure = state === null;
   try {
+    resetFailedUnit(WEB_SERVICE);
     startUnit(WEB_SERVICE);
     await waitForHttp(httpUrl(config.host, config.port), healthTimeoutMs());
   } catch (err) {
@@ -1007,6 +1009,7 @@ async function cmdUpdate(root: string, repo: string, args: ManagerArgs): Promise
 
   try {
     assertPortFree(active.config.host, active.config.port);
+    resetFailedUnit(WEB_SERVICE);
     startUnit(WEB_SERVICE);
     await waitForHttp(httpUrl(active.config.host, active.config.port), healthTimeoutMs());
   } catch (err) {
