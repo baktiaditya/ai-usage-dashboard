@@ -2,9 +2,15 @@
 
 ## Status
 
-Ready for agent
+Archived
 
-This is an implementation brief, not a report of delivered functionality. The
+Delivered on branch `feat/managed-linux-installer` (PR
+[#38](https://github.com/baktiaditya/ai-usage-dashboard/pull/38)); the
+[log](../../log.md) records the evidence, including the disposable-systemd rehearsal that now
+passes in CI (49 checks: real units, timer run, failed-update database recovery, SIGKILL at
+the database boundary with recovery, uninstall, and reinstall). Release publication and
+reboot-persistence checks remain future work and are not claimed. The rest of this file is
+the approved brief as written. The
 [plan](../../plan/ai-usage-dashboard-implementation-plan.md),
 [Setup](../../operations/setup.md), [Discovery](../../discovery/m0-discovery.md),
 and [log](../../log.md) remain canonical. The 2026-10-03 installation decision

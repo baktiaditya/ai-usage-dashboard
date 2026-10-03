@@ -37,7 +37,9 @@
     "verify": "pnpm run format:check && pnpm run lint && pnpm run typecheck && pnpm run test",
     "db:build-migrations": "tsx scripts/build-migrations.ts",
     "seed:demo": "tsx scripts/seed-demo.ts",
-    "seed:dev": "tsx scripts/seed-demo.ts --dev"
+    "seed:dev": "tsx scripts/seed-demo.ts --dev",
+    "test:installation": "vitest run tests/unit/installation.test.ts tests/integration/installation.test.ts",
+    "test:installation:systemd": "bash scripts/test-installation-systemd.sh"
   },
   "dependencies": {
     "@floating-ui/react": "0.27.20",

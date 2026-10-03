@@ -7,7 +7,15 @@ description: Maintainer runbook for deploying a commit to the production checkou
 # Production checkout — deploy and rollback
 
 Both units run from a dedicated clone at `~/Workspace/ai-usage-dashboard-prod`,
-never from the development repository. The installer renders `WorkingDirectory`,
+never from the development repository.
+
+This runbook and the [managed installer](setup.md#12-managed-installation-linux-one-command)
+are separate systems that must not be mixed. The managed installer owns only units whose
+`WorkingDirectory` lives under its own install root's `releases/` directory; it refuses to
+repoint units that belong to this checkout, and its `status`/`uninstall` never target the
+production checkout, its data, or its units. Conversely, do not run this runbook's
+`scripts/install-systemd.sh` from a managed release checkout: it would repoint both units at
+that release and bypass managed recovery. Keep deploying `main` to this checkout only. The installer renders `WorkingDirectory`,
 `ExecStart` and `ReadWritePaths` from the checkout it runs in, so branch switches,
 `pnpm install` and `pnpm run build` in the development repository cannot change what
 production serves or collects with. Always run `scripts/install-systemd.sh` from

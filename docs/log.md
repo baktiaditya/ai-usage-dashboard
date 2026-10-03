@@ -1,9 +1,196 @@
 # Bundle Update Log
 
+## 2026-10-04
+
+- **Update**: the bootstrap `uninstall --dry-run` preview now names only release, runtime,
+  cache, and journal paths that exist, one per line, and reports a proven root with none of
+  them left (and no owned unit or launcher) as nothing to remove. A real run already treated
+  missing paths as no-ops. Regression assertions cover a journal-proven root whose runtime
+  tree is gone and an ownership-record-only root.
+  Validation: `pnpm run verify` passes (41 files, 758 tests); Bash syntax passes.
+
+- **Update**: addressed the dry-run preview nit in PR
+  [#38](https://github.com/baktiaditya/ai-usage-dashboard/pull/38#issuecomment-5972857408).
+  When no runtime can run the manager, `uninstall --dry-run` no longer reports "nothing to
+  remove" while owned remnants exist. A read-only collector now shares its ownership
+  decision with the removal path, and the preview names the units (stop, disable, remove),
+  the launcher, and the release/runtime/cache trees plus journal that a real run would
+  remove — or notes that an absent root would not be created. Regression assertions cover
+  unit-only, launcher-only, and combined absent-root remnants, a proven tree-only root, the
+  held-lock preview, and the unchanged no-op wording.
+  Validation: `pnpm run verify` passes (41 files, 757 tests), including 92 installer tests;
+  Bash syntax, OKF bundle validation, and `git diff --check` pass.
+
+- **Update**: corrected the absent-root cleanup regression reported in PR
+  [#38](https://github.com/baktiaditya/ai-usage-dashboard/pull/38#issuecomment-5972228752).
+  Bootstrap uninstall checks owned services and launcher before requiring the root to
+  exist. If owned external remnants survive a removed root, it stops/disables/removes only
+  those units and removes the owned launcher, without creating a root or lifecycle lock.
+  This cleanup mode cannot delete release/runtime/cache trees or a journal, including if
+  a root appears during the service commands. Existing roots still take the lifecycle lock
+  before manager selection or cleanup. Regression coverage exercises unit-only,
+  launcher-only, and combined remnants, preserves foreign surfaces and application data,
+  verifies dry runs and repeat invocation, and checks that a newly appearing root survives.
+  [Setup](operations/setup.md#lifecycle-semantics) distinguishes absent roots with and
+  without owned remnants.
+  Validation: `pnpm run verify` passes (40 files, 753 tests), including 92 installer tests;
+  Bash syntax, OKF bundle validation, and `git diff --check` pass. An initial full-gate
+  attempt failed to start three existing fixture health servers. The installer suite alone
+  and subsequent full runs passed; the cause remains unconfirmed and temporary diagnostics
+  were removed before the final gate.
+
+- **Update**: addressed the optional foreign/absent-root finding in PR
+  [#38](https://github.com/baktiaditya/ai-usage-dashboard/pull/38#issuecomment-5972003666).
+  Bootstrap uninstall now checks for managed evidence without writing: an absent root or
+  an unrecognized directory succeeds without creating a directory or `lifecycle.lock`.
+  Existing lock/metadata files or owned services/launcher still select the locked lifecycle
+  path, whose manager or fallback rechecks removal ownership under the lock. The evidence
+  check and cleanup share service/launcher predicates, preserving recovery for unit-only
+  and launcher-only remnants. Regression tests cover absent, empty, unrelated-file, and
+  unproven-tree roots, plus launcher-only cleanup; the held-lock refusal and retry remain
+  covered. [Setup](operations/setup.md#lifecycle-semantics) records the no-op behavior.
+  Validation: `pnpm run verify` passes (40 files, 749 tests), including 88 installer tests;
+  Bash syntax, OKF bundle validation, and `git diff --check` pass. One full-gate attempt
+  failed to start an existing fixture health server; that test passed in isolation and the
+  subsequent full gate passed. The cause of that startup failure is unconfirmed.
+
+- **Update**: addressed the remaining lifecycle-lock finding in PR
+  [#38](https://github.com/baktiaditya/ai-usage-dashboard/pull/38#issuecomment-5971772481).
+  The bootstrap now shares its nonblocking install lock with mutating uninstall, taking it
+  before manager selection, state validation, and fallback cleanup. An incomplete first
+  install's releases, runtime, cache, journal, units, and launcher therefore survive a
+  concurrent uninstall attempt; cleanup succeeds after the holder releases the lock and
+  keeps application data and its ownership record. Regression coverage drives the real
+  bootstrap under a separately held `flock`, checks those preserved surfaces and active
+  units, then retries after release. Bootstrap fallback status and dry runs remain
+  observational, including when the root is absent. The behavior is documented in
+  [Setup](operations/setup.md#lifecycle-semantics).
+  Validation: `pnpm run verify` passes (40 files, 745 tests), including 84 installer tests;
+  Bash syntax, OKF bundle validation, and `git diff --check` pass.
+
 ## 2026-10-03
 
+- **Update**: the managed Linux installer is implemented on branch
+  `feat/managed-linux-installer` and reviewed through
+  PR [#38](https://github.com/baktiaditya/ai-usage-dashboard/pull/38), following the approved
+  [simplify-linux-installation](backlog/archive/simplify-linux-installation.md)
+  brief. Nothing is tagged, published, or deployed by this change, and the public one-line
+  command in the [README](../README.md) stays a labelled placeholder until a tagged release
+  contains the installer.
+  - **Bootstrap and runtime:** `scripts/install.sh` preflights Linux x86_64/glibc ≥ 2.28 and
+    the required tools, refuses root, resolves a stable `vX.Y.Z` tag to an exact commit
+    reachable from `main` (numeric SemVer, tag/package.json agreement, detached checkout,
+    moved-tag refusal), provisions the checksum-verified private Node/Corepack runtime from
+    `scripts/install-runtime.env` (Node 24.19.0, official SHA-256), and hands off through a
+    versioned interface to the selected checkout's `scripts/manage-installation.ts`. Every
+    child runs with stdin on `/dev/null`, so `curl … | bash` never has the piped script
+    consumed.
+  - **Lifecycle:** the manager (`src/lib/installation/`, stdlib-only so it runs before
+    `pnpm install`) implements staged first install, observational status, staged update
+    with a verified pre-cutover backup and journaled recovery, explicit Claude bridge
+    ownership, data-preserving uninstall, and same-root reinstall through a durable
+    `data-ownership.json`. Manual/maintainer units, launchers, roots, and databases are
+    refused rather than adopted. Effective configuration is persisted and reapplied on
+    update; linger changes require `--enable-linger`.
+  - **Evidence performed:** `pnpm run verify` passes (41 files, 758 tests), including 27
+    unit tests for release selection, manifests, path boundaries, atomic-temp handling,
+    state/journal/ownership validation, retention, and unit ownership, and 66 integration tests that drive the real manager against
+    fixture releases with PATH-level systemctl/loginctl/ss stubs, plus 4 health-server
+    helper tests. The OKF validator and
+    `git diff --check` pass. The rehearsal guard was run for real and refused the
+    maintainer's environment (exit 2 without `AUD_INSTALL_SYSTEMD_REHEARSAL=1`, and exit 2
+    with it because the account already has dashboard units). A local real-toolchain
+    rehearsal then exercised the same lifecycle with user systemd substituted by a process
+    launcher: a real Node 24.19.0 download verified against the manifest checksum, a real
+    pinned-pnpm frozen-lockfile install, the real `better-sqlite3` prebuilt native module,
+    a real Next.js production build with isolated `AUD_DATA_DIR`/`AUD_ENV_FILE`, real SQLite
+    migrations, a verified pre-cutover backup, a failed candidate that crossed the database
+    boundary and recovered through the previous release's restore executable (failed copy
+    retained as `usage.db.pre-restore-*`), a successful update that refreshed an owned
+    Claude bridge while preserving its wrapped command, real HTTP 200 at the configured
+    loopback URL, and uninstall → reinstall that preserved three collected runs. An
+    `agent-browser` session against that live install captured the dashboard and the
+    Settings entry point (no key was saved) and was closed afterwards. Two real defects
+    were found and fixed on the way: a candidate web unit that fails to start now enters
+    update recovery instead of escaping it, and timer ownership is derived from the owned
+    collector service instead of a `WorkingDirectory` the timer template does not carry.
+  - **Disposable-systemd rehearsal:** after the CI job was taught to give the throwaway
+    account a real login session, XDG bases inside its own home, and unprivileged user
+    namespaces, the full rehearsal passes in CI (49 checks, 0 failures): real units and HTTP
+    health, a scheduled timer run, a failed candidate that crossed the database boundary and
+    recovered through the previous release's restore executable, a SIGKILL at the database
+    boundary recovered on the next update, Claude composition, uninstall, and reinstall with
+    history preserved. The rehearsal caught two product defects that were fixed: the
+    manager's runtime downloader omitted the `vX.Y.Z` dist path, and a crash-looping
+    candidate left systemd's start rate limit set, so activation now clears failed unit
+    state first. PR [#38](https://github.com/baktiaditya/ai-usage-dashboard/issues/38)'s
+    checks are the live record.
+  - **Review follow-up:** a fourth review of the resumed-install adoption found that a retry
+    resolving a different data directory could adopt a database the interrupted run never
+    created. The journal now persists the canonical database path at `db-creating`, adoption
+    requires a physical-path match, and the integrity and holder checks gate adopted
+    databases too; the bootstrap uninstall fallback now removes the release/runtime/cache
+    trees when ownership is demonstrable and leaves unproven trees alone.
+  - **Not performed:** reboot persistence (no reboot is exercised, so no boot claim is
+    made), and installation through the published one-line command, which waits on the
+    first tagged release. Browser evidence was captured locally with `agent-browser` against
+    a disposable managed dashboard built by the installer with the service manager
+    substituted, not against the CI systemd dashboard; the CI rehearsal proves that
+    dashboard's units, HTTP health, and timer instead. Spec-table scenarios not exercised by
+    tests are recorded here rather than claimed: glibc < 2.28/musl preflight refusal, a
+    release whose runtime manifest pins a different Node major, a real Codex CLI discovered
+    on PATH (tests stub `codex`), collector-stuck, backup-refusal, and state-write failure
+    paths, and SIGKILL at journal boundaries other than the database and uninstall bounds.
+  - **Archived:** with the CI rehearsal passing, the brief moves to
+    [archive](backlog/archive/simplify-linux-installation.md) and the plan's section 4.1.1
+    records the delivered state. Release publication remains the user's subsequent call.
+  - **Review fixes:** an independent review of PR
+    [#38](https://github.com/baktiaditya/ai-usage-dashboard/issues/38) against `e6e8b82` at
+    head `2941dc6` confirmed ten issues, and the working tree now fixes all of them with
+    regression coverage. Data safety first: install and uninstall compare the data directory
+    and database _physically_, so a path named outside the root that symlinks inside it is
+    refused instead of deleted; update refuses to touch units a manual installation has
+    replaced; recovery restores the journaled database through the recorded `state.config`
+    rather than the caller's `AUD_DATA_DIR`; a crash between stopping the writers and
+    journaling that phase restores the snapshotted service state; and recovery rewrites an
+    already-refreshed Claude status line back to the release `state.json` records. Contract
+    fixes: `--dry-run` no longer runs recovery or performs network resolution (install
+    included, and it no longer creates the root); an update whose recorded tag resolves to a
+    different commit is refused as a moved tag; the bootstrap takes the lifecycle lock before
+    provisioning, fetching, or chmod; and the bootstrap fallback honours the launcher's
+    `AUD_INSTALL_ROOT` and removes this root's collector timer through its service's
+    ownership.
+  - **Second review pass:** a re-review of `61b9e70` verified both first-pass P1s fixed and
+    reported four more P2s, now fixed in the working tree: the bootstrap validates the root
+    before creating directories or chmodding (an unowned root is rejected untouched), and
+    its `--dry-run` guard precedes release resolution, so a preview needs no network; the
+    fallback uninstall reads only active unit directives, so a commented
+    `WorkingDirectory=` no longer marks a manual unit owned; and bridge refresh, recovery,
+    and uninstall write at the recorded `state.bridge.settingsPath` rather than the
+    caller's `CLAUDE_CONFIG_DIR`.
+  - **Third review pass:** a review of `2422b67` confirmed the earlier P1s fixed and raised
+    contract, durability, and documentation findings, fixed in the working tree: an
+    interrupted first install adopts the database its own `db-creating` journal was creating
+    instead of refusing it as unowned, and keeps the original journal identity; the
+    pre-cutover backup runs the _previous_ release's backup executable; uninstall removes
+    `state.json` before the heavy release/runtime trees so an interruption leaves the
+    executable remnant path; `status` counts a stopped timer as degraded and exits `2` on
+    corrupt state; a failed `stopWriters` restores the service snapshot before surfacing;
+    the bootstrap validates the root with the same atomic-temp tolerance as `classifyRoot`;
+    preflight checks `systemctl --user` access and repository reachability; the manager
+    refuses mutating commands as root; metadata writes fsync the parent directory; and the
+    install summary reports unit state and a PATH hint. The duplicated error-message
+    formatter is now one shared `errorText`, and the backup stamp is single-sourced in
+    `src/lib/timestamps.ts`. The remaining judgment-call refactor is splitting `manager.ts`
+    and untangling its `(releaseDir, runtime)` data clump.
+  - **Consequences:** mocks prove decision and ordering logic only; the real-systemd,
+    timer, and recovery evidence now comes from the CI rehearsal above, while reboot
+    persistence and installation through the published one-line command remain unclaimed.
+    The plan's §4.1.1 status records implemented-in-code/release-pending without claiming a
+    release or deployment.
+
 - **Decision**: simplify end-user Linux installation through a managed, per-user
-  source installer and lifecycle launcher. [Plan §4.1.1](plan/ai-usage-dashboard-implementation-plan.md#411-managed-linux-installation-planned)
+  source installer and lifecycle launcher. [Plan §4.1.1](plan/ai-usage-dashboard-implementation-plan.md#411-managed-linux-installation)
   records the approved scope: private checksum-verified Node/Corepack, pinned pnpm,
   stable release commits, existing hardened user systemd units, explicit linger,
   unchanged provider/credential onboarding, staged updates with quiescent backup
@@ -11,7 +198,7 @@
   bootstrap targets Linux x86_64/glibc; existing manual installations remain supported.
   Automatic adoption of maintainer/manual installations and release publication are
   outside implementation authorization.
-- **Creation**: [simplify-linux-installation](backlog/ready-for-agent/simplify-linux-installation.md)
+- **Creation**: [simplify-linux-installation](backlog/archive/simplify-linux-installation.md)
   is ready for agent with resolved design choices, command/path/ownership contracts,
   implementation sequence, crash recovery, verified existing owners, acceptance
   criteria, and disposable-systemd/browser proof requirements. Assessment baseline:

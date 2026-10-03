@@ -29,12 +29,71 @@ Source contracts and provider requirements live in the
 there and has no scheduler yet (tracked in
 [#29](https://github.com/baktiaditya/ai-usage-dashboard/issues/29)). Windows is not supported.
 
-### Requirements
+### Managed installation (Linux, one command)
+
+The managed installer provisions the dashboard under your home directory: a private,
+checksum-verified Node and Corepack runtime, the pnpm version the release pins, detached
+release checkouts, and hardened user systemd units. It leaves your default Node, nvm
+configuration, shell profiles, global packages, and unrelated units untouched, and it never
+takes over a manual or maintainer checkout.
+
+The public one-line command pins the release tag that also provides the script, because the
+bootstrap and the lifecycle manager it hands off to come from the same commit. That tag does
+not exist yet — the first tagged release that contains the installer publishes it. Until
+then, run the same script from a checkout:
+
+```bash
+# Published form, once the first release that contains the installer is tagged:
+#   curl -fsSL https://raw.githubusercontent.com/baktiaditya/ai-usage-dashboard/vX.Y.Z/scripts/install.sh \
+#     | bash -s -- --version vX.Y.Z
+
+git clone https://github.com/baktiaditya/ai-usage-dashboard.git
+cd ai-usage-dashboard
+bash scripts/install.sh
+```
+
+The installer resolves the highest stable release reachable from `main`, or the exact
+`--version vX.Y.Z` you name, reports the tag and commit, installs and health-checks the units,
+runs one collection, and prints the loopback URL. Provider accounts are not needed: keys are
+entered later in Settings, and Codex stays with the Codex CLI.
+
+Starting at boot and surviving logout stay opt-in. Add `--enable-linger`, or run
+`loginctl enable-linger "$USER"` yourself; the installer reports the current state either way.
+
+The installer writes a launcher to `~/.local/bin/ai-usage-dashboard`:
+
+```bash
+ai-usage-dashboard status                 # paths, version, units, linger, bridge, recovery
+ai-usage-dashboard update [--version vX.Y.Z] [--dry-run]
+ai-usage-dashboard uninstall [--dry-run]  # keeps data, credentials, backups, and settings
+ai-usage-dashboard claude-statusline [existing status-line installer flags]
+```
+
+`update` stages the candidate and rebuilds before any downtime, takes a verified database
+backup after writers stop, and restores the previous release and database if the candidate
+fails. `uninstall` removes only execution surfaces this installation owns and keeps
+application data, saved keys, `collector.env`, the data ownership record, and your linger
+setting, so reinstalling from the same root reuses the database. If `~/.local/bin` is not on
+your `PATH`, use the full launcher path the installer prints; no shell profile is edited.
+
+Managed paths, recovery, configuration, refusal rules, and platform limits are in
+[Setup §12](docs/operations/setup.md#12-managed-installation-linux-one-command). Keep the
+[production checkout](docs/operations/production-checkout.md) separate: managed commands
+never target it.
+
+### Manual installation
+
+Prefer the managed route above. These steps remain supported for development and for
+installing from a checkout you manage yourself.
+
+#### Requirements
 
 - Git.
 - Node.js from the release line in [.nvmrc](.nvmrc). Other majors are not supported; the exact
   range is `engines.node` in [package.json](package.json). Corepack, bundled with that Node,
-  runs the pnpm version pinned by `packageManager`.
+  runs the pnpm version pinned by `packageManager`. The managed installer provisions all of
+  this privately, so a manual installation is only needed when you want to manage the
+  toolchain yourself.
 - For each provider you want to see:
   - the Codex CLI, signed in;
   - Claude Code;
@@ -44,7 +103,7 @@ there and has no scheduler yet (tracked in
   set up shows as `unavailable` with a setup hint. Without a `codex` on `PATH`, the Codex card
   shows an error instead.
 
-### 1. Get the code and toolchain
+#### 1. Get the code and toolchain
 
 ```bash
 git clone https://github.com/baktiaditya/ai-usage-dashboard.git
@@ -53,7 +112,7 @@ nvm install            # reads .nvmrc; or install that Node release another way
 corepack enable pnpm   # once per Node installation
 ```
 
-### 2. Install, collect once, and start
+#### 2. Install, collect once, and start
 
 ```bash
 pnpm install --frozen-lockfile
@@ -67,7 +126,7 @@ Open the local URL that `pnpm run start` prints. The server binds to loopback on
 `pnpm run collect` exits `1` when any provider errored, such as Codex without its CLI. It still
 saves every other provider's result, so a fresh install can continue past it.
 
-### 3. Connect your providers
+#### 3. Connect your providers
 
 - **Codex:** sign in to the Codex CLI with `codex login`. The dashboard reads quota through the CLI
   and has nothing to configure. `codex` must be on `PATH` in the shell that runs the collector
@@ -82,7 +141,7 @@ saves every other provider's result, so a fresh install can continue past it.
 
 Then select **Refresh** on a card to collect it right away.
 
-### 4. Keep it running (Linux)
+#### 4. Keep it running (Linux)
 
 Stop `pnpm run start` first (Ctrl+C), because the installer will not start the web unit while
 another process holds its port. Then install the collector timer and the web unit from the
@@ -100,7 +159,7 @@ installing anything. Interval, port, data directory, and other overrides are in 
 installer after changing the interval, port, or data directory, because the units keep the
 values they were installed with.
 
-### Update
+#### Update
 
 ```bash
 pnpm run db:backup                 # optional safety copy
@@ -114,7 +173,7 @@ Re-running the installer also restarts the web unit on the new build. Database m
 automatically when the collector or the server next opens the database. To keep a separate
 checkout with rollback, follow [Production checkout](docs/operations/production-checkout.md).
 
-### Uninstall
+#### Uninstall
 
 `scripts/install-systemd.sh --disable --with-web` stops and disables both units. Data lives
 outside the repository, by default under `~/.local/share/ai-usage-dashboard/`. The Claude
