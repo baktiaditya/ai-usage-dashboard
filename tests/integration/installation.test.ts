@@ -1814,6 +1814,20 @@ describe('managed installation lifecycle', () => {
         '--dry-run',
       ]);
       expect(preview.status, preview.stderr).toBe(0);
+      expect(preview.stdout).toContain('DRY RUN');
+      if (ownsUnits) {
+        for (const unit of [COLLECTOR, TIMER, WEB]) {
+          expect(preview.stdout).toContain(`unit     : ${unit}`);
+        }
+      } else {
+        expect(preview.stdout).not.toContain('unit     :');
+      }
+      if (ownsLauncher) {
+        expect(preview.stdout).toContain('launcher :');
+      } else {
+        expect(preview.stdout).not.toContain('launcher :');
+      }
+      expect(preview.stdout).toContain('root     : absent; it would not be created');
       expect([COLLECTOR, TIMER, WEB].map((unit) => unitFile(sandbox, unit))).toEqual(before);
       expect(readFileSync(launcher, 'utf8')).toBe(launcherBefore);
       expect(existsSync(sandbox.root)).toBe(false);
@@ -1962,6 +1976,9 @@ exit 0
       ]);
       expect(preview.status, preview.stderr).toBe(0);
       expect(preview.stdout).toContain('DRY RUN');
+      expect(preview.stdout).toContain(`unit     : ${WEB}`);
+      expect(preview.stdout).toContain('launcher :');
+      expect(preview.stdout).toContain('path     :');
       expect(preserved.map((path) => readFileSync(path, 'utf8'))).toEqual(before);
       const result = await sandbox.runBootstrap(['uninstall', '--install-dir', sandbox.root]);
       expect(result.status).toBe(1);
@@ -1993,6 +2010,9 @@ exit 0
     const sandbox = freshSandbox();
     const result = await sandbox.runBootstrap([...args, '--install-dir', sandbox.root]);
     expect(result.status, result.stderr).toBe(status);
+    if (args.includes('--dry-run')) {
+      expect(result.stdout).toContain('nothing to remove');
+    }
     expect(existsSync(sandbox.root)).toBe(false);
   });
 
@@ -2042,6 +2062,16 @@ exit 0
       ),
     );
     // No units and no launcher remain: only this root's own journal proves it.
+    const preview = await sandbox.runBootstrap([
+      'uninstall',
+      '--install-dir',
+      sandbox.root,
+      '--dry-run',
+    ]);
+    expect(preview.status, preview.stderr).toBe(0);
+    expect(preview.stdout).toContain('path     :');
+    expect(existsSync(join(sandbox.root, 'releases'))).toBe(true);
+    expect(existsSync(join(sandbox.root, 'operation.json'))).toBe(true);
     const result = await sandbox.runBootstrap(['uninstall', '--install-dir', sandbox.root]);
     expect(result.status, result.stderr).toBe(0);
     expect(existsSync(join(sandbox.root, 'releases'))).toBe(false);

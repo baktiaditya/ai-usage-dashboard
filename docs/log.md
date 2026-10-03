@@ -2,6 +2,18 @@
 
 ## 2026-10-04
 
+- **Update**: addressed the dry-run preview nit in PR
+  [#38](https://github.com/baktiaditya/ai-usage-dashboard/pull/38#issuecomment-5972857408).
+  When no runtime can run the manager, `uninstall --dry-run` no longer reports "nothing to
+  remove" while owned remnants exist. A read-only collector now shares its ownership
+  decision with the removal path, and the preview names the units (stop, disable, remove),
+  the launcher, and the release/runtime/cache trees plus journal that a real run would
+  remove — or notes that an absent root would not be created. Regression assertions cover
+  unit-only, launcher-only, and combined absent-root remnants, a proven tree-only root, the
+  held-lock preview, and the unchanged no-op wording.
+  Validation: `pnpm run verify` passes (41 files, 757 tests), including 92 installer tests;
+  Bash syntax, OKF bundle validation, and `git diff --check` pass.
+
 - **Update**: corrected the absent-root cleanup regression reported in PR
   [#38](https://github.com/baktiaditya/ai-usage-dashboard/pull/38#issuecomment-5972228752).
   Bootstrap uninstall checks owned services and launcher before requiring the root to
@@ -73,10 +85,11 @@
     `data-ownership.json`. Manual/maintainer units, launchers, roots, and databases are
     refused rather than adopted. Effective configuration is persisted and reapplied on
     update; linger changes require `--enable-linger`.
-  - **Evidence performed:** `pnpm run verify` passes (40 files, 742 tests), including 27
+  - **Evidence performed:** `pnpm run verify` passes (41 files, 757 tests), including 27
     unit tests for release selection, manifests, path boundaries, atomic-temp handling,
-    state/journal/ownership validation, retention, and unit ownership, and 54 integration tests that drive the real manager against
-    fixture releases with PATH-level systemctl/loginctl/ss stubs. The OKF validator and
+    state/journal/ownership validation, retention, and unit ownership, and 65 integration tests that drive the real manager against
+    fixture releases with PATH-level systemctl/loginctl/ss stubs, plus 4 health-server
+    helper tests. The OKF validator and
     `git diff --check` pass. The rehearsal guard was run for real and refused the
     maintainer's environment (exit 2 without `AUD_INSTALL_SYSTEMD_REHEARSAL=1`, and exit 2
     with it because the account already has dashboard units). A local real-toolchain

@@ -187,14 +187,18 @@ root_has_managed_evidence() {
   return 1
 }
 
-remove_owned_remnants() {
-  # Used only when the runtime is gone: remove execution surfaces that are
-  # demonstrably this managed root's — owned unit files, the launcher, and the
-  # release/runtime/cache trees. Application data, backups, credentials, and
-  # the ownership record itself are never touched.
-  # An absent-root cleanup passes 0: remove external surfaces only, even if a
-  # new root appears during the service commands. Tree cleanup requires a lock.
-  local remove_root="${1:-1}"
+# Collected by collect_owned_remnants for both removal and dry-run preview.
+OWNED_UNITS=()
+OWNED_LAUNCHER=0
+OWNED_ROOT=0
+
+collect_owned_remnants() {
+  # Read-only ownership decision shared by removal and preview. An owned unit
+  # or launcher proves the root; so do the ownership record and this root's own
+  # journal. Foreign units are left alone with a warning.
+  OWNED_UNITS=()
+  OWNED_LAUNCHER=0
+  OWNED_ROOT=0
   local unit_dir="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
   local units=(
     ai-usage-dashboard-collector.service
@@ -202,9 +206,6 @@ remove_owned_remnants() {
     ai-usage-dashboard-web.service
   )
   local collector_service="$unit_dir/ai-usage-dashboard-collector.service"
-  local removed=0
-  local owned_root=0
-  local -a owned_units=()
   # Decide ownership for every unit before removing any: the timer is owned
   # through the collector service file, which the removal below would delete.
   for unit in "${units[@]}"; do
@@ -223,43 +224,85 @@ remove_owned_remnants() {
       owned=1
     fi
     if [[ $owned -eq 1 ]]; then
-      owned_units+=("$unit")
-      owned_root=1
+      OWNED_UNITS+=("$unit")
+      OWNED_ROOT=1
     else
       printf 'warning: leaving foreign unit %s untouched\n' "$file" >&2
     fi
   done
-  for unit in ${owned_units[@]+"${owned_units[@]}"}; do
-    local file="$unit_dir/$unit"
-    systemctl --user stop "$unit" >/dev/null 2>&1 || true
-    systemctl --user disable "$unit" >/dev/null 2>&1 || true
-    rm -f "$file"
-    removed=1
-  done
-  [[ $removed -eq 1 ]] && systemctl --user daemon-reload >/dev/null 2>&1 || true
-  local launcher="$HOME/.local/bin/ai-usage-dashboard"
   if launcher_is_owned; then
-    rm -f "$launcher"
-    removed=1
-    owned_root=1
+    OWNED_LAUNCHER=1
+    OWNED_ROOT=1
   fi
   # The release, runtime, and cache trees are execution surfaces of this root.
   # Remove them only when ownership is demonstrable: an owned unit or launcher
   # above, the ownership record, or this root's own operation journal. Without
   # proof they stay, so a foreign directory is never emptied.
-  if [[ $owned_root -eq 0 && -f "$ROOT/data-ownership.json" ]]; then
-    owned_root=1
+  if [[ $OWNED_ROOT -eq 0 && -f "$ROOT/data-ownership.json" ]]; then
+    OWNED_ROOT=1
   fi
-  if [[ $owned_root -eq 0 && -f "$ROOT/operation.json" ]] \
+  if [[ $OWNED_ROOT -eq 0 && -f "$ROOT/operation.json" ]] \
     && grep -qF "\"root\": \"$ROOT\"" "$ROOT/operation.json"; then
-    owned_root=1
+    OWNED_ROOT=1
   fi
-  if [[ $owned_root -eq 1 && $remove_root -eq 1 ]]; then
+}
+
+remove_owned_remnants() {
+  # Used only when the runtime is gone: remove execution surfaces that are
+  # demonstrably this managed root's — owned unit files, the launcher, and the
+  # release/runtime/cache trees. Application data, backups, credentials, and
+  # the ownership record itself are never touched.
+  # An absent-root cleanup passes 0: remove external surfaces only, even if a
+  # new root appears during the service commands. Tree cleanup requires a lock.
+  local remove_root="${1:-1}"
+  collect_owned_remnants
+  local removed=0
+  local unit
+  for unit in ${OWNED_UNITS[@]+"${OWNED_UNITS[@]}"}; do
+    local file="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/$unit"
+    systemctl --user stop "$unit" >/dev/null 2>&1 || true
+    systemctl --user disable "$unit" >/dev/null 2>&1 || true
+    rm -f "$file"
+    removed=1
+  done
+  if [[ $OWNED_LAUNCHER -eq 1 ]]; then
+    rm -f "$HOME/.local/bin/ai-usage-dashboard"
+    removed=1
+  fi
+  if [[ $OWNED_ROOT -eq 1 && $remove_root -eq 1 ]]; then
     rm -rf "$ROOT/releases" "$ROOT/runtime" "$ROOT/cache"
     rm -f "$ROOT/operation.json"
     removed=1
   fi
   [[ $removed -eq 1 ]] && systemctl --user daemon-reload >/dev/null 2>&1 || true
+  return 0
+}
+
+preview_owned_remnants() {
+  # Read-only counterpart of remove_owned_remnants for `uninstall --dry-run`
+  # when no runtime can run the manager. It names the same ownership, path, and
+  # service effects a real run would apply, and touches nothing.
+  local remove_root="${1:-1}"
+  collect_owned_remnants
+  if [[ ${#OWNED_UNITS[@]} -eq 0 && $OWNED_LAUNCHER -eq 0 && $OWNED_ROOT -eq 0 ]]; then
+    log "DRY RUN — no managed installation at $ROOT; nothing to remove."
+    return 0
+  fi
+  log "DRY RUN — no runtime at $ROOT; an uninstall would remove:"
+  local unit
+  for unit in ${OWNED_UNITS[@]+"${OWNED_UNITS[@]}"}; do
+    log "  unit     : $unit (stop, disable, remove)"
+  done
+  if [[ $OWNED_LAUNCHER -eq 1 ]]; then
+    log "  launcher : $HOME/.local/bin/ai-usage-dashboard"
+  fi
+  if [[ $OWNED_ROOT -eq 1 && $remove_root -eq 1 ]]; then
+    log "  path     : $ROOT/releases, $ROOT/runtime, $ROOT/cache, $ROOT/operation.json"
+  fi
+  if [[ $remove_root -eq 0 ]]; then
+    log "  root     : absent; it would not be created"
+  fi
+  log "Application data, backups, credentials, and the ownership record would be left untouched."
   return 0
 }
 
@@ -297,7 +340,11 @@ if [[ "$command_name" == "status" || "$command_name" == "uninstall" ]]; then
     exit 1
   fi
   if [[ $dry_run -eq 1 ]]; then
-    log "DRY RUN — no managed installation at $ROOT; nothing to remove."
+    if [[ -d "$ROOT" ]]; then
+      preview_owned_remnants 1
+    else
+      preview_owned_remnants 0
+    fi
     exit 0
   fi
   remove_owned_remnants
