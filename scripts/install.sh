@@ -126,6 +126,17 @@ if [[ "$ROOT" =~ [[:space:]\"\'\\] ]]; then
   die "the install root cannot contain whitespace, quotes, or backslashes: $ROOT"
 fi
 
+acquire_lifecycle_lock() {
+  command -v flock >/dev/null 2>&1 || die "flock is required and was not found on PATH"
+  (umask 077; mkdir -p "$ROOT")
+  exec 9>"$ROOT/lifecycle.lock"
+  if ! flock --nonblock 9; then
+    die "another managed installation operation is already running for $ROOT; wait for it to finish, then retry"
+  fi
+  # Keep the descriptor open across exec and tell the manager to reuse it.
+  export AUD_INSTALL_LOCK_HELD=1
+}
+
 # --- recovery entry points (status, uninstall) ------------------------------
 
 run_manager_if_available() {
@@ -223,6 +234,9 @@ remove_owned_remnants() {
 
 if [[ "$command_name" == "status" || "$command_name" == "uninstall" ]]; then
   if [[ "$command_name" == "uninstall" ]]; then
+    # Serialize manager selection, state validation, and fallback cleanup with
+    # install/update. An in-progress first install may have no state/current yet.
+    if [[ $dry_run -eq 0 ]]; then acquire_lifecycle_lock; fi
     extra=()
     if [[ $dry_run -eq 1 ]]; then extra=(--dry-run); fi
     if run_manager_if_available uninstall --install-dir "$ROOT" "${extra[@]}"; then
@@ -405,12 +419,7 @@ fi
 # racing another operation changes nothing and fails fast. The descriptor stays
 # open across the final exec, and AUD_INSTALL_LOCK_HELD tells the manager the
 # lock is already held.
-(umask 077; mkdir -p "$ROOT")
-exec 9>"$ROOT/lifecycle.lock"
-if ! flock --nonblock 9; then
-  die "another managed installation operation is already running for $ROOT; wait for it to finish, then retry"
-fi
-export AUD_INSTALL_LOCK_HELD=1
+acquire_lifecycle_lock
 
 # --- release checkout fetch -------------------------------------------------
 

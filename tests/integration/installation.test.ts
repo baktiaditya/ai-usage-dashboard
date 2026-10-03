@@ -11,6 +11,7 @@
 import { execFile, execFileSync, spawn, spawnSync } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createHash } from 'node:crypto';
+import { once } from 'node:events';
 import {
   chmodSync,
   copyFileSync,
@@ -1827,6 +1828,99 @@ describe('managed installation lifecycle', () => {
     expect(unitFile(sandbox, COLLECTOR)).toBeNull();
     expect(unitFile(sandbox, TIMER)).toBeNull();
     expect(unitFile(sandbox, WEB)).toBeNull();
+  });
+
+  it('refuses bootstrap fallback uninstall while another operation holds the lifecycle lock', async () => {
+    const sandbox = freshSandbox();
+    const release = join(sandbox.root, 'releases', 'd'.repeat(40));
+    const unitDir = join(sandbox.home, '.config', 'systemd', 'user');
+    const launcher = join(sandbox.home, '.local', 'bin', 'ai-usage-dashboard');
+    const preserved = [
+      join(release, 'MARKER'),
+      join(sandbox.root, 'runtime', 'MARKER'),
+      join(sandbox.root, 'cache', 'MARKER'),
+      join(sandbox.root, 'operation.json'),
+      join(sandbox.root, 'data-ownership.json'),
+      join(sandbox.dataDir, 'usage.db'),
+      join(unitDir, COLLECTOR),
+      join(unitDir, TIMER),
+      join(unitDir, WEB),
+      launcher,
+    ];
+    for (const path of preserved) writeFile(path, 'keep');
+    writeInstallJournal(sandbox, {
+      phase: 'db-creating',
+      candidateSha: 'd'.repeat(40),
+      dbOwnershipRecorded: false,
+    });
+    writeFile(join(unitDir, COLLECTOR), `[Service]\nWorkingDirectory=${release}\n`);
+    writeFile(join(unitDir, TIMER), '[Timer]\nUnit=ai-usage-dashboard-collector.service\n');
+    writeFile(join(unitDir, WEB), `[Service]\nWorkingDirectory=${release}\n`);
+    writeFile(
+      launcher,
+      `#!/usr/bin/env bash\n# managed by the ai-usage-dashboard installer\nAUD_INSTALL_ROOT='${sandbox.root}'\n`,
+      0o755,
+    );
+    for (const unit of [COLLECTOR, TIMER, WEB]) markUnitActive(sandbox, unit, true);
+    const before = preserved.map((path) => readFileSync(path, 'utf8'));
+    // Signal readiness only after flock succeeds. --no-fork lets closing stdin
+    // end the holder itself, so no orphan child keeps the lock after the test.
+    const holder = spawn(
+      'flock',
+      [
+        '--nonblock',
+        '--no-fork',
+        join(sandbox.root, 'lifecycle.lock'),
+        process.execPath,
+        '-e',
+        'process.stdout.write("locked\\n"); process.stdin.resume();',
+      ],
+      { stdio: ['pipe', 'pipe', 'pipe'] },
+    );
+    try {
+      await once(holder.stdout, 'data');
+      const status = await sandbox.runBootstrap(['status', '--install-dir', sandbox.root]);
+      expect(status.status).toBe(1);
+      expect(status.stdout).toContain('No managed installation');
+      const preview = await sandbox.runBootstrap([
+        'uninstall',
+        '--install-dir',
+        sandbox.root,
+        '--dry-run',
+      ]);
+      expect(preview.status, preview.stderr).toBe(0);
+      expect(preview.stdout).toContain('DRY RUN');
+      expect(preserved.map((path) => readFileSync(path, 'utf8'))).toEqual(before);
+      const result = await sandbox.runBootstrap(['uninstall', '--install-dir', sandbox.root]);
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain('already running');
+      expect(preserved.map((path) => readFileSync(path, 'utf8'))).toEqual(before);
+      for (const unit of [COLLECTOR, TIMER, WEB]) {
+        expect(existsSync(join(sandbox.systemd, 'active', unit))).toBe(true);
+      }
+    } finally {
+      const exited = once(holder, 'exit');
+      holder.stdin.end();
+      await exited;
+    }
+    const retry = await sandbox.runBootstrap(['uninstall', '--install-dir', sandbox.root]);
+    expect(retry.status, retry.stderr).toBe(0);
+    for (const tree of ['releases', 'runtime', 'cache', 'operation.json']) {
+      expect(existsSync(join(sandbox.root, tree))).toBe(false);
+    }
+    expect(existsSync(launcher)).toBe(false);
+    expect(readFileSync(join(sandbox.dataDir, 'usage.db'), 'utf8')).toBe('keep');
+    expect(readFileSync(join(sandbox.root, 'data-ownership.json'), 'utf8')).toBe('keep');
+  });
+
+  it.each([
+    { args: ['status'], status: 1 },
+    { args: ['uninstall', '--dry-run'], status: 0 },
+  ])('keeps an absent bootstrap root absent for $args', async ({ args, status }) => {
+    const sandbox = freshSandbox();
+    const result = await sandbox.runBootstrap([...args, '--install-dir', sandbox.root]);
+    expect(result.status, result.stderr).toBe(status);
+    expect(existsSync(sandbox.root)).toBe(false);
   });
 
   it('removes proven execution trees in the bootstrap fallback', async () => {

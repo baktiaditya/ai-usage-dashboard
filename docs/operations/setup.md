@@ -909,6 +909,10 @@ install failure.
   sentinel, and `data-ownership.json`. Repeating it is a successful no-op, through the
   bootstrap once the launcher is gone. Uninstall refuses when a data directory is nested in
   the install root or safe ownership cannot be proven, and retains referenced resources.
+  The bootstrap takes the lifecycle lock before selecting a manager or removing remnants,
+  including during an incomplete first install. If another operation holds it, uninstall
+  refuses before cleanup; wait for that operation to finish and retry. Bootstrap fallback
+  status and dry runs remain available without taking the lock.
 - **reinstall** from the same root and configuration recognizes the retained database through
   `data-ownership.json`, checks applied migrations read-only, refuses a database that is newer
   than the release, in use, or at a path the ownership record does not name, and takes a

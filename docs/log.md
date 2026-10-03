@@ -1,5 +1,21 @@
 # Bundle Update Log
 
+## 2026-10-04
+
+- **Update**: addressed the remaining lifecycle-lock finding in PR
+  [#38](https://github.com/baktiaditya/ai-usage-dashboard/pull/38#issuecomment-5971772481).
+  The bootstrap now shares its nonblocking install lock with mutating uninstall, taking it
+  before manager selection, state validation, and fallback cleanup. An incomplete first
+  install's releases, runtime, cache, journal, units, and launcher therefore survive a
+  concurrent uninstall attempt; cleanup succeeds after the holder releases the lock and
+  keeps application data and its ownership record. Regression coverage drives the real
+  bootstrap under a separately held `flock`, checks those preserved surfaces and active
+  units, then retries after release. Bootstrap fallback status and dry runs remain
+  observational, including when the root is absent. The behavior is documented in
+  [Setup](operations/setup.md#lifecycle-semantics).
+  Validation: `pnpm run verify` passes (40 files, 745 tests), including 84 installer tests;
+  Bash syntax, OKF bundle validation, and `git diff --check` pass.
+
 ## 2026-10-03
 
 - **Update**: the managed Linux installer is implemented on branch
