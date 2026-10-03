@@ -329,7 +329,7 @@ Attempt status and snapshot freshness are separate concepts and are not stored a
 - Selectors/redactors run before logging and persistence. Tests must prove that emails, account IDs, bearer tokens, authorization headers, and raw payloads never leak through.
 - The web server binds to `127.0.0.1`. Refresh endpoints accept `POST`, verify same-origin/CSRF, enforce a local rate limit, and never trust `Host`/`X-Forwarded-For` as the sole control.
 - Database, spool, environment, log, and sensitive config files live outside public assets, go into `.gitignore` when inside the tree, and use minimal permissions.
-- Systemd units use an absolute `WorkingDirectory`, a bounded restart policy, timeouts, and umask `0077`. The timer uses `Persistent=true` when catch-up after reboot is actually desired.
+- Systemd units use an absolute `WorkingDirectory`, a bounded restart policy, timeouts, and umask `0077`. When catch-up after reboot is desired, a monotonic timer gets it from `OnBootSec=`, which elapses immediately when already past at activation. `Persistent=` affects only `OnCalendar=` timers.
 - If accessed from a phone later, add authentication, TLS, origin policy, and a private network before opening a non-loopback listener.
 
 ## 6. Implementation milestones

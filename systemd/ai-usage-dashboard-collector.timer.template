@@ -4,14 +4,18 @@ Description=Run the AI Usage Dashboard collector every __INTERVAL__ minutes
 Documentation=file://__WORKDIR__/docs/operations/setup.md
 
 [Timer]
+# The catch-up after a reboot: an OnBootSec= already in the past when the timer
+# is activated elapses at once, so the first run never waits a full interval.
 OnBootSec=2min
+# Monotonic, so it pauses during suspend and resumes its countdown afterwards;
+# there is no catch-up run after a resume.
 OnUnitActiveSec=__INTERVAL__min
 # Spread the wake-up so a laptop resuming from sleep does not fire every timer
 # in the same instant.
 AccuracySec=30s
 RandomizedDelaySec=30s
-# Catch up on one missed run after a reboot or resume, rather than waiting a
-# full interval for the dashboard to become current again.
+# No effect: systemd.timer(5) limits Persistent= to OnCalendar= timers, and this
+# one has none. Left in place: removing it would change nothing.
 Persistent=true
 Unit=ai-usage-dashboard-collector.service
 
