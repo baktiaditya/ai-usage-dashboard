@@ -104,6 +104,10 @@ The restore refuses, and changes nothing, in any of these cases:
 - it comes from a newer build;
 - it is a live database copied with a non-empty WAL beside it.
 
+The in-use check reads `/proc` on Linux and asks `lsof` elsewhere, such as macOS, and refuses when
+neither can answer. Without the systemd units (§5), stop whatever runs the collector and the
+dashboard yourself before restoring.
+
 A backup from an older build is migrated forward. The database it replaces moves aside, together
 with its WAL, to `usage.db.pre-restore-<UTC timestamp>`. Delete that once the restored dashboard
 looks right.

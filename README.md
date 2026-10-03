@@ -24,8 +24,8 @@ Source contracts and provider requirements live in the
 
 ## Quick start
 
-Runs on **Linux only**: scheduling uses user `systemd`, and the database restore
-guard reads `/proc`. Install Node.js matching `engines.node` in
+Scheduled collection runs on **Linux only**: it uses user `systemd`. Install Node.js matching
+`engines.node` in
 [package.json](package.json); [.nvmrc](.nvmrc) selects the supported release line.
 Corepack runs the pnpm version pinned by `packageManager` in the same package file.
 
