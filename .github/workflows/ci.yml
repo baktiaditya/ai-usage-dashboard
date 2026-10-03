@@ -47,22 +47,18 @@ jobs:
           sudo useradd --create-home --shell /bin/bash audrehearsal
           sudo loginctl enable-linger audrehearsal
           uid=$(id -u audrehearsal)
-          wait_for_manager() {
-            for _ in $(seq 1 60); do
-              [[ -S "/run/user/$uid/systemd/private" ]] && return 0
-              sleep 1
-            done
-            return 1
-          }
-          if ! wait_for_manager; then
-            # Linger did not bring the manager up by itself on this image;
-            # start the same units systemd-logind would start for a session.
-            sudo systemctl start "user-runtime-dir@$uid.service" || true
-            sudo systemctl start "user@$uid.service" || true
-            wait_for_manager
-          fi
-          sudo -u audrehearsal env XDG_RUNTIME_DIR="/run/user/$uid" \
-            systemctl --user show-environment >/dev/null
+          # A real login session is what starts the account's user manager:
+          # linger alone does not on this image. sudo -i goes through PAM,
+          # so pam_systemd creates /run/user/<uid> and user@<uid>.service.
+          for _ in $(seq 1 30); do
+            if sudo -iu audrehearsal env XDG_RUNTIME_DIR="/run/user/$uid" \
+              systemctl --user show-environment >/dev/null 2>&1; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "user manager did not become reachable" >&2
+          exit 1
 
       - name: Hand the checkout to the disposable account
         run: |
@@ -83,4 +79,4 @@ jobs:
           exec bash /tmp/aud-rehearsal-source/scripts/test-installation-systemd.sh
           SCRIPT
           chmod 0755 /tmp/aud-rehearsal-run.sh
-          sudo -u audrehearsal /tmp/aud-rehearsal-run.sh
+          sudo -iu audrehearsal /tmp/aud-rehearsal-run.sh
