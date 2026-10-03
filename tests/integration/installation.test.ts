@@ -32,6 +32,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, afterEach, describe, expect, it, vi } from 'vitest';
+import { startDashboardServer, type DashboardServer } from '../helpers/dashboard-server';
 
 // These tests start real processes, fetch fixture archives, and run git; the
 // suite-wide five-second default is too tight when the full suite competes for
@@ -187,6 +188,7 @@ interface Sandbox {
   readonly repo: string;
   readonly runtimeDir: string;
   readonly port: number;
+  readonly setPort: (port: number) => void;
   readonly calls: () => string[];
   readonly fixture: (patch: Record<string, unknown>) => void;
   readonly run: (
@@ -432,6 +434,7 @@ function makeSandbox(options: {
   const configPath = join(dir, 'fixture-config.json');
   buildFixtureRepo(repo, options.releases);
 
+  let port = options.port;
   const fixture = (patch: Record<string, unknown>): void => {
     const base = {
       config: {
@@ -439,7 +442,7 @@ function makeSandbox(options: {
         dataDir,
         databasePath: join(dataDir, 'usage.db'),
         host: '127.0.0.1',
-        port: options.port,
+        port,
         intervalMinutes: 5,
       },
       collectExit: 0,
@@ -478,7 +481,17 @@ function makeSandbox(options: {
     configPath,
     repo,
     runtimeDir: join(root, 'runtime', `node-v${NODE_VERSION}`),
-    port: options.port,
+    get port() {
+      return port;
+    },
+    setPort: (assignedPort) => {
+      port = assignedPort;
+      const current = JSON.parse(readFileSync(configPath, 'utf8'));
+      writeFileSync(
+        configPath,
+        JSON.stringify({ ...current, config: { ...current.config, port } }, null, 2),
+      );
+    },
     calls: () => {
       const path = `${configPath}.calls`;
       return existsSync(path)
@@ -697,46 +710,15 @@ function nextPort(): number {
   return PORT_BASE + portCounter;
 }
 
-interface HealthServerHandle {
-  close(): void;
+/** Each live fixture owns an OS-assigned port and is registered for cleanup. */
+async function startDashboard(sandbox: Sandbox): Promise<DashboardServer> {
+  const server = await startDashboardServer();
+  suiteServer.push(server);
+  sandbox.setPort(server.port);
+  return server;
 }
 
-/**
- * The health endpoint runs in its own process: the tests drive the manager
- * synchronously (`spawnSync`), which blocks this process's event loop, so an
- * in-process HTTP server could never answer the installer's health check.
- */
-async function startDashboard(port: number): Promise<HealthServerHandle> {
-  const child = spawn(
-    process.execPath,
-    [
-      '-e',
-      `require('node:http').createServer((q, r) => { r.writeHead(200, {'content-type':'text/plain'}); r.end('ok'); }).listen(${port}, '127.0.0.1');`,
-    ],
-    { stdio: 'ignore', detached: true },
-  );
-  child.unref();
-  const ready = spawnSync(
-    'bash',
-    [
-      '-c',
-      `for i in $(seq 1 250); do curl -sf -o /dev/null http://127.0.0.1:${port}/ && exit 0; sleep 0.1; done; exit 1`,
-    ],
-    { encoding: 'utf8' },
-  );
-  if (ready.status !== 0) throw new Error(`health server did not start on ${port}`);
-  return {
-    close: () => {
-      try {
-        if (child.pid !== undefined) process.kill(child.pid, 'SIGKILL');
-      } catch {
-        // already gone
-      }
-    },
-  };
-}
-
-const suiteServer: HealthServerHandle[] = [];
+const suiteServer: DashboardServer[] = [];
 const archiveRegistry = new Map<string, Buffer>();
 let archiveServer: Server | null = null;
 let archiveServerPort = 0;
@@ -767,8 +749,8 @@ function registerArchive(archivePath: string): void {
   );
 }
 
-afterEach(() => {
-  for (const server of suiteServer.splice(0)) server.close();
+afterEach(async () => {
+  await Promise.all(suiteServer.splice(0).map((server) => server.close()));
 });
 
 // ---------------------------------------------------------------------------
@@ -1040,8 +1022,7 @@ describe('managed installation lifecycle', () => {
 
   it('installs a fresh managed root: private runtime, units, timer, launcher, ownership, and health', async () => {
     const sandbox = freshSandbox();
-    const server = await startDashboard(sandbox.port);
-    suiteServer.push(server);
+    const server = await startDashboard(sandbox);
     const result = installV010(sandbox);
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toContain('is installed');
@@ -1096,23 +1077,22 @@ describe('managed installation lifecycle', () => {
     expect(status.stdout).toContain('v0.1.0');
     expect(status.stdout).toContain('web       : active');
     expect(status.stdout).toContain('recovery  : none');
-    server.close();
+    await server.close();
   });
 
   it('treats collector exit 1 as installation success and exit 2 as recoverable failure', async () => {
     const success = freshSandbox();
-    const server = await startDashboard(success.port);
-    suiteServer.push(server);
+    const server = await startDashboard(success);
     success.fixture({ collectExit: 1 });
     const ok = installV010(success);
     expect(ok.status, ok.stderr).toBe(0);
     expect(ok.stdout).toContain('providers need setup or reported an error');
     expect(existsSync(join(success.root, 'state.json'))).toBe(true);
-    server.close();
+    await server.close();
 
     const failing = freshSandbox();
     placeRuntime(failing.root);
-    await startDashboard(failing.port);
+    await startDashboard(failing);
     failing.fixture({ collectExit: 2 });
     const failed = installV010(failing);
     expect(failed.status).toBe(1);
@@ -1172,8 +1152,7 @@ describe('managed installation lifecycle', () => {
 
   it('provisions the private runtime through the manager when none is present', async () => {
     const sandbox = freshSandbox();
-    const server = await startDashboard(sandbox.port);
-    suiteServer.push(server);
+    const server = await startDashboard(sandbox);
     registerArchive(archivePath);
     const result = await sandbox.runAsync(
       process.execPath,
@@ -1187,7 +1166,7 @@ describe('managed installation lifecycle', () => {
       true,
     );
     expect(existsSync(join(sandbox.root, 'runtime', 'current', 'bin', 'node'))).toBe(true);
-    server.close();
+    await server.close();
   });
 
   it('refuses an unrecorded, in-use, or newer database before any writable open', async () => {
@@ -1203,8 +1182,7 @@ describe('managed installation lifecycle', () => {
 
     const inUse = freshSandbox();
     placeRuntime(inUse.root);
-    const inUseServer = await startDashboard(inUse.port);
-    suiteServer.push(inUseServer);
+    await startDashboard(inUse);
     inUse.fixture({ holders: [4321] });
     // Installed once, then re-run with the recorded database in use.
     const first = installV010WithFixture(inUse, { collectExit: 0 });
@@ -1216,8 +1194,7 @@ describe('managed installation lifecycle', () => {
 
     const newer = freshSandbox();
     placeRuntime(newer.root);
-    const newerServer = await startDashboard(newer.port);
-    suiteServer.push(newerServer);
+    await startDashboard(newer);
     const seeded = installV010WithFixture(newer, { collectExit: 0, appliedMax: 7, latest: 5 });
     expect(seeded.status, seeded.stderr).toBe(0);
     newer.fixture({ appliedMax: 7, latest: 5 });
@@ -1246,8 +1223,7 @@ describe('managed installation lifecycle', () => {
   it('refuses concurrent lifecycle operations before mutation', async () => {
     const sandbox = freshSandbox();
     placeRuntime(sandbox.root);
-    const server = await startDashboard(sandbox.port);
-    suiteServer.push(server);
+    const server = await startDashboard(sandbox);
     expect(installV010(sandbox).status).toBe(0);
     const holder = spawn(
       'flock',
@@ -1264,13 +1240,12 @@ describe('managed installation lifecycle', () => {
     expect(contended.stderr).toContain('already running');
     expect(readFileSync(join(sandbox.root, 'state.json'), 'utf8')).toBe(before);
     holder.kill('SIGKILL');
-    server.close();
+    await server.close();
   });
 
   it('updates to a new release, records the previous release, and takes a verified backup', async () => {
     const sandbox = freshSandbox();
-    const server = await startDashboard(sandbox.port);
-    suiteServer.push(server);
+    const server = await startDashboard(sandbox);
     expect(installV010(sandbox).status, 'install').toBe(0);
     const previousSha = readState(sandbox)['sha'] as string;
     const nextSha = commitNextRelease(sandbox.repo, {
@@ -1304,13 +1279,12 @@ describe('managed installation lifecycle', () => {
     const noop = manager(sandbox, ['update', '--install-dir', sandbox.root]);
     expect(noop.status).toBe(0);
     expect(noop.stdout).toContain('already active');
-    server.close();
+    await server.close();
   });
 
   it('refuses a downgrade and a tag moved after resolution', async () => {
     const sandbox = freshSandbox();
-    const server = await startDashboard(sandbox.port);
-    suiteServer.push(server);
+    const server = await startDashboard(sandbox);
     expect(installV010(sandbox).status).toBe(0);
     commitNextRelease(sandbox.repo, { version: '0.1.1', tag: 'v0.1.1', manifestSha });
     expect(
@@ -1325,13 +1299,12 @@ describe('managed installation lifecycle', () => {
     ]);
     expect(downgrade.status).toBe(1);
     expect(downgrade.stderr).toContain('downgrade');
-    server.close();
+    await server.close();
   });
 
   it('recovers a failed candidate activation by restoring the previous release and database', async () => {
     const sandbox = freshSandbox();
-    const server = await startDashboard(sandbox.port);
-    suiteServer.push(server);
+    const server = await startDashboard(sandbox);
     expect(installV010(sandbox).status).toBe(0);
     const active = readState(sandbox);
     expect(active['tag']).toBe('v0.1.0');
@@ -1342,7 +1315,7 @@ describe('managed installation lifecycle', () => {
       manifestSha,
     });
     // The candidate's web never answers: stop the fixture server first.
-    server.close();
+    await server.close();
     await waitForHttpToStop(sandbox.port);
     const result = manager(
       sandbox,
@@ -1370,8 +1343,7 @@ describe('managed installation lifecycle', () => {
 
   it('recovers when the candidate web unit fails to start', async () => {
     const sandbox = freshSandbox();
-    const server = await startDashboard(sandbox.port);
-    suiteServer.push(server);
+    const server = await startDashboard(sandbox);
     expect(installV010(sandbox).status).toBe(0);
     const active = readState(sandbox);
     commitNextRelease(sandbox.repo, { version: '0.1.1', tag: 'v0.1.1', manifestSha });
@@ -1389,13 +1361,12 @@ describe('managed installation lifecycle', () => {
     expect(recovered['tag']).toBe('v0.1.0');
     expect(recovered['sha']).toBe(active['sha']);
     expect(existsSync(join(sandbox.root, 'operation.json'))).toBe(false);
-    server.close();
+    await server.close();
   });
 
   it('recovers an interrupted update journal at the database boundary on the next invocation', async () => {
     const sandbox = freshSandbox();
-    const server = await startDashboard(sandbox.port);
-    suiteServer.push(server);
+    const server = await startDashboard(sandbox);
     expect(installV010(sandbox).status).toBe(0);
     const active = readState(sandbox);
     const nextSha = commitNextRelease(sandbox.repo, {
@@ -1474,13 +1445,12 @@ describe('managed installation lifecycle', () => {
     const state = readState(sandbox);
     expect(state['tag']).toBe('v0.1.1');
     expect((state['previous'] as Record<string, unknown>)['sha']).toBe(active['sha']);
-    server.close();
+    await server.close();
   });
 
   it('finalizes a committed journal instead of rolling it back', async () => {
     const sandbox = freshSandbox();
-    const server = await startDashboard(sandbox.port);
-    suiteServer.push(server);
+    const server = await startDashboard(sandbox);
     expect(installV010(sandbox).status).toBe(0);
     const active = readState(sandbox);
     const runtime = {
@@ -1517,13 +1487,12 @@ describe('managed installation lifecycle', () => {
     expect(result.stdout).toContain('Finalized');
     expect(existsSync(join(sandbox.root, 'operation.json'))).toBe(false);
     expect(existsSync(join(sandbox.dir, 'markers', 'restored'))).toBe(false);
-    server.close();
+    await server.close();
   });
 
   it('keeps only active/previous releases after repeated updates and never prunes a referenced one', async () => {
     const sandbox = freshSandbox();
-    const server = await startDashboard(sandbox.port);
-    suiteServer.push(server);
+    const server = await startDashboard(sandbox);
     expect(installV010(sandbox).status).toBe(0);
     const v011 = commitNextRelease(sandbox.repo, { version: '0.1.1', tag: 'v0.1.1', manifestSha });
     expect(
@@ -1537,13 +1506,12 @@ describe('managed installation lifecycle', () => {
     expect(releases).toHaveLength(2);
     expect(releases).toContain(v011);
     expect(releases).toContain(v012);
-    server.close();
+    await server.close();
   });
 
   it('leaves Claude settings unchanged until explicit apply, then follows update and uninstall', async () => {
     const sandbox = freshSandbox();
-    const server = await startDashboard(sandbox.port);
-    suiteServer.push(server);
+    const server = await startDashboard(sandbox);
     const settingsPath = join(sandbox.home, '.claude', 'settings.json');
     const original = {
       statusLine: { type: 'command', command: 'my-status --fancy', padding: 2, customField: true },
@@ -1597,13 +1565,12 @@ describe('managed installation lifecycle', () => {
     expect(readState(sandbox)['bridge']).not.toBeNull();
     const afterExternal = manager(sandbox, ['status', '--install-dir', sandbox.root]);
     expect(afterExternal.stdout).toContain('externally managed or removed');
-    server.close();
+    await server.close();
   });
 
   it('uninstalls only owned execution surfaces, preserves data, and repeats safely through the bootstrap', async () => {
     const sandbox = freshSandbox();
-    const server = await startDashboard(sandbox.port);
-    suiteServer.push(server);
+    const server = await startDashboard(sandbox);
     expect(installV010(sandbox).status).toBe(0);
     writeFile(join(sandbox.dataDir, 'credential-sentinel'), 'keep');
     const ownershipBefore = readFileSync(join(sandbox.root, 'data-ownership.json'), 'utf8');
@@ -1641,13 +1608,12 @@ describe('managed installation lifecycle', () => {
     const bootstrapAgain = await sandbox.runBootstrap(['uninstall', '--install-dir', sandbox.root]);
     expect(bootstrapAgain.status).toBe(0);
     expect(existsSync(foreign)).toBe(true);
-    server.close();
+    await server.close();
   });
 
   it('reinstalls from the same root and configuration, reusing the retained database after a verified backup', async () => {
     const sandbox = freshSandbox();
-    const server = await startDashboard(sandbox.port);
-    suiteServer.push(server);
+    const server = await startDashboard(sandbox);
     expect(installV010(sandbox).status).toBe(0);
     const firstState = readState(sandbox);
     expect(manager(sandbox, ['uninstall', '--install-dir', sandbox.root]).status).toBe(0);
@@ -1665,13 +1631,12 @@ describe('managed installation lifecycle', () => {
       entries: unknown[];
     };
     expect(ownership.entries).toHaveLength(1);
-    server.close();
+    await server.close();
   });
 
   it('performs status without database, provider, or migration activity and reports units distinctly', async () => {
     const sandbox = freshSandbox();
-    const server = await startDashboard(sandbox.port);
-    suiteServer.push(server);
+    const server = await startDashboard(sandbox);
     expect(installV010(sandbox).status).toBe(0);
     const callsBefore = sandbox.calls().length;
     rmSync(join(sandbox.systemd, 'active', 'ai-usage-dashboard-web.service'), { force: true });
@@ -1690,13 +1655,12 @@ describe('managed installation lifecycle', () => {
     const corrupt = manager(sandbox, ['status', '--install-dir', sandbox.root]);
     expect(corrupt.status).toBe(2);
     expect(corrupt.stderr).toContain('not valid JSON');
-    server.close();
+    await server.close();
   });
 
   it('dry runs uninstall without side effects', async () => {
     const sandbox = freshSandbox();
-    const server = await startDashboard(sandbox.port);
-    suiteServer.push(server);
+    const server = await startDashboard(sandbox);
     expect(installV010(sandbox).status).toBe(0);
     const stateBefore = readFileSync(join(sandbox.root, 'state.json'), 'utf8');
     const result = manager(sandbox, ['uninstall', '--install-dir', sandbox.root, '--dry-run']);
@@ -1707,13 +1671,12 @@ describe('managed installation lifecycle', () => {
       true,
     );
     expect(unitFile(sandbox, 'ai-usage-dashboard-web.service')).not.toBeNull();
-    server.close();
+    await server.close();
   });
 
   it('reports a requested linger failure as a clear nonzero result without sudo', async () => {
     const sandbox = freshSandbox();
-    const server = await startDashboard(sandbox.port);
-    suiteServer.push(server);
+    const server = await startDashboard(sandbox);
     const result = installV010(sandbox, {
       AUD_TEST_LINGER_FAIL: '1',
       AUD_INSTALL_ENABLE_LINGER: '1',
@@ -1723,7 +1686,7 @@ describe('managed installation lifecycle', () => {
       AUD_TEST_LINGER_FAIL: '1',
     });
     expect(linger.status).toBe(0);
-    server.close();
+    await server.close();
   });
 
   it('takes the lifecycle lock before provisioning or changing the root', async () => {
@@ -1747,8 +1710,7 @@ describe('managed installation lifecycle', () => {
 
   it('refuses to overwrite a unit replaced by a manual installation', async () => {
     const sandbox = freshSandbox();
-    const server = await startDashboard(sandbox.port);
-    suiteServer.push(server);
+    const server = await startDashboard(sandbox);
     expect(installV010(sandbox).status).toBe(0);
     commitNextRelease(sandbox.repo, { version: '0.1.1', tag: 'v0.1.1', manifestSha });
     const webUnit = join(sandbox.home, '.config', 'systemd', 'user', WEB);
@@ -1764,13 +1726,12 @@ describe('managed installation lifecycle', () => {
     expect(result.stderr).toContain('not owned');
     expect(readFileSync(webUnit, 'utf8')).toContain('/manual/checkout');
     expect(readState(sandbox)['tag']).toBe('v0.1.0');
-    server.close();
+    await server.close();
   });
 
   it('refuses to uninstall when the data directory or database symlinks inside the root', async () => {
     const sandbox = freshSandbox();
-    const server = await startDashboard(sandbox.port);
-    suiteServer.push(server);
+    const server = await startDashboard(sandbox);
     expect(installV010(sandbox).status).toBe(0);
     const active = readState(sandbox);
     const victim = join(sandbox.root, 'releases', active['sha'] as string, 'victim-data');
@@ -1786,7 +1747,7 @@ describe('managed installation lifecycle', () => {
     expect(existsSync(join(victim, 'usage.db'))).toBe(true);
     expect(existsSync(join(sandbox.root, 'state.json'))).toBe(true);
     expect(existsSync(join(sandbox.root, 'releases'))).toBe(true);
-    server.close();
+    await server.close();
   });
 
   it('leaves another root launcher and units alone in the bootstrap fallback', async () => {
@@ -2115,8 +2076,7 @@ exit 0
 
   it('update --dry-run neither recovers nor resolves over the network', async () => {
     const sandbox = freshSandbox();
-    const server = await startDashboard(sandbox.port);
-    suiteServer.push(server);
+    const server = await startDashboard(sandbox);
     expect(installV010(sandbox).status).toBe(0);
     const backupPath = join(sandbox.dataDir, 'backups', 'dry-run-backup.db');
     mkdirSync(join(sandbox.dataDir, 'backups'), { recursive: true });
@@ -2139,13 +2099,12 @@ exit 0
     expect(existsSync(join(sandbox.root, 'operation.json'))).toBe(true);
     expect(existsSync(join(sandbox.dir, 'markers', 'restored'))).toBe(false);
     expect(readFileSync(join(sandbox.dataDir, 'usage.db'), 'utf8')).toBe(databaseBefore);
-    server.close();
+    await server.close();
   });
 
   it('restores the stored configuration database during recovery, not the caller environment', async () => {
     const sandbox = freshSandbox();
-    const server = await startDashboard(sandbox.port);
-    suiteServer.push(server);
+    const server = await startDashboard(sandbox);
     expect(installV010(sandbox).status).toBe(0);
     commitNextRelease(sandbox.repo, { version: '0.1.1', tag: 'v0.1.1', manifestSha });
     const candidateSha = tagSha(sandbox.repo, 'v0.1.1');
@@ -2171,13 +2130,12 @@ exit 0
       sandbox.dataDir,
     );
     expect(readFileSync(join(callerData, 'usage.db'), 'utf8')).toBe('caller-db');
-    server.close();
+    await server.close();
   });
 
   it('refuses an update when the resolved tag was moved after installation', async () => {
     const sandbox = freshSandbox();
-    const server = await startDashboard(sandbox.port);
-    suiteServer.push(server);
+    const server = await startDashboard(sandbox);
     expect(installV010(sandbox).status).toBe(0);
     const before = readState(sandbox);
     const moved = commitNextRelease(sandbox.repo, {
@@ -2197,13 +2155,12 @@ exit 0
     expect(result.stderr).toContain('moved');
     const after = readState(sandbox);
     expect(after['sha']).toBe(before['sha']);
-    server.close();
+    await server.close();
   });
 
   it('restores service state when an update is interrupted while stopping the writers', async () => {
     const sandbox = freshSandbox();
-    const server = await startDashboard(sandbox.port);
-    suiteServer.push(server);
+    const server = await startDashboard(sandbox);
     expect(installV010(sandbox).status).toBe(0);
     const snapshot = unitSnapshot(sandbox);
     // SIGKILL inside stopWriters: services are down, the journal still says
@@ -2222,13 +2179,12 @@ exit 0
     expect(existsSync(join(sandbox.systemd, 'active', TIMER))).toBe(true);
     expect(existsSync(join(sandbox.root, 'operation.json'))).toBe(false);
     expect(existsSync(join(sandbox.dir, 'markers', 'restored'))).toBe(false);
-    server.close();
+    await server.close();
   });
 
   it('restores the Claude status line when recovery rolls back a refreshed bridge', async () => {
     const sandbox = freshSandbox();
-    const server = await startDashboard(sandbox.port);
-    suiteServer.push(server);
+    const server = await startDashboard(sandbox);
     const settingsPath = join(sandbox.home, '.claude', 'settings.json');
     writeFile(
       settingsPath,
@@ -2280,7 +2236,7 @@ exit 0
     expect(restored).not.toContain(candidateRelease);
     expect(existsSync(join(elsewhere, 'settings.json'))).toBe(false);
     expect(existsSync(join(sandbox.root, 'operation.json'))).toBe(false);
-    server.close();
+    await server.close();
   });
 
   it('leaves an unowned root untouched instead of provisioning into it', async () => {
@@ -2327,8 +2283,7 @@ exit 0
 
   it('keeps the bridge at the recorded settings path regardless of the caller environment', async () => {
     const sandbox = freshSandbox();
-    const server = await startDashboard(sandbox.port);
-    suiteServer.push(server);
+    const server = await startDashboard(sandbox);
     const dirA = join(sandbox.dir, 'claude-a');
     const dirB = join(sandbox.dir, 'claude-b');
     expect(installV010(sandbox).status).toBe(0);
@@ -2370,7 +2325,7 @@ exit 0
     const after = JSON.parse(readFileSync(settingsA, 'utf8')) as { statusLine?: unknown };
     expect(after.statusLine).toBeUndefined();
     expect(existsSync(join(dirB, 'settings.json'))).toBe(false);
-    server.close();
+    await server.close();
   });
 
   it('resumes an interrupted first install and records the database it was creating', async () => {
@@ -2379,8 +2334,7 @@ exit 0
     const sha = tagSha(sandbox.repo, 'v0.1.0');
     writeFile(join(sandbox.dataDir, 'usage.db'), 'partial-db');
     writeInstallJournal(sandbox, { phase: 'db-creating', candidateSha: sha });
-    const server = await startDashboard(sandbox.port);
-    suiteServer.push(server);
+    const server = await startDashboard(sandbox);
     const result = manager(
       sandbox,
       ['install', '--install-dir', sandbox.root],
@@ -2396,7 +2350,7 @@ exit 0
     expect(existsSync(join(sandbox.root, 'operation.json'))).toBe(false);
     // The remnant is adopted, not backed up as if it were somebody else's.
     expect(sandbox.calls()).not.toContain('db-backup.ts');
-    server.close();
+    await server.close();
   });
 
   it('refuses to adopt a database the interrupted install was not creating', () => {
@@ -2468,21 +2422,19 @@ exit 0
 
   it('re-runs the bootstrap when only a stale atomic temp file sits in a managed root', async () => {
     const sandbox = freshSandbox();
-    const server = await startDashboard(sandbox.port);
-    suiteServer.push(server);
+    const server = await startDashboard(sandbox);
     expect(installV010(sandbox).status).toBe(0);
     writeFile(join(sandbox.root, '.4242.1700000000000.tmp'), 'stale');
     const rerun = await sandbox.runBootstrap(['--install-dir', sandbox.root]);
     expect(rerun.status, rerun.stderr).toBe(0);
     expect(rerun.stderr).not.toContain('unrelated entries');
     expect(readState(sandbox)['tag']).toBe('v0.1.0');
-    server.close();
+    await server.close();
   });
 
   it('restores the service snapshot when stopping a writer fails mid-update', async () => {
     const sandbox = freshSandbox();
-    const server = await startDashboard(sandbox.port);
-    suiteServer.push(server);
+    const server = await startDashboard(sandbox);
     expect(installV010(sandbox).status).toBe(0);
     commitNextRelease(sandbox.repo, { version: '0.1.1', tag: 'v0.1.1', manifestSha });
     const result = manager(
@@ -2494,13 +2446,12 @@ exit 0
     expect(existsSync(join(sandbox.systemd, 'active', WEB))).toBe(true);
     expect(existsSync(join(sandbox.systemd, 'active', TIMER))).toBe(true);
     expect(readState(sandbox)['tag']).toBe('v0.1.0');
-    server.close();
+    await server.close();
   });
 
   it('resumes an interrupted uninstall after state.json is already gone', async () => {
     const sandbox = freshSandbox();
-    const server = await startDashboard(sandbox.port);
-    suiteServer.push(server);
+    const server = await startDashboard(sandbox);
     expect(installV010(sandbox).status).toBe(0);
     const ownershipBefore = readFileSync(join(sandbox.root, 'data-ownership.json'), 'utf8');
     // Simulate a kill after state.json and the launcher were removed but
@@ -2539,7 +2490,7 @@ exit 0
     expect(existsSync(join(sandbox.root, 'operation.json'))).toBe(false);
     expect(readFileSync(join(sandbox.root, 'data-ownership.json'), 'utf8')).toBe(ownershipBefore);
     expect(readFileSync(join(sandbox.dataDir, 'usage.db'), 'utf8')).toBe('fixture-db');
-    server.close();
+    await server.close();
   });
 });
 
