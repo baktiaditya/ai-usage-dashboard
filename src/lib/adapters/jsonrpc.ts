@@ -26,6 +26,17 @@ interface Pending {
 
 const DEFAULT_MAX_BUFFER = 4 * 1024 * 1024;
 
+/**
+ * Classify a failure to start the child. Only a spawn-time ENOENT means the
+ * CLI is not installed or not on PATH, which is a setup state rather than a
+ * fault. A CLI that starts and then crashes still exits through `exit`.
+ */
+function spawnFailure(err: unknown, message: string): CollectionError {
+  const { code, syscall } = (err ?? {}) as NodeJS.ErrnoException;
+  const notFound = code === 'ENOENT' && typeof syscall === 'string' && syscall.startsWith('spawn');
+  return new CollectionError(notFound ? 'cli_not_found' : 'process_failed', redactText(message));
+}
+
 export class JsonRpcProcessClient {
   private child: ChildProcessWithoutNullStreams | null = null;
   private buffer = '';
@@ -47,7 +58,7 @@ export class JsonRpcProcessClient {
         env: process.env,
       });
     } catch (err) {
-      throw new CollectionError('process_failed', redactText(String(err)));
+      throw spawnFailure(err, String(err));
     }
     this.child = child;
 
@@ -60,9 +71,7 @@ export class JsonRpcProcessClient {
       this.lastStderr = (this.lastStderr + chunk).slice(-400);
     });
 
-    child.on('error', (err) =>
-      this.failAll(new CollectionError('process_failed', redactText(err.message))),
-    );
+    child.on('error', (err) => this.failAll(spawnFailure(err, err.message)));
     child.on('exit', (code, signal) => {
       if (this.closed) return;
       this.failAll(
