@@ -2,6 +2,20 @@
 
 ## 2026-10-03
 
+- **Update**: the collector timer's catch-up is attributed to the mechanism that provides it,
+  for [#34](https://github.com/baktiaditya/ai-usage-dashboard/issues/34).
+  - [Setup](operations/setup.md) §5 said `Persistent=true` catches up a missed run after a reboot,
+    and plan §5 named `Persistent=true` as the catch-up mechanism. Neither holds for this timer:
+    `systemd.timer(5)` limits `Persistent=` to `OnCalendar=` timers, and the collector timer is
+    purely monotonic (`OnBootSec=2min`, `OnUnitActiveSec=`).
+  - The catch-up after a reboot comes from `OnBootSec=`. Per the same manual, an `OnBootSec=`
+    already in the past at activation elapses immediately. Setup §5 now says so, and adds that
+    the monotonic clock generally pauses during suspend, so a resume makes no catch-up run.
+  - Plan §5 now names `OnBootSec=` for a monotonic timer.
+  - The timer template's comments are corrected. `Persistent=true` stays as a documented no-op,
+    so the timer's behavior is unchanged and installed units need no re-render.
+  - The re-rendered units pass `systemd-analyze --user verify`.
+
 - **Update**: [support-database-restore-on-macos](backlog/archive/support-database-restore-on-macos.md)
   is implemented on branch `feat/macos-restore-guard` for
   [#28](https://github.com/baktiaditya/ai-usage-dashboard/issues/28), and the brief moves to
