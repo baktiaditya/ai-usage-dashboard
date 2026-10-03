@@ -40,8 +40,9 @@ existing contract ([Setup](../../operations/setup.md) §1 "Backup and restore"):
 `.husky/pre-commit` and `.husky/commit-msg` fall back, when `node` or `pnpm` is missing from `PATH`,
 to nvm, `~/.local/bin`, `/usr/local/bin`, and `/usr/bin`. Homebrew on Apple Silicon installs to
 `/opt/homebrew/bin`, which a Git GUI's minimal `PATH` lacks. `sort -V` in the nvm lookup is
-supported by the FreeBSD `sort` that macOS 13 and later ship, and Node 24 requires macOS 13.5 or
-later, so that line needs no change.
+supported by macOS's FreeBSD-derived `sort` (`sort --version` prints `2.3-Apple`; `sort(1)` lists
+`-V` among its extensions). Node 24 requires macOS 13.5 or later (Node's `BUILDING.md`), so that
+line needs no change.
 
 ## Dependencies and Gates
 
@@ -76,12 +77,18 @@ as unperformed verification (see Testing).
    `execFileSync` and is injectable for unit tests.
 2. `processesHoldingViaLsof` receives the existing, `realpathSync`-resolved paths (it returns `[]`
    when none exist, as today) and runs `lsof -w -t -- <paths…>` with a 10-second timeout and a
-   bounded `maxBuffer`. It interprets the result like this:
-   - exit 0: every non-empty stdout line must be a positive integer PID. Return them deduplicated
-     and sorted. A non-numeric line throws, because output that cannot be parsed is not a "no".
+   bounded `maxBuffer`. (`-t` already implies `-w`; keep `-w` explicit anyway.) `lsof(8)`, under
+   DIAGNOSTICS, returns 1 when it fails to find any one of the files it was asked about. It
+   returns 0 only when it found something for every argument. A database held open without its
+   `-shm`, or with no `-wal`, therefore exits 1 while still printing the holder's PID. Interpret
+   the result like this:
+   - exit 0 or 1 with non-empty stdout: every non-empty stdout line must be a positive integer PID.
+     Return them deduplicated and sorted; these are holders, and the restore refuses. A
+     non-numeric line throws, because output that cannot be parsed is not a "no".
    - exit 1 with empty stdout and empty stderr: no holder, return `[]`. This is how `lsof` reports
-     "nothing found".
-   - any other exit, exit 1 with stderr output, a timeout, or a signal: throw `BackupError` reading
+     that none of the files is open.
+   - exit 1 with empty stdout and stderr output, any other exit, a timeout, or a signal: throw
+     `BackupError` reading
      `cannot tell whether the database is in use: lsof failed: <first stderr line, redacted>`.
    - `ENOENT` spawning `lsof`: throw `BackupError` reading
      `cannot tell whether the database is in use: /proc is unavailable and lsof was not found`.
@@ -121,10 +128,11 @@ retry`. The integration test's `open in process .*\b<pid>\b` pattern must still 
 
 - [ ] On Linux, `processesHolding()` still uses `/proc`, and every existing test in
       `tests/integration/db-backup.test.ts` passes unchanged.
-- [ ] `processesHoldingViaLsof` returns the deduplicated PIDs `lsof -t` prints and returns `[]` for
+- [ ] `processesHoldingViaLsof` returns the deduplicated PIDs `lsof -t` prints, both for exit 0
+      and for exit 1 with PIDs on stdout (some, not all, of the paths held). It returns `[]` for
       exit 1 with no output.
-- [ ] It throws `BackupError` for: exit 1 with stderr, any other non-zero exit, a timeout, a
-      non-numeric stdout line, and a missing `lsof` binary. Each message starts with
+- [ ] It throws `BackupError` for: exit 1 with stderr and no PIDs, any other non-zero exit, a
+      timeout, a non-numeric stdout line, and a missing `lsof` binary. Each message starts with
       `cannot tell whether the database is in use`.
 - [ ] With real `lsof`, a restore refuses while this process holds the target database open,
       names this PID, and leaves the current database untouched. The test is skipped, not failed,

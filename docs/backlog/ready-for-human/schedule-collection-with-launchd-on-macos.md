@@ -53,6 +53,20 @@ Everything else already runs on macOS without change:
 - The Claude status-line bridge, which uses `/bin/sh` and `~/.claude/settings.json`.
 - File modes, and the XDG fallback paths.
 
+Sources checked on 2026-10-03 for the launchd details below:
+
+- `launchd.plist(5)` and `launchctl(1)`, Apple's manuals (mirrored at
+  `https://keith.github.io/xcode-man-pages/`).
+- `systemd.timer(5)`.
+- Codex's [authentication docs](https://developers.openai.com/codex/auth).
+- Node's `BUILDING.md`.
+- Field reports, which are not normative:
+  - TCC denying LaunchAgents access to `~/Documents`;
+  - exit 78 from a missing log directory;
+  - the async `bootout` race;
+  - error 5 from bootstrapping a disabled label;
+  - macOS 13 Background Task Management.
+
 ## Dependencies and Gates
 
 1. **Scope decision (user).** Amend plan §3.3 and §5 so the scheduler reads "user systemd on Linux,
@@ -89,16 +103,33 @@ Provisional until the gates close.
    `launchd/<label>.web.plist.template`, with proposed labels
    `io.github.baktiaditya.ai-usage-dashboard.collector` and `….web`. They reuse the systemd
    placeholder names (`__WORKDIR__`, `__NODE__`, `__TSX__`, `__PATH__`, `__CODEXHOME__`,
-   `__ENVFILE__`, `__DATADIR__`, `__INTERVAL__`, `__HOST__`, `__PORT__`).
+   `__ENVFILE__`, `__DATADIR__`, `__INTERVAL__`, `__HOST__`, `__PORT__`), plus a new
+   `__LOGDIR__`.
    - Both templates set: `ProgramArguments` (node, tsx, script), `WorkingDirectory`, and
      `EnvironmentVariables` matching the systemd `Environment=` lines. They also set `Umask` to
-     `63` (`0077`), and `StandardOutPath` and `StandardErrorPath` under
-     `~/Library/Logs/ai-usage-dashboard/`.
+     the integer `63`. `launchd.plist(5)` reads an integer `Umask` as decimal, because plists
+     cannot encode octal, and 63 is `0077`. `StandardOutPath` and `StandardErrorPath` point under
+     `__LOGDIR__`, which renders to an absolute path such as
+     `/Users/<you>/Library/Logs/ai-usage-dashboard`. launchd does not expand `~`.
+   - Neither template sets `AbandonProcessGroup`. With its default, launchd kills processes left
+     in the job's process group when the job exits, which reaps a stray `codex app-server` child.
    - Collector: `StartInterval` = interval × 60, `RunAtLoad` true, `ProcessType` `Background`,
-     `LowPriorityIO` true. launchd coalesces intervals missed during sleep into one run on wake,
-     which stands in for `Persistent=true`.
-   - Web: `RunAtLoad` true, `KeepAlive` `{ SuccessfulExit: false }`, `ThrottleInterval` 5, plus
-     `NODE_ENV=production` and `NEXT_TELEMETRY_DISABLED=1`.
+     `LowPriorityIO` true. Per `launchd.plist(5)`, a `StartInterval` firing that falls while the
+     Mac is asleep is missed, not coalesced. Wake-time coalescing applies only to
+     `StartCalendarInterval`, which cannot express an arbitrary minute interval. Collection
+     therefore resumes at a later interval firing after wake, and no catch-up run is promised.
+     This is not a regression from Linux: `systemd.timer(5)` limits `Persistent=` to
+     `OnCalendar=` timers, so it has no effect on the collector timer's `OnUnitActiveSec=`
+     trigger. Manual refresh covers an immediate reading after wake.
+   - Collector, at login: launchd has no `network-online.target` equivalent. The `RunAtLoad` run
+     may start before the network is up and record a transport-error attempt. The next interval
+     run recovers, so this is documented rather than worked around.
+   - Web: `RunAtLoad` true, `KeepAlive` `{ SuccessfulExit: false }`, plus `NODE_ENV=production`
+     and `NEXT_TELEMETRY_DISABLED=1`. `ThrottleInterval` is left at its default, which per
+     `launchd.plist(5)` is at most one spawn every 10 seconds. launchd has no equivalent of
+     `StartLimitBurst=5`/`StartLimitIntervalSec=300`. A web server that crashes on every start is
+     therefore respawned every 10 seconds indefinitely instead of being given up on. Setup says
+     so, and `--status` shows the run count and last exit code from `launchctl print`.
 2. **Renderer.** Add `src/lib/launchd-plist.ts` beside `src/lib/systemd-unit.ts`, with the same
    literal-substitution contract:
    - it requires absolute paths;
@@ -112,12 +143,41 @@ Provisional until the gates close.
 3. **Installer.** Add `scripts/install-launchd.sh`, kept compatible with macOS's bash 3.2.
    - Resolve `node`, `tsx`, and `codex` exactly as `install-systemd.sh` does, with
      `/opt/homebrew/bin` in the baked `PATH` before `/usr/local/bin`.
-   - Install into `~/Library/LaunchAgents/` with mode `0600`.
-   - Enable with `launchctl bootout gui/$(id -u)/<label>` (ignore "not loaded"), then
-     `launchctl bootstrap gui/$(id -u) <plist>`.
+   - Refuse, installing nothing, when the checkout, data directory, env file, `CODEX_HOME`, or log
+     directory resolves under `~/Desktop`, `~/Documents`, `~/Downloads`, or iCloud Drive
+     (`~/Library/Mobile Documents`). macOS privacy protection (TCC) denies launchd-started
+     processes access to those folders even though Terminal can read them. The agent would fail
+     with `Operation not permitted` (often from `getcwd` on `WorkingDirectory`) while every manual
+     check passes. The message tells the user to move the checkout, for example to
+     `~/Workspace`, rather than to grant Full Disk Access to `node`. A Full Disk Access grant
+     would cover every script that `node` binary runs. The check lives in
+     `scripts/render-launchd-agents.ts`, not in shell, so it is unit-testable on Linux with an
+     injected home directory. It compares real paths, so a symlink into a protected folder is also
+     refused.
+   - Create `__LOGDIR__` with `mkdir -p` and mode `0700` before bootstrapping. launchd creates a
+     missing log file but not a missing directory. A job whose `StandardOutPath` directory is
+     missing fails to spawn with last exit code 78 (`EX_CONFIG`) and writes no log to explain it.
+   - Run without `sudo`. `launchctl(1)` requires a per-user LaunchAgent to be owned by the user
+     loading it and to disallow group and world writes.
+   - Install into `~/Library/LaunchAgents/` with mode `0600`. launchd loads every plist in that
+     directory at the next login, so a plist there is active unless its label is disabled.
+     `--install` without `--enable` therefore runs `launchctl disable gui/$(id -u)/<label>` for
+     each installed label. That keeps the systemd meaning of "installed but not enabled".
+   - `--enable`: `launchctl enable gui/$(id -u)/<label>` first, because a disabled service cannot
+     be loaded and `bootstrap` reports that only as `Bootstrap failed: 5: Input/output error`.
+     If `launchctl print gui/$(id -u)/<label>` shows the label loaded, run `launchctl bootout`
+     and poll `launchctl print` until it exits non-zero, bounded at a few seconds. `bootout`
+     returns once launchd accepts the request, not once the label is gone. Bootstrapping a label
+     that is still being torn down fails with the same error 5, and can leave nothing loaded.
+     Then run `launchctl bootstrap gui/$(id -u) <plist>`, retrying a bounded number of times on
+     error 5. Finally confirm with `launchctl print` that the label is loaded. On failure, print
+     launchctl's error and exit non-zero; never fall back to starting an unsupervised process.
    - Restart the web agent with `launchctl kickstart -k`.
-   - `--status`: `launchctl print gui/$(id -u)/<label>` plus a tail of the log files.
-   - `--disable`: `bootout`, keeping the plist files.
+   - `--status`: `launchctl print gui/$(id -u)/<label>`, the label's state in
+     `launchctl print-disabled gui/$(id -u)`, and a tail of the log files.
+   - `--disable`: `launchctl bootout` to stop the agent now, then `launchctl disable` so it stays
+     unloaded across logins and reboots (`launchctl(1)`: the disabled state persists across
+     boots). The plist files stay in place.
    - Refuse to install the web agent without `.next/BUILD_ID`, as the systemd installer does.
    - Add a `launchd:install` package script.
 4. **Collector deadline.** Add a hard deadline to `scripts/collect.ts` that exits non-zero after
@@ -129,7 +189,20 @@ Provisional until the gates close.
 6. **Docs.**
    - Setup gains a macOS subsection under §5, with the restore stop/start commands for macOS. It
      also names the differences from systemd: no sandboxing, no linger, logs in
-     `~/Library/Logs/ai-usage-dashboard/` with no automatic rotation (truncate them by hand).
+     `~/Library/Logs/ai-usage-dashboard/` with no automatic rotation (truncate them by hand), no
+     restart cap for the web agent, and no catch-up run after sleep.
+   - It also covers what macOS 13 and later show. Installing a LaunchAgent raises a "Background
+     Items Added" notification. The agents then appear under System Settings → General → Login
+     Items (& Extensions) → "Allow in the Background", where any user can switch them off. A
+     switched-off agent does not run, so `--status` and Setup troubleshooting point there when a
+     label is not loaded. The listed name may be the executable (`node`) rather than the label;
+     the real-Mac run records what appears.
+   - It also states the TCC location rule (no checkout or data under Desktop, Documents,
+     Downloads, or iCloud Drive).
+   - It also covers the Codex credential store. Codex defaults to `auth.json` in `CODEX_HOME`
+     (`cli_auth_credentials_store = "file"`), which the agent reads like any file. With `keyring`
+     or `auto` the token lives in the login Keychain. The real-Mac run must confirm an agent in
+     `gui/<uid>` can read it, and Setup marks keyring storage untested until then.
    - README's platform note names both schedulers.
    - Plan §3.3 and §5, per gate 1.
    - The `docs/log.md` decision and delivery entries.
@@ -168,11 +241,22 @@ Provisional.
       A relative path, or one with a control character, is refused and nothing is written.
 - [ ] `scripts/collect.ts` exits non-zero within the deadline when an adapter never settles. This
       is proven with an injected hanging adapter.
+- [ ] Rendering refuses, writing nothing, when the checkout, data directory, env file,
+      `CODEX_HOME`, or log directory resolves, after following symlinks, under `~/Desktop`,
+      `~/Documents`, `~/Downloads`, or `~/Library/Mobile Documents`.
+- [ ] The rendered log paths are absolute and contain no `~`. The installer creates the log
+      directory with mode `0700` before any `bootstrap`.
+- [ ] `--enable` runs `enable` before `bootstrap`. It waits, bounded, for a booted-out label to
+      disappear from `launchctl print` before bootstrapping. It exits non-zero, starting nothing
+      unsupervised, if the label is not loaded afterwards.
 - [ ] The systemd templates, rendered units, and `install-systemd.sh` behavior are unchanged.
 - [ ] On a real Mac: `--install --enable` loads the collector. A run appears in the dashboard
-      within one interval, and runs continue after sleep and wake. `--with-web` serves
-      `127.0.0.1:<port>`, and `--status` and `--disable` behave as documented. Otherwise the
-      delivery entry marks this criterion unperformed, per Open Questions.
+      within one interval. After sleep and wake, runs resume without a reinstall, and the
+      checklist records the observed delay to the first run after wake. `--with-web` serves
+      `127.0.0.1:<port>`. After `--disable` and a logout and login, neither agent is loaded. After
+      `--install` without `--enable` and a logout and login, neither agent is loaded either.
+      `--enable` loads them again. If no real-Mac run happens, the delivery entry marks this
+      criterion unperformed, per Open Questions.
 - [ ] `pnpm run verify` and the OKF validator pass.
 
 ## Testing
@@ -192,9 +276,18 @@ Real-Mac checklist (manual):
 - `--install --enable --with-web`;
 - `launchctl print`;
 - one collection visible in the dashboard;
-- a sleep and wake cycle;
+- a sleep and wake cycle, recording when the first run after wake happens;
 - `pnpm run db:restore` refusing while the agents run and succeeding after `--disable`;
-- `--disable`.
+- `--disable`, then logout and login, then `launchctl print` showing neither label loaded;
+- `--install` without `--enable`, then logout and login, then neither label loaded;
+- `--enable` loading both again;
+- `--enable` run twice in a row, leaving both labels loaded (the bootout race);
+- the "Background Items Added" notification and the name shown under Login Items, and that
+  switching it off leaves the label unloaded and `--status` saying so;
+- a Codex reading with the default `file` credential store, and, if available, with `keyring`;
+- the macOS version tested. A third-party report describes `bootstrap` returning error 5 on
+  macOS 26 with nothing loaded, while the legacy `launchctl load -w` worked. If that reproduces,
+  record it, and decide on a fallback then rather than guessing now.
 
 ## Open Questions
 
