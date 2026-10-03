@@ -2,13 +2,13 @@
 
 ## 2026-10-03
 
-- **Update**: the managed Linux installer is implemented in the working tree on branch
-  `feat/managed-linux-installer` for
-  [#37](https://github.com/baktiaditya/ai-usage-dashboard/issues/37), following the approved
+- **Update**: the managed Linux installer is implemented on branch
+  `feat/managed-linux-installer` and reviewed through
+  PR [#38](https://github.com/baktiaditya/ai-usage-dashboard/pull/38), following the approved
   [simplify-linux-installation](backlog/archive/simplify-linux-installation.md)
-  brief. Nothing is committed, tagged, published, or deployed by this change, and the public
-  one-line command in the [README](../README.md) stays a labelled placeholder until a tagged
-  release contains the installer.
+  brief. Nothing is tagged, published, or deployed by this change, and the public one-line
+  command in the [README](../README.md) stays a labelled placeholder until a tagged release
+  contains the installer.
   - **Bootstrap and runtime:** `scripts/install.sh` preflights Linux x86_64/glibc ≥ 2.28 and
     the required tools, refuses root, resolves a stable `vX.Y.Z` tag to an exact commit
     reachable from `main` (numeric SemVer, tag/package.json agreement, detached checkout,
@@ -24,9 +24,9 @@
     `data-ownership.json`. Manual/maintainer units, launchers, roots, and databases are
     refused rather than adopted. Effective configuration is persisted and reapplied on
     update; linger changes require `--enable-linger`.
-  - **Evidence performed:** `pnpm run verify` passes (40 files, 732 tests), including 26
-    unit tests for release selection, manifests, path boundaries, state/journal/ownership
-    validation, retention, and unit ownership, and 45 integration tests that drive the real manager against
+  - **Evidence performed:** `pnpm run verify` passes (40 files, 737 tests), including 27
+    unit tests for release selection, manifests, path boundaries, atomic-temp handling,
+    state/journal/ownership validation, retention, and unit ownership, and 49 integration tests that drive the real manager against
     fixture releases with PATH-level systemctl/loginctl/ss stubs. The OKF validator and
     `git diff --check` pass. The rehearsal guard was run for real and refused the
     maintainer's environment (exit 2 without `AUD_INSTALL_SYSTEMD_REHEARSAL=1`, and exit 2
@@ -61,7 +61,11 @@
     first tagged release. Browser evidence was captured locally with `agent-browser` against
     a disposable managed dashboard built by the installer with the service manager
     substituted, not against the CI systemd dashboard; the CI rehearsal proves that
-    dashboard's units, HTTP health, and timer instead.
+    dashboard's units, HTTP health, and timer instead. Spec-table scenarios not exercised by
+    tests are recorded here rather than claimed: glibc < 2.28/musl preflight refusal, a
+    release whose runtime manifest pins a different Node major, a real Codex CLI discovered
+    on PATH (tests stub `codex`), collector-stuck, backup-refusal, and state-write failure
+    paths, and SIGKILL at journal boundaries other than the database and uninstall bounds.
   - **Archived:** with the CI rehearsal passing, the brief moves to
     [archive](backlog/archive/simplify-linux-installation.md) and the plan's section 4.1.1
     records the delivered state. Release publication remains the user's subsequent call.
@@ -88,7 +92,22 @@
     fallback uninstall reads only active unit directives, so a commented
     `WorkingDirectory=` no longer marks a manual unit owned; and bridge refresh, recovery,
     and uninstall write at the recorded `state.bridge.settingsPath` rather than the
-    caller's `CLAUDE_CONFIG_DIR`. The full suite is 732 tests.
+    caller's `CLAUDE_CONFIG_DIR`.
+  - **Third review pass:** a review of `2422b67` confirmed the earlier P1s fixed and raised
+    contract, durability, and documentation findings, fixed in the working tree: an
+    interrupted first install adopts the database its own `db-creating` journal was creating
+    instead of refusing it as unowned, and keeps the original journal identity; the
+    pre-cutover backup runs the _previous_ release's backup executable; uninstall removes
+    `state.json` before the heavy release/runtime trees so an interruption leaves the
+    executable remnant path; `status` counts a stopped timer as degraded and exits `2` on
+    corrupt state; a failed `stopWriters` restores the service snapshot before surfacing;
+    the bootstrap validates the root with the same atomic-temp tolerance as `classifyRoot`;
+    preflight checks `systemctl --user` access and repository reachability; the manager
+    refuses mutating commands as root; metadata writes fsync the parent directory; and the
+    install summary reports unit state and a PATH hint. The duplicated error-message
+    formatter is now one shared `errorText`, and the backup stamp is single-sourced in
+    `src/lib/timestamps.ts`. The remaining judgment-call refactor is splitting `manager.ts`
+    and untangling its `(releaseDir, runtime)` data clump.
   - **Consequences:** mocks prove decision and ordering logic only; the real-systemd,
     timer, and recovery evidence now comes from the CI rehearsal above, while reboot
     persistence and installation through the published one-line command remain unclaimed.

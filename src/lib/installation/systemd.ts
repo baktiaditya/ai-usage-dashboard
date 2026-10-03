@@ -12,9 +12,9 @@
 import { chmodSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { exists } from './atomic.ts';
+import { exists, errorText } from './atomic.ts';
 import { run } from './exec.ts';
-import { UNIT_NAMES, UNIT_NAMES as ALL_UNITS } from './state.ts';
+import { UNIT_NAMES } from './state.ts';
 import type { ServiceSnapshot, UnitName } from './state.ts';
 
 export class SystemdError extends Error {
@@ -41,9 +41,7 @@ export function readUnit(name: UnitName, env: NodeJS.ProcessEnv = process.env): 
   try {
     return readFileSync(path, 'utf8');
   } catch (err) {
-    throw new SystemdError(
-      `cannot read ${path}: ${err instanceof Error ? err.message : String(err)}`,
-    );
+    throw new SystemdError(`cannot read ${path}: ${errorText(err)}`);
   }
 }
 
@@ -282,7 +280,7 @@ export function snapshotServices(
   const unitFiles: Record<string, string | null> = {};
   const enabled: Record<string, string> = {};
   const active: Record<string, string> = {};
-  for (const name of ALL_UNITS) {
+  for (const name of UNIT_NAMES) {
     unitFiles[name] = readUnit(name, env);
     enabled[name] = enabledState(name, env);
     active[name] = activeState(name, env);

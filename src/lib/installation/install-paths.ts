@@ -11,7 +11,7 @@
 import { readdirSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path';
-import { exists, isDirectory } from './atomic.ts';
+import { exists, isAtomicTempName, isDirectory, errorText } from './atomic.ts';
 import { JOURNAL_FILE, LOCK_FILE, OWNERSHIP_FILE, STATE_FILE } from './state.ts';
 
 export class InstallPathError extends Error {
@@ -159,9 +159,9 @@ export function classifyRoot(root: string): RootKind {
   if (!isDirectory(root)) fail(`the install root ${root} exists and is not a directory`);
   let entries: string[];
   try {
-    entries = readdirSync(root);
+    entries = readdirSync(root).filter((entry) => !isAtomicTempName(entry));
   } catch (err) {
-    fail(`cannot read the install root ${root}: ${err instanceof Error ? err.message : err}`);
+    fail(`cannot read the install root ${root}: ${errorText(err)}`);
   }
   if (entries.length === 0) return 'empty-managed';
   const allowedEmpty = new Set([LOCK_FILE, OWNERSHIP_FILE]);

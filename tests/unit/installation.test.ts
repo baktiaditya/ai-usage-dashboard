@@ -16,11 +16,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import {
-  compareTagStrings,
-  parseStableTag,
-  pickHighestStableTag,
-} from '../../src/lib/installation/semver';
+import { compareTagStrings, parseStableTag } from '../../src/lib/installation/semver';
 import {
   ManifestError,
   parseRuntimeManifest,
@@ -103,8 +99,6 @@ describe('semver release selection', () => {
   });
 
   it('compares numerically, not lexically', () => {
-    expect(pickHighestStableTag(['v0.9.0', 'v0.10.0', 'v0.2.9'])).toBe('v0.10.0');
-    expect(pickHighestStableTag(['v1.0.0-rc.1', 'garbage'])).toBeNull();
     const high = parseStableTag('v2.0.0');
     const low = parseStableTag('v1.99.99');
     expect(compareTagStrings('v2.0.0', 'v1.99.99')).toBeGreaterThan(0);
@@ -318,6 +312,18 @@ describe('install paths', () => {
     // A missing tail resolves through the longest existing ancestor.
     expect(physicalPath(join(inward, 'usage.db'))).toBe(join(inside, 'usage.db'));
     expect(isPhysicallyInside(join(inward, 'usage.db'), root)).toBe(true);
+  });
+
+  it('ignores stale atomic temp files when classifying a root', () => {
+    const dir = sandbox();
+    writeFileSync(join(dir, '.123.456.tmp'), '');
+    writeFileSync(join(dir, '.123.456.lnk'), '');
+    expect(classifyRoot(dir)).toBe('empty-managed');
+    writeFileSync(join(dir, 'state.json'), '{}');
+    writeFileSync(join(dir, '.999.1.tmp'), '');
+    expect(classifyRoot(dir)).toBe('managed');
+    writeFileSync(join(dir, 'unrelated.txt'), 'x');
+    expect(classifyRoot(dir)).toBe('managed');
   });
 
   it('classifies empty, managed, partial, and occupied roots', () => {

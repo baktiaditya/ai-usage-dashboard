@@ -46,6 +46,9 @@ import Database from 'better-sqlite3';
 import { redactText } from '../redact';
 import { runMigrations } from './client';
 import { MIGRATIONS } from './migrations.generated';
+import { backupStamp } from '../timestamps';
+
+export { backupStamp };
 
 export class BackupError extends Error {
   override readonly name = 'BackupError';
@@ -72,11 +75,6 @@ function moveWithSidecars(from: string, to: string): void {
   for (const suffix of ['', ...SIDECAR_SUFFIXES]) {
     if (existsSync(`${from}${suffix}`)) renameSync(`${from}${suffix}`, `${to}${suffix}`);
   }
-}
-
-/** `2026-09-14T01:02:03.456Z` becomes `20260914T010203456Z`: sortable, and safe in a file name. */
-export function backupStamp(now: Date): string {
-  return now.toISOString().replace(/[-:.]/g, '');
 }
 
 export interface DatabaseSummary {

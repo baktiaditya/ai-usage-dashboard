@@ -14,7 +14,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdirSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { exists } from './atomic.ts';
+import { exists, errorText } from './atomic.ts';
 import { run } from './exec.ts';
 import {
   cacheDir,
@@ -199,9 +199,7 @@ function persistJournal(journal: OperationJournal, patch: JournalPatch = {}): Op
 }
 
 function finishJournal(root: string): void {
-  rmSync(join(root, 'operation.json'), { force: true });
-  rmSync(join(root, 'operation.json.tmp'), { force: true });
-  void clearJournal;
+  clearJournal(root);
 }
 
 // ---------------------------------------------------------------------------
@@ -456,7 +454,7 @@ function installDependencies(releasePath: string, runtime: RuntimeRecord): strin
     preparePnpm(releasePath, runtime);
     runPnpm(releasePath, runtime, ['install', '--frozen-lockfile'], { live: true });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    const message = errorText(err);
     const native = /better-sqlite3|node-gyp|prebuild|python3|make\b|g\+\+/i.test(message);
     fail(
       `installing dependencies failed: ${message}`,
@@ -500,7 +498,7 @@ function buildRelease(
     });
   } catch (err) {
     fail(
-      `the production build failed: ${err instanceof Error ? err.message : String(err)}`,
+      `the production build failed: ${errorText(err)}`,
       'No unit, database, or service was changed by the build itself; fix the reported error and retry.',
     );
   }
@@ -647,41 +645,65 @@ async function cmdInstall(
   );
   const databaseExists = exists(databasePath);
 
-  let journal = newJournal(
-    root,
-    'install',
-    { tag: resolved.tag, sha: resolved.sha, runtime: staged.runtime },
-    state === null ? null : activeReleaseOf(state),
-  );
-  journal = persistJournal(journal, { phase: 'staged' });
+  // A resumed first install owns the database its own journal was creating even
+  // though the ownership record was never written. Adopt that remnant and
+  // finish recording it below instead of refusing it as unrecorded.
+  const adopted =
+    databaseExists &&
+    !databaseRecorded &&
+    resumingInstall &&
+    pending !== null &&
+    pending.dbOwnershipRecorded;
+
+  let journal =
+    resumingInstall && pending !== null
+      ? persistJournal(
+          {
+            ...pending,
+            candidate: { tag: resolved.tag, sha: resolved.sha, runtime: staged.runtime },
+            previous: state === null ? pending.previous : activeReleaseOf(state),
+          },
+          {},
+        )
+      : persistJournal(
+          newJournal(
+            root,
+            'install',
+            { tag: resolved.tag, sha: resolved.sha, runtime: staged.runtime },
+            state === null ? null : activeReleaseOf(state),
+          ),
+          { phase: 'staged' },
+        );
 
   if (databaseExists) {
-    if (!databaseRecorded) {
+    if (!databaseRecorded && !adopted) {
       fail(
         `a database already exists at ${databasePath}, and this root's ownership record does not name it`,
         `Choose another data directory (AUD_DATA_DIR), or move the existing database aside. Managed installs never adopt a database they did not create.${state === null ? '' : ` The retained ownership record is ${join(root, 'data-ownership.json')}.`}`,
       );
     }
-    const inspection = inspectDatabase(staged.path, staged.runtime, databasePath);
-    if (inspection.integrity !== null && inspection.integrity !== 'ok') {
-      fail(`the database at ${databasePath} failed its integrity check`);
+    if (!adopted) {
+      const inspection = inspectDatabase(staged.path, staged.runtime, databasePath);
+      if (inspection.integrity !== null && inspection.integrity !== 'ok') {
+        fail(`the database at ${databasePath} failed its integrity check`);
+      }
+      if (inspection.appliedMax !== null && inspection.appliedMax > inspection.latest) {
+        fail(
+          `the database at ${databasePath} has schema version ${inspection.appliedMax}, newer than the ${inspection.latest} this release knows`,
+          'Install the release that wrote it, or move the database aside to start fresh.',
+        );
+      }
+      const holders = databaseHolders(staged.path, staged.runtime, databasePath);
+      if (holders.length > 0) {
+        fail(
+          `the database at ${databasePath} is open in process(es) ${holders.join(', ')}`,
+          'Stop the dashboard, the collector, and any pnpm run start before installing.',
+        );
+      }
+      const destination = backupDestination(config.dataDir);
+      process.stdout.write(`Backing up the existing database to ${destination}\n`);
+      makeBackup(staged.path, staged.runtime, databasePath, destination);
     }
-    if (inspection.appliedMax !== null && inspection.appliedMax > inspection.latest) {
-      fail(
-        `the database at ${databasePath} has schema version ${inspection.appliedMax}, newer than the ${inspection.latest} this release knows`,
-        'Install the release that wrote it, or move the database aside to start fresh.',
-      );
-    }
-    const holders = databaseHolders(staged.path, staged.runtime, databasePath);
-    if (holders.length > 0) {
-      fail(
-        `the database at ${databasePath} is open in process(es) ${holders.join(', ')}`,
-        'Stop the dashboard, the collector, and any pnpm run start before installing.',
-      );
-    }
-    const destination = backupDestination(config.dataDir);
-    process.stdout.write(`Backing up the existing database to ${destination}\n`);
-    makeBackup(staged.path, staged.runtime, databasePath, destination);
   } else {
     journal = persistJournal(journal, { phase: 'db-creating', dbOwnershipRecorded: true });
   }
@@ -707,7 +729,7 @@ async function cmdInstall(
   runReleaseScript(staged.path, staged.runtime, 'scripts/migrate.ts', [], {
     extraEnv: serviceEnv(config, staged.runtime),
   });
-  if (!databaseExists) {
+  if (!databaseExists || adopted) {
     const updated = addOwnershipEntry(readOwnership(root), config, newInstallationId);
     writeOwnership(root, updated);
   }
@@ -837,7 +859,7 @@ function failInstallActivation(
   removeUnitsOnFailure: boolean,
   err: unknown,
 ): number {
-  const message = err instanceof Error ? err.message : String(err);
+  const message = errorText(err);
   process.stderr.write(`installation did not complete: ${message}\n`);
   const created = removeUnitsOnFailure ? ownedUnits(root) : [];
   for (const name of created) {
@@ -894,6 +916,8 @@ function printInstallSummary(
   ok: boolean,
 ): void {
   const url = httpUrl(state.config.host, state.config.port);
+  const launcherDir = dirname(state.launcherPath);
+  const launcherOnPath = (process.env['PATH'] ?? '').split(':').includes(launcherDir);
   process.stdout.write(
     [
       '',
@@ -906,10 +930,15 @@ function printInstallSummary(
       `  data     : ${state.config.dataDir}`,
       `  database : ${state.config.databasePath}`,
       `  url      : ${url}`,
+      `  web      : ${activeState(WEB_SERVICE)}`,
+      `  timer    : ${activeState(COLLECTOR_TIMER)} (${enabledState(COLLECTOR_TIMER)})`,
       `  linger   : ${linger}`,
       '',
       'Connect providers in Settings, or sign in with the Codex CLI; no provider',
       'account is needed for the installation itself.',
+      launcherOnPath
+        ? ''
+        : `Note: ${launcherDir} is not on PATH; add it or run ${state.launcherPath} with its full path.`,
       linger === 'yes'
         ? ''
         : `To keep it running after logout and start at boot: loginctl enable-linger ${JSON.stringify(currentUser())}`,
@@ -1021,7 +1050,14 @@ async function cmdUpdate(root: string, repo: string, args: ManagerArgs): Promise
   );
   journal = persistJournal(journal, { phase: 'staged', snapshot });
 
-  stopWriters();
+  try {
+    stopWriters();
+  } catch (err) {
+    // A failed stop can leave only some services down; put the snapshot back
+    // before surfacing the failure so the running release is not left dead.
+    applySnapshot(snapshot);
+    throw err;
+  }
   const holders = databaseHolders(staged.path, staged.runtime, active.config.databasePath);
   if (holders.length > 0) {
     applySnapshot(snapshot);
@@ -1043,7 +1079,10 @@ async function cmdUpdate(root: string, repo: string, args: ManagerArgs): Promise
 
   const destination = backupDestination(active.config.dataDir);
   process.stdout.write(`Taking a verified pre-cutover backup at ${destination}\n`);
-  const backup = makeBackup(staged.path, staged.runtime, active.config.databasePath, destination);
+  // Back up with the release that is still running, not the candidate: its
+  // backup code is the one that already understands the current database.
+  const previousPath = releaseDir(root, active.sha);
+  const backup = makeBackup(previousPath, active.runtime, active.config.databasePath, destination);
   journal = persistJournal(journal, { phase: 'backed-up', backupPath: backup.path });
 
   journal = persistJournal(journal, { phase: 'db-changing' });
@@ -1059,24 +1098,25 @@ async function cmdUpdate(root: string, repo: string, args: ManagerArgs): Promise
     startUnit(WEB_SERVICE);
     await waitForHttp(httpUrl(active.config.host, active.config.port), healthTimeoutMs());
   } catch (err) {
-    return failUpdateActivation(root, journal, active, snapshot, err);
+    return failUpdateActivation(root, journal, active, err);
   }
   journal = persistJournal(journal, { phase: 'candidate-web' });
 
   let bridge = active.bridge;
   if (bridge !== null) {
     if (!bridgeMatchesRecorded(bridge)) {
+      // Keep the record: the status line is externally managed now, and
+      // `status` should say so rather than "not installed".
       process.stdout.write(
         `The Claude status line at ${bridge.settingsPath} was replaced outside the managed installation; leaving it untouched.\n`,
       );
-      bridge = null;
     } else {
       try {
         refreshOwnedBridge(staged.path, staged.runtime, active.config, bridge.settingsPath);
         bridge =
           bridgeRecordFromSettings(staged.path, staged.runtime, bridge.settingsPath) ?? bridge;
       } catch (err) {
-        return failUpdateActivation(root, journal, active, snapshot, err);
+        return failUpdateActivation(root, journal, active, err);
       }
     }
   }
@@ -1112,29 +1152,25 @@ async function cmdUpdate(root: string, repo: string, args: ManagerArgs): Promise
   return 0;
 }
 
-function failUpdateActivation(
+async function failUpdateActivation(
   root: string,
   journal: OperationJournal,
   active: InstallationState,
-  snapshot: OperationJournal['snapshot'],
   err: unknown,
-): number {
-  const message = err instanceof Error ? err.message : String(err);
+): Promise<number> {
+  const message = errorText(err);
   process.stderr.write(`the candidate did not become healthy: ${message}\n`);
   process.stderr.write('Rolling back to the previous release and its database backup.\n');
   persistJournal(journal, { failed: message });
   try {
-    recoverUpdate({ root, repo: repoUrl(process.env) }, journal, active);
+    await recoverUpdate({ root, repo: repoUrl(process.env) }, journal, active);
   } catch (recoveryErr) {
-    process.stderr.write(
-      `automatic recovery failed: ${recoveryErr instanceof Error ? recoveryErr.message : recoveryErr}\n`,
-    );
+    process.stderr.write(`automatic recovery failed: ${errorText(recoveryErr)}\n`);
     process.stderr.write(
       `Writers are stopped. Retained: previous release ${releaseDir(root, active.sha)}, backup ${journal.backupPath}, journal ${root}/operation.json\n`,
     );
     return 1;
   }
-  void snapshot;
   return 1;
 }
 
@@ -1162,9 +1198,7 @@ function pruneRetention(root: string, state: InstallationState): void {
       process.stdout.write(`Pruned runtime ${path}\n`);
     }
   } catch (err) {
-    process.stderr.write(
-      `pruning unreferenced releases failed: ${err instanceof Error ? err.message : err}\n`,
-    );
+    process.stderr.write(`pruning unreferenced releases failed: ${errorText(err)}\n`);
     process.stderr.write(`Retained paths: ${releasesDir(root)}, ${join(root, 'runtime')}\n`);
   }
 }
@@ -1292,8 +1326,15 @@ async function cmdClaude(root: string, args: ManagerArgs): Promise<number> {
 // ---------------------------------------------------------------------------
 
 async function cmdStatus(root: string): Promise<number> {
-  const state = readState(root);
-  const journal = readJournal(root);
+  let state: InstallationState | null;
+  let journal: OperationJournal | null;
+  try {
+    state = readState(root);
+    journal = readJournal(root);
+  } catch (err) {
+    process.stderr.write(`error: ${errorText(err)}\n`);
+    return 2;
+  }
   if (state === null) {
     if (journal !== null && journal.phase !== 'committed') {
       process.stdout.write(
@@ -1347,7 +1388,9 @@ async function cmdStatus(root: string): Promise<number> {
 
   if (journal !== null && journal.phase !== 'committed') return 1;
   const healthy =
-    webActive === 'active' && (timerEnabled === 'enabled' || timerEnabled === 'static');
+    webActive === 'active' &&
+    timerActive === 'active' &&
+    (timerEnabled === 'enabled' || timerEnabled === 'static');
   return healthy ? 0 : 1;
 }
 
@@ -1430,11 +1473,11 @@ async function uninstallRemnants(root: string, args: ManagerArgs): Promise<numbe
   if (launcherOwned) rmSync(launcher, { force: true });
   // No state means no live configuration or database claim to protect beyond
   // the data directory and the ownership record, which are never removed here.
+  rmSync(join(root, 'state.json'), { force: true });
   rmSync(join(root, 'current'), { force: true });
   rmSync(releasesDir(root), { recursive: true, force: true });
   rmSync(join(root, 'runtime'), { recursive: true, force: true });
   rmSync(cacheDir(root), { recursive: true, force: true });
-  rmSync(join(root, 'state.json'), { force: true });
   finishJournal(root);
   process.stdout.write(
     'Removed the remaining owned execution surfaces; application data and the ownership record were not touched.\n',
@@ -1518,11 +1561,13 @@ async function runUninstall(root: string, state: InstallationState): Promise<num
   }
   journal = persistJournal(journal, { phase: 'launcher-removed' });
 
+  // Drop the state metadata first: from here on a re-run takes the remnant
+  // path, which stays executable even if deleting the releases is interrupted.
+  rmSync(join(root, 'state.json'), { force: true });
   rmSync(join(root, 'current'), { force: true });
   rmSync(releasesDir(root), { recursive: true, force: true });
   rmSync(join(root, 'runtime'), { recursive: true, force: true });
   rmSync(cacheDir(root), { recursive: true, force: true });
-  rmSync(join(root, 'state.json'), { force: true });
   journal = persistJournal(journal, { phase: 'committed' });
   finishJournal(root);
 
@@ -1549,6 +1594,12 @@ async function runUninstall(root: string, state: InstallationState): Promise<num
 // ---------------------------------------------------------------------------
 
 export async function runManager(args: ManagerArgs, env: NodeJS.ProcessEnv): Promise<number> {
+  if (args.command !== 'status' && typeof process.getuid === 'function' && process.getuid() === 0) {
+    fail(
+      'do not run the managed installation lifecycle as root',
+      'The dashboard is a per-user installation; run the command as the user that owns it.',
+    );
+  }
   const { root, repo } = context(args, env);
   switch (args.command) {
     case 'install': {

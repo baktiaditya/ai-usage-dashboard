@@ -12,10 +12,9 @@
 import { mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { exists } from './atomic.ts';
+import { exists, errorText } from './atomic.ts';
 import { run, runOrThrow } from './exec.ts';
-import { parseStableTag } from './semver.ts';
-import type { StableVersion } from './semver.ts';
+import { compareTagStrings, parseStableTag } from './semver.ts';
 
 export class ReleaseError extends Error {
   override readonly name = 'ReleaseError';
@@ -157,11 +156,7 @@ export function resolveRelease(
       }
       chosenTag = explicitTag;
     } else {
-      const ordered = [...stable].sort((a, b) => {
-        const left = parseStableTag(a) as StableVersion;
-        const right = parseStableTag(b) as StableVersion;
-        return right.major - left.major || right.minor - left.minor || right.patch - left.patch;
-      });
+      const ordered = [...stable].sort((a, b) => -compareTagStrings(a, b));
       for (const tag of ordered) {
         const sha = commitOfTag(dir, tag);
         if (sha !== null && isAncestor(dir, sha, mainSha)) {
@@ -262,8 +257,6 @@ export function readReleaseFile(releasePath: string, relative: string): string {
   try {
     return readFileSync(join(releasePath, relative), 'utf8');
   } catch (err) {
-    throw new ReleaseError(
-      `could not read ${relative} from ${releasePath}: ${err instanceof Error ? err.message : err}`,
-    );
+    throw new ReleaseError(`could not read ${relative} from ${releasePath}: ${errorText(err)}`);
   }
 }

@@ -15,7 +15,7 @@ import { copyFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
-import { exists } from './atomic.ts';
+import { exists, errorText } from './atomic.ts';
 import { run, runOrThrow } from './exec.ts';
 import type { RuntimeManifest } from './manifest.ts';
 import { runtimeDir } from './install-paths.ts';
@@ -151,9 +151,7 @@ export async function ensureRuntime(options: EnsureRuntimeOptions): Promise<Runt
       if (options.existing?.path === dir) {
         // A recorded runtime that no longer validates is corruption, not a
         // stray directory; replace it rather than silently reinstalling.
-        log(
-          `replacing an invalid managed runtime at ${dir}: ${err instanceof Error ? err.message : err}`,
-        );
+        log(`replacing an invalid managed runtime at ${dir}: ${errorText(err)}`);
       }
       rmSync(dir, { recursive: true, force: true });
     }
@@ -216,9 +214,7 @@ export function preparePnpm(releaseDir: string, runtime: RuntimeRecord): PnpmRes
       }
     ).packageManager;
   } catch (err) {
-    throw new RuntimeError(
-      `could not read ${releaseDir}/package.json: ${err instanceof Error ? err.message : err}`,
-    );
+    throw new RuntimeError(`could not read ${releaseDir}/package.json: ${errorText(err)}`);
   }
   if (typeof packageManager !== 'string') {
     throw new RuntimeError('the release does not pin a packageManager');
@@ -230,7 +226,7 @@ export function preparePnpm(releaseDir: string, runtime: RuntimeRecord): PnpmRes
     );
   }
   const version = match[1] as string;
-  const env = runtimeEnv(releaseDir, runtime);
+  const env = runtimeEnv(runtime);
   const install = run(join(runtime.path, 'bin', 'corepack'), ['install'], { cwd: releaseDir, env });
   if (install.status !== 0) {
     throw new RuntimeError(
@@ -254,7 +250,7 @@ export function preparePnpm(releaseDir: string, runtime: RuntimeRecord): PnpmRes
 }
 
 /** The environment every managed pnpm/Node child runs with. */
-export function runtimeEnv(_releaseDir: string, runtime: RuntimeRecord): NodeJS.ProcessEnv {
+export function runtimeEnv(runtime: RuntimeRecord): NodeJS.ProcessEnv {
   const root = join(runtime.path, '..', '..');
   return {
     ...process.env,
@@ -276,7 +272,7 @@ export function runPnpm(
   args: readonly string[],
   options: { readonly live?: boolean; readonly extraEnv?: NodeJS.ProcessEnv } = {},
 ): ReturnType<typeof run> {
-  const env = { ...runtimeEnv(releaseDir, runtime), ...options.extraEnv };
+  const env = { ...runtimeEnv(runtime), ...options.extraEnv };
   const command = join(runtime.path, 'bin', 'corepack');
   const fullArgs = ['pnpm', ...args];
   return options.live === true
@@ -327,7 +323,7 @@ export function runReleaseScript(
 ): ReturnType<typeof run> {
   const node = releaseTsx(releaseDir);
   const env = {
-    ...runtimeEnv(releaseDir, runtime),
+    ...runtimeEnv(runtime),
     ...options.extraEnv,
   };
   const fullArgs = [

@@ -27,6 +27,29 @@ export class MetadataError extends Error {
   override readonly name = 'MetadataError';
 }
 
+/** True for the transient names `writeFileAtomic`/`writeSymlinkAtomic` leave behind. */
+export function isAtomicTempName(name: string): boolean {
+  return /^\.\d+\.\d+\.(tmp|lnk)$/.test(name);
+}
+
+/**
+ * Flush a directory entry so a rename survives power loss. Best effort: some
+ * filesystems refuse to open a directory for fsync, and the rename itself has
+ * still happened.
+ */
+function fsyncDir(dir: string): void {
+  try {
+    const fd = openSync(dir, 'r');
+    try {
+      fsyncSync(fd);
+    } finally {
+      closeSync(fd);
+    }
+  } catch {
+    // best effort
+  }
+}
+
 /** Write `data` to `path` (mode `0600`) through a temp file and an atomic rename. */
 export function writeFileAtomic(path: string, data: string, mode = 0o600): void {
   const dir = dirname(path);
@@ -40,6 +63,7 @@ export function writeFileAtomic(path: string, data: string, mode = 0o600): void 
     closeSync(fd);
   }
   renameSync(temp, path);
+  fsyncDir(dir);
 }
 
 /**
@@ -81,6 +105,7 @@ export function writeSymlinkAtomic(linkPath: string, target: string): void {
   symlinkSync(target, temp);
   try {
     renameSync(temp, linkPath);
+    fsyncDir(dir);
   } catch (err) {
     rmSync(temp, { force: true });
     throw err;
@@ -115,6 +140,6 @@ export function exists(path: string): boolean {
   }
 }
 
-function errorText(err: unknown): string {
+export function errorText(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }

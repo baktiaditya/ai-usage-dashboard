@@ -35,20 +35,6 @@ export function compareVersions(a: StableVersion, b: StableVersion): number {
   return a.patch - b.patch;
 }
 
-/**
- * The highest stable tag among `tags`, or null when none is stable.
- * Lexical sorting is explicitly not used.
- */
-export function pickHighestStableTag(tags: readonly string[]): string | null {
-  let best: StableVersion | null = null;
-  for (const tag of tags) {
-    const parsed = parseStableTag(tag);
-    if (parsed === null) continue;
-    if (best === null || compareVersions(parsed, best) > 0) best = parsed;
-  }
-  return best?.tag ?? null;
-}
-
 /** Compare two tag strings; malformed tags sort below any stable tag. */
 export function compareTagStrings(a: string, b: string): number {
   const left = parseStableTag(a);

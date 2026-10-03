@@ -11,6 +11,7 @@
 import { spawnSync } from 'node:child_process';
 import { accessSync, constants, statSync } from 'node:fs';
 import { delimiter, join } from 'node:path';
+import { errorText } from './atomic.ts';
 
 export class CommandError extends Error {
   override readonly name = 'CommandError';
@@ -139,7 +140,7 @@ export function parseJsonOutput<T>(result: RunResult, label: string): T {
     return JSON.parse(text) as T;
   } catch (err) {
     throw new CommandError(
-      `${label} printed invalid JSON: ${err instanceof Error ? err.message : String(err)}`,
+      `${label} printed invalid JSON: ${errorText(err)}`,
       result.status,
       result.stderr,
     );

@@ -91,6 +91,7 @@ if (name === 'installation-probe.ts') {
 } else if (name === 'collect.ts') {
   process.exit(cfg.collectExit ?? 0);
 } else if (name === 'db-backup.ts') {
+  if (cfg.markerDir) writeFileSync(cfg.markerDir + '/backup-cwd', process.cwd());
   const dest = args[0];
   mkdirSync(dirname(dest), { recursive: true, mode: 0o700 });
   copyFileSync(config.databasePath, dest);
@@ -360,7 +361,9 @@ case "$cmd" in
     echo active > "$state/active/$1"
     if [[ "\${AUD_TEST_FAIL_START:-}" == "$1" ]]; then exit 1; fi
     exit 0 ;;
-  stop) rm -f "$state/active/$1"; exit 0 ;;
+  stop)
+    if [[ "\${AUD_TEST_FAIL_STOP:-}" == "$1" ]]; then exit 1; fi
+    rm -f "$state/active/$1"; exit 0 ;;
   enable)
     name="$1"
     if [[ "$name" == "--now" ]]; then name="\$2"; fi
@@ -402,6 +405,7 @@ exit 0
     0o755,
   );
   writeFile(join(bin, 'journalctl'), '#!/usr/bin/env bash\nexit 0\n', 0o755);
+  writeFile(join(bin, 'codex'), '#!/usr/bin/env bash\nexit 0\n', 0o755);
 }
 
 function makeSandbox(options: {
@@ -634,6 +638,41 @@ function writeUpdateJournal(
   );
 }
 
+function writeInstallJournal(
+  sandbox: Sandbox,
+  options: { readonly phase: string; readonly candidateSha: string },
+): void {
+  const runtime = {
+    nodeVersion: NODE_VERSION,
+    path: join(sandbox.root, 'runtime', `node-v${NODE_VERSION}`),
+    sha256: 'a'.repeat(64),
+  };
+  writeFile(
+    join(sandbox.root, 'operation.json'),
+    JSON.stringify(
+      {
+        schemaVersion: 1,
+        operationId: 'interrupted-install',
+        kind: 'install',
+        phase: options.phase,
+        pid: 999999,
+        root: sandbox.root,
+        candidate: { tag: 'v0.1.0', sha: options.candidateSha, runtime },
+        previous: null,
+        backupPath: null,
+        snapshot: null,
+        dbOwnershipRecorded: true,
+        failed: null,
+        notes: [],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+      null,
+      2,
+    ),
+  );
+}
+
 function markUnitActive(sandbox: Sandbox, name: string, active: boolean): void {
   const path = join(sandbox.systemd, 'active', name);
   if (active) {
@@ -674,7 +713,7 @@ async function startDashboard(port: number): Promise<HealthServerHandle> {
     'bash',
     [
       '-c',
-      `for i in $(seq 1 100); do curl -sf -o /dev/null http://127.0.0.1:${port}/ && exit 0; sleep 0.1; done; exit 1`,
+      `for i in $(seq 1 250); do curl -sf -o /dev/null http://127.0.0.1:${port}/ && exit 0; sleep 0.1; done; exit 1`,
     ],
     { encoding: 'utf8' },
   );
@@ -1006,6 +1045,7 @@ describe('managed installation lifecycle', () => {
     expect(state['previous']).toBeNull();
     const config = state['config'] as Record<string, unknown>;
     expect(config['databasePath']).toBe(join(sandbox.dataDir, 'usage.db'));
+    expect(config['codexDir']).toBe(sandbox.bin);
     expect(existsSync(join(sandbox.dataDir, 'usage.db'))).toBe(true);
 
     const launcher = join(sandbox.home, '.local', 'bin', 'ai-usage-dashboard');
@@ -1225,6 +1265,7 @@ describe('managed installation lifecycle', () => {
     const server = await startDashboard(sandbox.port);
     suiteServer.push(server);
     expect(installV010(sandbox).status, 'install').toBe(0);
+    const previousSha = readState(sandbox)['sha'] as string;
     const nextSha = commitNextRelease(sandbox.repo, {
       version: '0.1.1',
       tag: 'v0.1.1',
@@ -1239,6 +1280,9 @@ describe('managed installation lifecycle', () => {
     ]);
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toContain('Updated to v0.1.1');
+    expect(readFileSync(join(sandbox.dir, 'markers', 'backup-cwd'), 'utf8')).toBe(
+      join(sandbox.root, 'releases', previousSha),
+    );
     const state = readState(sandbox);
     expect(state['sha']).toBe(nextSha);
     const previous = state['previous'] as Record<string, unknown>;
@@ -1543,7 +1587,9 @@ describe('managed installation lifecycle', () => {
       (JSON.parse(readFileSync(settingsPath, 'utf8')) as { statusLine: { command: string } })
         .statusLine.command,
     ).toBe('replaced-by-user');
-    expect(readState(sandbox)['bridge']).toBeNull();
+    expect(readState(sandbox)['bridge']).not.toBeNull();
+    const afterExternal = manager(sandbox, ['status', '--install-dir', sandbox.root]);
+    expect(afterExternal.stdout).toContain('externally managed or removed');
     server.close();
   });
 
@@ -1626,6 +1672,17 @@ describe('managed installation lifecycle', () => {
     expect(degraded.status).toBe(1);
     expect(degraded.stdout).toContain('web       : inactive');
     expect(sandbox.calls().length).toBe(callsBefore);
+    // A timer that is enabled but stopped leaves the installation unhealthy.
+    markUnitActive(sandbox, 'ai-usage-dashboard-web.service', true);
+    markUnitActive(sandbox, 'ai-usage-dashboard-collector.timer', false);
+    const timerDown = manager(sandbox, ['status', '--install-dir', sandbox.root]);
+    expect(timerDown.status).toBe(1);
+    expect(timerDown.stdout).toContain('timer     : inactive');
+    // Corrupt state is an invalid-state result, not a generic failure.
+    writeFile(join(sandbox.root, 'state.json'), '{');
+    const corrupt = manager(sandbox, ['status', '--install-dir', sandbox.root]);
+    expect(corrupt.status).toBe(2);
+    expect(corrupt.stderr).toContain('not valid JSON');
     server.close();
   });
 
@@ -2032,6 +2089,108 @@ describe('managed installation lifecycle', () => {
     const after = JSON.parse(readFileSync(settingsA, 'utf8')) as { statusLine?: unknown };
     expect(after.statusLine).toBeUndefined();
     expect(existsSync(join(dirB, 'settings.json'))).toBe(false);
+    server.close();
+  });
+
+  it('resumes an interrupted first install and records the database it was creating', async () => {
+    const sandbox = freshSandbox();
+    placeRuntime(sandbox.root);
+    const sha = tagSha(sandbox.repo, 'v0.1.0');
+    writeFile(join(sandbox.dataDir, 'usage.db'), 'partial-db');
+    writeInstallJournal(sandbox, { phase: 'db-creating', candidateSha: sha });
+    const server = await startDashboard(sandbox.port);
+    suiteServer.push(server);
+    const result = manager(
+      sandbox,
+      ['install', '--install-dir', sandbox.root],
+      installEnv(sandbox, 'v0.1.0', sha),
+    );
+    expect(result.status, result.stderr).toBe(0);
+    const state = readState(sandbox);
+    expect(state['tag']).toBe('v0.1.0');
+    const ownership = JSON.parse(
+      readFileSync(join(sandbox.root, 'data-ownership.json'), 'utf8'),
+    ) as { entries: unknown[] };
+    expect(ownership.entries).toHaveLength(1);
+    expect(existsSync(join(sandbox.root, 'operation.json'))).toBe(false);
+    // The remnant is adopted, not backed up as if it were somebody else's.
+    expect(sandbox.calls()).not.toContain('db-backup.ts');
+    server.close();
+  });
+
+  it('re-runs the bootstrap when only a stale atomic temp file sits in a managed root', async () => {
+    const sandbox = freshSandbox();
+    const server = await startDashboard(sandbox.port);
+    suiteServer.push(server);
+    expect(installV010(sandbox).status).toBe(0);
+    writeFile(join(sandbox.root, '.4242.1700000000000.tmp'), 'stale');
+    const rerun = await sandbox.runBootstrap(['--install-dir', sandbox.root]);
+    expect(rerun.status, rerun.stderr).toBe(0);
+    expect(rerun.stderr).not.toContain('unrelated entries');
+    expect(readState(sandbox)['tag']).toBe('v0.1.0');
+    server.close();
+  });
+
+  it('restores the service snapshot when stopping a writer fails mid-update', async () => {
+    const sandbox = freshSandbox();
+    const server = await startDashboard(sandbox.port);
+    suiteServer.push(server);
+    expect(installV010(sandbox).status).toBe(0);
+    commitNextRelease(sandbox.repo, { version: '0.1.1', tag: 'v0.1.1', manifestSha });
+    const result = manager(
+      sandbox,
+      ['update', '--install-dir', sandbox.root, '--version', 'v0.1.1'],
+      { AUD_TEST_FAIL_STOP: 'ai-usage-dashboard-web.service' },
+    );
+    expect(result.status).toBe(1);
+    expect(existsSync(join(sandbox.systemd, 'active', WEB))).toBe(true);
+    expect(existsSync(join(sandbox.systemd, 'active', TIMER))).toBe(true);
+    expect(readState(sandbox)['tag']).toBe('v0.1.0');
+    server.close();
+  });
+
+  it('resumes an interrupted uninstall after state.json is already gone', async () => {
+    const sandbox = freshSandbox();
+    const server = await startDashboard(sandbox.port);
+    suiteServer.push(server);
+    expect(installV010(sandbox).status).toBe(0);
+    const ownershipBefore = readFileSync(join(sandbox.root, 'data-ownership.json'), 'utf8');
+    // Simulate a kill after state.json and the launcher were removed but
+    // before the heavy releases/runtime trees: the remnant path must finish.
+    rmSync(join(sandbox.root, 'state.json'), { force: true });
+    rmSync(join(sandbox.home, '.local', 'bin', 'ai-usage-dashboard'), { force: true });
+    writeFile(
+      join(sandbox.root, 'operation.json'),
+      JSON.stringify(
+        {
+          schemaVersion: 1,
+          operationId: 'interrupted-uninstall',
+          kind: 'uninstall',
+          phase: 'launcher-removed',
+          pid: 999999,
+          root: sandbox.root,
+          candidate: null,
+          previous: null,
+          backupPath: null,
+          snapshot: null,
+          dbOwnershipRecorded: false,
+          failed: null,
+          notes: [],
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+        null,
+        2,
+      ),
+    );
+    const result = manager(sandbox, ['uninstall', '--install-dir', sandbox.root]);
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain('Resuming an interrupted uninstall');
+    expect(existsSync(join(sandbox.root, 'releases'))).toBe(false);
+    expect(existsSync(join(sandbox.root, 'runtime'))).toBe(false);
+    expect(existsSync(join(sandbox.root, 'operation.json'))).toBe(false);
+    expect(readFileSync(join(sandbox.root, 'data-ownership.json'), 'utf8')).toBe(ownershipBefore);
+    expect(readFileSync(join(sandbox.dataDir, 'usage.db'), 'utf8')).toBe('fixture-db');
     server.close();
   });
 });

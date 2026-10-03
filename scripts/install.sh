@@ -30,6 +30,7 @@ DEFAULT_NODE_DIST_BASE="https://nodejs.org/dist"
 
 REPO_URL="${AUD_INSTALL_REPO_URL:-$DEFAULT_REPO_URL}"
 NODE_DIST_BASE="${AUD_INSTALL_NODE_DIST_BASE:-$DEFAULT_NODE_DIST_BASE}"
+STABLE_TAG_RE='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'
 
 usage() {
   cat <<'EOF'
@@ -258,6 +259,10 @@ if [[ ${#missing[@]} -gt 0 ]]; then
   exit 1
 fi
 
+if ! systemctl --user show-environment >/dev/null 2>&1; then
+  die "systemctl --user cannot reach a user session bus; log in as this user (a full login, not only su) and retry"
+fi
+
 # --- release resolution -----------------------------------------------------
 
 RELEASE_TAG=""
@@ -271,6 +276,8 @@ resolve_release() {
 
   git -C "$tmp" init -q
   git -C "$tmp" remote add origin "$REPO_URL"
+  git -C "$tmp" ls-remote --heads origin >/dev/null 2>&1 \
+    || die "cannot reach $REPO_URL; check network connectivity and retry"
   git -C "$tmp" fetch -q origin main </dev/null
   local main_sha
   main_sha="$(git -C "$tmp" rev-parse FETCH_HEAD)"
@@ -278,12 +285,12 @@ resolve_release() {
 
   local candidates
   if [[ -n "$want" ]]; then
-    [[ "$want" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || die "--version must be a stable vX.Y.Z tag (got $want)"
+    [[ "$want" =~ $STABLE_TAG_RE ]] || die "--version must be a stable vX.Y.Z tag (got $want)"
     git -C "$tmp" rev-parse --verify --quiet "refs/tags/$want^{commit}" >/dev/null \
       || die "release $want does not exist as a tag in $REPO_URL"
     candidates="$want"
   else
-    candidates="$(git -C "$tmp" tag --list | grep -E '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$' | sort -Vr || true)"
+    candidates="$(git -C "$tmp" tag --list | grep -E "$STABLE_TAG_RE" | sort -Vr || true)"
     [[ -n "$candidates" ]] || die "no stable release tag exists in $REPO_URL; publish a tagged release first"
   fi
 
@@ -312,7 +319,7 @@ resolve_release() {
 if [[ $dry_run -eq 1 ]]; then
   # The guard precedes every fetch: a preview must not need or touch the
   # network, and an unavailable repository must not surface as a Git error.
-  if [[ -n "$version" && ! "$version" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+  if [[ -n "$version" && ! "$version" =~ $STABLE_TAG_RE ]]; then
     die "--version must be a stable vX.Y.Z tag (got $version)"
   fi
   log "DRY RUN — nothing was written, downloaded, resolved, or started."
@@ -356,6 +363,7 @@ root_unrelated_entry() {
     case "$base" in
       lifecycle.lock|data-ownership.json|releases|runtime|cache|operation.json|current|state.json) continue ;;
     esac
+    [[ "$base" =~ ^\.[0-9]+\.[0-9]+\.(tmp|lnk)$ ]] && continue
     printf '%s\n' "$base"
     return 0
   done
@@ -468,7 +476,7 @@ if [[ $runtime_ok -eq 0 ]]; then
   archive_name="node-v$NODE_VERSION-linux-x64.tar.xz"
   archive="$staging/$archive_name"
   curl -fSL --retry 3 --retry-delay 2 -o "$archive" "$NODE_DIST_BASE/v$NODE_VERSION/$archive_name" </dev/null \
-    || { rm -rf "$staging"; die "downloading Node v$NODE_VERSION failed"; }
+    || { rm -rf "$staging"; die "downloading Node v$NODE_VERSION from $NODE_DIST_BASE failed; check HTTPS connectivity"; }
   digest="$(sha256sum "$archive" | awk '{print $1}')"
   if [[ "$digest" != "$NODE_SHA" ]]; then
     rm -rf "$staging"

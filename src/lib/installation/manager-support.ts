@@ -8,7 +8,7 @@
 import { chmodSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { exists } from './atomic.ts';
+import { exists, errorText } from './atomic.ts';
 import { commandPath, parseJsonOutput, run, type RunResult } from './exec.ts';
 import { assertSafePathValue } from './install-paths.ts';
 import {
@@ -25,6 +25,7 @@ import {
   stopUnit,
 } from './systemd.ts';
 import { runtimeEnv, runtimeNodeBin, validateRuntimeDir } from './runtime.ts';
+import { backupStamp } from '../timestamps.ts';
 import { UNIT_NAMES } from './state.ts';
 import type { InstalledConfig, RuntimeRecord, ServiceSnapshot, UnitName } from './state.ts';
 
@@ -138,7 +139,7 @@ export function runRelease(
       'Re-run the installation or update so dependencies are installed from the compiled lockfile.',
     );
   }
-  const env = { ...runtimeEnv(releaseDir, runtime), ...options.extraEnv };
+  const env = { ...runtimeEnv(runtime), ...options.extraEnv };
   return run(
     runtimeNodeBin(runtime),
     ['--disable-warning=ExperimentalWarning', tsx, join(releaseDir, script), ...args],
@@ -291,7 +292,7 @@ export async function waitForHttp(url: string, timeoutMs: number): Promise<void>
       if (response.ok) return;
       lastError = `HTTP ${response.status}`;
     } catch (err) {
-      lastError = err instanceof Error ? err.message : String(err);
+      lastError = errorText(err);
     }
     if (Date.now() >= deadline) {
       fail(
@@ -318,7 +319,7 @@ export function stopWriters(): void {
     stopUnit(COLLECTOR_TIMER);
   } catch (err) {
     fail(
-      `could not stop ${COLLECTOR_TIMER}: ${err instanceof Error ? err.message : err}`,
+      `could not stop ${COLLECTOR_TIMER}: ${errorText(err)}`,
       `Inspect systemctl --user status ${COLLECTOR_TIMER} and retry.`,
     );
   }
@@ -338,7 +339,7 @@ export function stopWriters(): void {
     stopUnit(WEB_SERVICE);
   } catch (err) {
     fail(
-      `could not stop ${WEB_SERVICE}: ${err instanceof Error ? err.message : err}`,
+      `could not stop ${WEB_SERVICE}: ${errorText(err)}`,
       `Inspect systemctl --user status ${WEB_SERVICE} and retry.`,
     );
   }
@@ -395,11 +396,6 @@ export function applySnapshot(snapshot: ServiceSnapshot): void {
   }
 }
 
-/** `2026-09-14T01:02:03.456Z` becomes `20260914T010203456Z`: sortable and file-name safe. */
-function backupStamp(now: Date): string {
-  return now.toISOString().replace(/[-:.]/g, '');
-}
-
 /** The path pattern for a cutover backup taken under the data directory. */
 export function backupDestination(dataDir: string): string {
   return join(dataDir, 'backups', `installation-${backupStamp(new Date())}.db`);
@@ -449,7 +445,7 @@ export function removeIfOurs(
   try {
     content = readFileSync(path, 'utf8');
   } catch (err) {
-    fail(`could not read ${label} at ${path}: ${err instanceof Error ? err.message : err}`);
+    fail(`could not read ${label} at ${path}: ${errorText(err)}`);
   }
   if (!isOurs(content)) {
     fail(

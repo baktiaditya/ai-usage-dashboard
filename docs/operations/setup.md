@@ -830,18 +830,18 @@ deployed, and prereleases or malformed tags are never eligible.
 
 ### What it installs
 
-| What            | Where                                                                                                             | Notes                                                                                        |
-| --------------- | ----------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| Install root    | `$XDG_DATA_HOME/ai-usage-dashboard-install` (absolute XDG only), else `~/.local/share/ai-usage-dashboard-install` | `--install-dir` selects another absolute root                                                |
-| Releases        | `<root>/releases/<commit-sha>/`                                                                                   | Detached source, dependencies, and build per release                                         |
-| Runtime         | `<root>/runtime/node-vX.Y.Z/`                                                                                     | Private Node and Corepack                                                                    |
-| Active pointers | `<root>/current`, `<root>/runtime/current`                                                                        | Symlinks, repointed atomically on update                                                     |
-| Metadata        | `<root>/state.json` (owner-only)                                                                                  | Version, tag/SHA, previous release, runtime, resolved paths and port, unit/bridge ownership  |
-| Journal         | `<root>/operation.json`                                                                                           | Durable phase record of an in-flight operation                                               |
-| Ownership       | `<root>/data-ownership.json`                                                                                      | Databases this root created; survives uninstall                                              |
-| Lock sentinel   | `<root>/lifecycle.lock`                                                                                           | One exclusive `flock` for install/update/uninstall; kept across uninstall                    |
-| Caches          | `<root>/cache/`                                                                                                   | Private Corepack/pnpm caches and build isolation                                             |
-| Launcher        | `~/.local/bin/ai-usage-dashboard`                                                                                 | If that directory is not on `PATH`, the installer prints the full path; no profile is edited |
+| What            | Where                                                                                                             | Notes                                                                                            |
+| --------------- | ----------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| Install root    | `$XDG_DATA_HOME/ai-usage-dashboard-install` (absolute XDG only), else `~/.local/share/ai-usage-dashboard-install` | `--install-dir` selects another absolute root                                                    |
+| Releases        | `<root>/releases/<commit-sha>/`                                                                                   | Detached source, dependencies, and build per release                                             |
+| Runtime         | `<root>/runtime/node-vX.Y.Z/`                                                                                     | Private Node and Corepack                                                                        |
+| Active pointers | `<root>/current`, `<root>/runtime/current`                                                                        | Symlinks, repointed atomically on update                                                         |
+| Metadata        | `<root>/state.json` (owner-only)                                                                                  | Version, tag/SHA, previous release, runtime, resolved paths and port, owned-bridge settings path |
+| Journal         | `<root>/operation.json`                                                                                           | Durable phase record of an in-flight operation                                                   |
+| Ownership       | `<root>/data-ownership.json`                                                                                      | Databases this root created; survives uninstall                                                  |
+| Lock sentinel   | `<root>/lifecycle.lock`                                                                                           | One exclusive `flock` for install/update/uninstall; kept across uninstall                        |
+| Caches          | `<root>/cache/`                                                                                                   | Private Corepack/pnpm caches and build isolation                                                 |
+| Launcher        | `~/.local/bin/ai-usage-dashboard`                                                                                 | If that directory is not on `PATH`, the installer prints the full path; no profile is edited     |
 
 Directories are `0700` and metadata is `0600`. The root is separate from the application data
 directory; a data directory inside the install root is refused, because uninstall removes the
@@ -852,7 +852,10 @@ root and must not remove your data.
 The installer resolves `AUD_DATA_DIR`, `AUD_ENV_FILE`, `AUD_HOST`, `AUD_PORT`, and
 `AUD_COLLECT_INTERVAL_MINUTES` through the application's own `getConfig()` (§7 precedence:
 shell exports, then `collector.env`, then defaults) and persists the effective values in
-`state.json`. Updates reapply the persisted configuration, so a different calling shell never
+`state.json`. Three further variables override installer machinery and are meant for
+testing or mirroring, not normal use: `AUD_INSTALL_REPO_URL` (source repository),
+`AUD_INSTALL_NODE_DIST_BASE` (Node download base), and
+`AUD_INSTALL_HEALTH_TIMEOUT_SECONDS` (web health-check budget). Updates reapply the persisted configuration, so a different calling shell never
 silently moves the database or port. To change them deliberately, edit `collector.env` and
 re-run the existing unit installer from the active release
 (`<root>/current/scripts/install-systemd.sh --install --with-web`), then update the recorded
@@ -871,7 +874,7 @@ install failure.
   Collector exit `1` (provider errors with partial results) is installation success with a
   setup summary; exit `2` (the run could not start) is a failed activation that stops and
   removes only newly created owned units while keeping the database and configuration for a
-  retry. `ls -l` exit codes from the units are §5's.
+  retry.
 - **status** is observational. It creates no database, migrates nothing, collects nothing,
   and fetches no update. Exit `0` means an installed, healthy web/timer; `1` means missing,
   degraded, or recovery pending; `2` means invalid arguments or state. Disabled units are
