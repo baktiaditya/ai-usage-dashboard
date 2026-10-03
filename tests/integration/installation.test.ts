@@ -97,6 +97,7 @@ if (name === 'installation-probe.ts') {
   console.log(JSON.stringify({ backup: dest, runs: 1 }));
 } else if (name === 'db-restore.ts') {
   const source = args[0];
+  if (cfg.markerDir) writeFileSync(cfg.markerDir + '/restore-data-dir', process.env.AUD_DATA_DIR || '');
   if (existsSync(config.databasePath)) copyFileSync(config.databasePath, config.databasePath + '.pre-restore-fixture');
   copyFileSync(source, config.databasePath);
   if (cfg.markerDir) writeFileSync(cfg.markerDir + '/restored', source);
@@ -567,6 +568,78 @@ function readState(sandbox: Sandbox): Record<string, unknown> {
 function unitFile(sandbox: Sandbox, name: string): string | null {
   const path = join(sandbox.home, '.config', 'systemd', 'user', name);
   return existsSync(path) ? readFileSync(path, 'utf8') : null;
+}
+
+const COLLECTOR = 'ai-usage-dashboard-collector.service';
+const TIMER = 'ai-usage-dashboard-collector.timer';
+const WEB = 'ai-usage-dashboard-web.service';
+
+/** A service snapshot as `snapshotServices` would have captured it. */
+function unitSnapshot(sandbox: Sandbox): Record<string, unknown> {
+  const unitDir = join(sandbox.home, '.config', 'systemd', 'user');
+  return {
+    unitFiles: Object.fromEntries(
+      [COLLECTOR, TIMER, WEB].map((name) => [
+        name,
+        existsSync(join(unitDir, name)) ? readFileSync(join(unitDir, name), 'utf8') : null,
+      ]),
+    ),
+    enabled: { [COLLECTOR]: 'disabled', [TIMER]: 'enabled', [WEB]: 'enabled' },
+    active: { [COLLECTOR]: 'inactive', [TIMER]: 'active', [WEB]: 'active' },
+    linger: 'no',
+  };
+}
+
+/** A valid interrupted-update journal for recovery-path tests. */
+function writeUpdateJournal(
+  sandbox: Sandbox,
+  options: {
+    readonly phase: string;
+    readonly candidateSha: string;
+    readonly backupPath?: string | null;
+    readonly snapshot?: Record<string, unknown> | null;
+  },
+): void {
+  const active = readState(sandbox);
+  const runtime = {
+    nodeVersion: NODE_VERSION,
+    path: join(sandbox.root, 'runtime', `node-v${NODE_VERSION}`),
+    sha256: 'a'.repeat(64),
+  };
+  writeFile(
+    join(sandbox.root, 'operation.json'),
+    JSON.stringify(
+      {
+        schemaVersion: 1,
+        operationId: 'crashed-op',
+        kind: 'update',
+        phase: options.phase,
+        pid: 999999,
+        root: sandbox.root,
+        candidate: { tag: 'v0.1.1', sha: options.candidateSha, runtime },
+        previous: { tag: active['tag'], sha: active['sha'], runtime },
+        backupPath: options.backupPath ?? null,
+        snapshot: options.snapshot ?? null,
+        dbOwnershipRecorded: false,
+        failed: null,
+        notes: [],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+      null,
+      2,
+    ),
+  );
+}
+
+function markUnitActive(sandbox: Sandbox, name: string, active: boolean): void {
+  const path = join(sandbox.systemd, 'active', name);
+  if (active) {
+    mkdirSync(join(sandbox.systemd, 'active'), { recursive: true });
+    writeFile(path, 'active');
+  } else {
+    rmSync(path, { force: true });
+  }
 }
 
 const PORT_BASE = 41_000 + Math.floor(Math.random() * 2_000);
@@ -1584,6 +1657,287 @@ describe('managed installation lifecycle', () => {
       AUD_TEST_LINGER_FAIL: '1',
     });
     expect(linger.status).toBe(0);
+    server.close();
+  });
+
+  it('takes the lifecycle lock before provisioning or changing the root', async () => {
+    const sandbox = freshSandbox();
+    mkdirSync(sandbox.root, { recursive: true });
+    chmodSync(sandbox.root, 0o755);
+    const holder = spawn(
+      'flock',
+      ['--nonblock', join(sandbox.root, 'lifecycle.lock'), 'sleep', '5'],
+      { stdio: 'ignore', detached: true },
+    );
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    const result = await sandbox.runBootstrap(['--install-dir', sandbox.root]);
+    holder.kill('SIGKILL');
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('already running');
+    expect(statSync(sandbox.root).mode & 0o777).toBe(0o755);
+    expect(existsSync(join(sandbox.root, 'releases'))).toBe(false);
+    expect(existsSync(join(sandbox.root, 'runtime'))).toBe(false);
+  });
+
+  it('refuses to overwrite a unit replaced by a manual installation', async () => {
+    const sandbox = freshSandbox();
+    const server = await startDashboard(sandbox.port);
+    suiteServer.push(server);
+    expect(installV010(sandbox).status).toBe(0);
+    commitNextRelease(sandbox.repo, { version: '0.1.1', tag: 'v0.1.1', manifestSha });
+    const webUnit = join(sandbox.home, '.config', 'systemd', 'user', WEB);
+    writeFile(webUnit, '[Service]\nWorkingDirectory=/manual/checkout\n');
+    const result = manager(sandbox, [
+      'update',
+      '--install-dir',
+      sandbox.root,
+      '--version',
+      'v0.1.1',
+    ]);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('not owned');
+    expect(readFileSync(webUnit, 'utf8')).toContain('/manual/checkout');
+    expect(readState(sandbox)['tag']).toBe('v0.1.0');
+    server.close();
+  });
+
+  it('refuses to uninstall when the data directory or database symlinks inside the root', async () => {
+    const sandbox = freshSandbox();
+    const server = await startDashboard(sandbox.port);
+    suiteServer.push(server);
+    expect(installV010(sandbox).status).toBe(0);
+    const active = readState(sandbox);
+    const victim = join(sandbox.root, 'releases', active['sha'] as string, 'victim-data');
+    mkdirSync(victim, { recursive: true });
+    writeFile(join(victim, 'usage.db'), 'fixture-db');
+    // The recorded data directory now names an outside path that resolves
+    // inside the release the uninstall would delete.
+    rmSync(sandbox.dataDir, { recursive: true, force: true });
+    symlinkSync(victim, sandbox.dataDir);
+    const result = manager(sandbox, ['uninstall', '--install-dir', sandbox.root]);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('physically resolves inside the install root');
+    expect(existsSync(join(victim, 'usage.db'))).toBe(true);
+    expect(existsSync(join(sandbox.root, 'state.json'))).toBe(true);
+    expect(existsSync(join(sandbox.root, 'releases'))).toBe(true);
+    server.close();
+  });
+
+  it('leaves another root launcher and units alone in the bootstrap fallback', async () => {
+    const sandbox = freshSandbox();
+    const otherRoot = join(sandbox.home, 'other-install');
+    const otherRelease = join(otherRoot, 'releases', 'b'.repeat(40));
+    mkdirSync(otherRelease, { recursive: true });
+    const unitDir = join(sandbox.home, '.config', 'systemd', 'user');
+    writeFile(join(unitDir, COLLECTOR), `[Service]\nWorkingDirectory=${otherRelease}\n`);
+    writeFile(join(unitDir, TIMER), '[Timer]\nUnit=ai-usage-dashboard-collector.service\n');
+    writeFile(join(unitDir, WEB), `[Service]\nWorkingDirectory=${otherRelease}\n`);
+    const launcher = join(sandbox.home, '.local', 'bin', 'ai-usage-dashboard');
+    writeFile(
+      launcher,
+      `#!/usr/bin/env bash\n# managed by the ai-usage-dashboard installer\nAUD_INSTALL_ROOT='${otherRoot}'\n`,
+      0o755,
+    );
+    const missingRoot = join(sandbox.home, 'missing-install');
+    const result = await sandbox.runBootstrap(['uninstall', '--install-dir', missingRoot]);
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stderr).toContain('foreign unit');
+    expect(existsSync(launcher)).toBe(true);
+    expect(readFileSync(launcher, 'utf8')).toContain(`AUD_INSTALL_ROOT='${otherRoot}'`);
+    expect(unitFile(sandbox, COLLECTOR)).not.toBeNull();
+    expect(unitFile(sandbox, TIMER)).not.toBeNull();
+    expect(unitFile(sandbox, WEB)).not.toBeNull();
+  });
+
+  it('removes this root collector timer in the bootstrap fallback', async () => {
+    const sandbox = freshSandbox();
+    const release = join(sandbox.root, 'releases', 'c'.repeat(40));
+    mkdirSync(release, { recursive: true });
+    const unitDir = join(sandbox.home, '.config', 'systemd', 'user');
+    writeFile(join(unitDir, COLLECTOR), `[Service]\nWorkingDirectory=${release}\n`);
+    writeFile(join(unitDir, TIMER), '[Timer]\nUnit=ai-usage-dashboard-collector.service\n');
+    writeFile(join(unitDir, WEB), `[Service]\nWorkingDirectory=${release}\n`);
+    const result = await sandbox.runBootstrap(['uninstall', '--install-dir', sandbox.root]);
+    expect(result.status, result.stderr).toBe(0);
+    expect(unitFile(sandbox, COLLECTOR)).toBeNull();
+    expect(unitFile(sandbox, TIMER)).toBeNull();
+    expect(unitFile(sandbox, WEB)).toBeNull();
+  });
+
+  it('install --dry-run neither creates the root nor recovers', () => {
+    const sandbox = freshSandbox();
+    const result = manager(sandbox, ['install', '--install-dir', sandbox.root, '--dry-run'], {
+      AUD_INSTALL_MANAGER_API: '1',
+      AUD_INSTALL_REPO_URL: join(sandbox.dir, 'absent-repo'),
+    });
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain('DRY RUN');
+    expect(result.stdout).toContain('would resolve the highest stable release');
+    expect(existsSync(sandbox.root)).toBe(false);
+  });
+
+  it('update --dry-run neither recovers nor resolves over the network', async () => {
+    const sandbox = freshSandbox();
+    const server = await startDashboard(sandbox.port);
+    suiteServer.push(server);
+    expect(installV010(sandbox).status).toBe(0);
+    const backupPath = join(sandbox.dataDir, 'backups', 'dry-run-backup.db');
+    mkdirSync(join(sandbox.dataDir, 'backups'), { recursive: true });
+    copyFileSync(join(sandbox.dataDir, 'usage.db'), backupPath);
+    writeUpdateJournal(sandbox, {
+      phase: 'writers-stopped',
+      candidateSha: 'e'.repeat(40),
+      backupPath,
+    });
+    const databaseBefore = readFileSync(join(sandbox.dataDir, 'usage.db'), 'utf8');
+    const result = manager(
+      sandbox,
+      ['update', '--install-dir', sandbox.root, '--dry-run', '--version', 'v9.9.9'],
+      { AUD_INSTALL_REPO_URL: join(sandbox.dir, 'absent-repo') },
+    );
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain('DRY RUN');
+    expect(result.stdout).toContain('would resolve --version v9.9.9');
+    expect(result.stdout).toContain('does not recover');
+    expect(existsSync(join(sandbox.root, 'operation.json'))).toBe(true);
+    expect(existsSync(join(sandbox.dir, 'markers', 'restored'))).toBe(false);
+    expect(readFileSync(join(sandbox.dataDir, 'usage.db'), 'utf8')).toBe(databaseBefore);
+    server.close();
+  });
+
+  it('restores the stored configuration database during recovery, not the caller environment', async () => {
+    const sandbox = freshSandbox();
+    const server = await startDashboard(sandbox.port);
+    suiteServer.push(server);
+    expect(installV010(sandbox).status).toBe(0);
+    commitNextRelease(sandbox.repo, { version: '0.1.1', tag: 'v0.1.1', manifestSha });
+    const candidateSha = tagSha(sandbox.repo, 'v0.1.1');
+    const backupPath = join(sandbox.dataDir, 'backups', 'installation-crash.db');
+    mkdirSync(join(sandbox.dataDir, 'backups'), { recursive: true });
+    copyFileSync(join(sandbox.dataDir, 'usage.db'), backupPath);
+    writeUpdateJournal(sandbox, {
+      phase: 'db-changing',
+      candidateSha,
+      backupPath,
+      snapshot: unitSnapshot(sandbox),
+    });
+    const callerData = join(sandbox.dir, 'caller-data');
+    mkdirSync(callerData, { recursive: true });
+    writeFile(join(callerData, 'usage.db'), 'caller-db');
+    const result = manager(
+      sandbox,
+      ['update', '--install-dir', sandbox.root, '--version', 'v0.1.1'],
+      { AUD_DATA_DIR: callerData },
+    );
+    expect(result.status, result.stderr).toBe(0);
+    expect(readFileSync(join(sandbox.dir, 'markers', 'restore-data-dir'), 'utf8')).toBe(
+      sandbox.dataDir,
+    );
+    expect(readFileSync(join(callerData, 'usage.db'), 'utf8')).toBe('caller-db');
+    server.close();
+  });
+
+  it('refuses an update when the resolved tag was moved after installation', async () => {
+    const sandbox = freshSandbox();
+    const server = await startDashboard(sandbox.port);
+    suiteServer.push(server);
+    expect(installV010(sandbox).status).toBe(0);
+    const before = readState(sandbox);
+    const moved = commitNextRelease(sandbox.repo, {
+      version: '0.1.0',
+      tag: 'v0.2.0',
+      manifestSha,
+    });
+    git(['tag', '-f', 'v0.1.0', moved], sandbox.repo);
+    const result = manager(sandbox, [
+      'update',
+      '--install-dir',
+      sandbox.root,
+      '--version',
+      'v0.1.0',
+    ]);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('moved');
+    const after = readState(sandbox);
+    expect(after['sha']).toBe(before['sha']);
+    server.close();
+  });
+
+  it('restores service state when an update is interrupted while stopping the writers', async () => {
+    const sandbox = freshSandbox();
+    const server = await startDashboard(sandbox.port);
+    suiteServer.push(server);
+    expect(installV010(sandbox).status).toBe(0);
+    const snapshot = unitSnapshot(sandbox);
+    // SIGKILL inside stopWriters: services are down, the journal still says
+    // staged, and the release plus database are untouched.
+    markUnitActive(sandbox, WEB, false);
+    markUnitActive(sandbox, TIMER, false);
+    writeUpdateJournal(sandbox, {
+      phase: 'staged',
+      candidateSha: 'd'.repeat(40),
+      snapshot,
+    });
+    const result = manager(sandbox, ['update', '--install-dir', sandbox.root]);
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain('interrupted while stopping the writers');
+    expect(existsSync(join(sandbox.systemd, 'active', WEB))).toBe(true);
+    expect(existsSync(join(sandbox.systemd, 'active', TIMER))).toBe(true);
+    expect(existsSync(join(sandbox.root, 'operation.json'))).toBe(false);
+    expect(existsSync(join(sandbox.dir, 'markers', 'restored'))).toBe(false);
+    server.close();
+  });
+
+  it('restores the Claude status line when recovery rolls back a refreshed bridge', async () => {
+    const sandbox = freshSandbox();
+    const server = await startDashboard(sandbox.port);
+    suiteServer.push(server);
+    const settingsPath = join(sandbox.home, '.claude', 'settings.json');
+    writeFile(
+      settingsPath,
+      JSON.stringify(
+        { statusLine: { type: 'command', command: 'my-status --fancy', padding: 2 } },
+        null,
+        2,
+      ),
+    );
+    sandbox.fixture({ settingsPath });
+    expect(installV010(sandbox).status).toBe(0);
+    expect(
+      manager(sandbox, ['claude-statusline', '--install-dir', sandbox.root, '--apply']).status,
+    ).toBe(0);
+    const active = readState(sandbox);
+    const activeRelease = join(sandbox.root, 'releases', active['sha'] as string);
+
+    // The crashed update had already repointed the status line at the
+    // candidate release before the commit.
+    const candidateSha = 'f'.repeat(40);
+    const candidateRelease = join(sandbox.root, 'releases', candidateSha);
+    const settings = JSON.parse(readFileSync(settingsPath, 'utf8')) as {
+      statusLine: { command: string };
+    };
+    settings.statusLine.command = `AUD_SPOOL_PATH='x' '${process.execPath}' '${join(candidateRelease, 'scripts/claude-statusline-bridge.mjs')}'`;
+    writeFile(settingsPath, JSON.stringify(settings, null, 2));
+
+    const backupPath = join(sandbox.dataDir, 'backups', 'bridge-crash.db');
+    mkdirSync(join(sandbox.dataDir, 'backups'), { recursive: true });
+    copyFileSync(join(sandbox.dataDir, 'usage.db'), backupPath);
+    writeUpdateJournal(sandbox, {
+      phase: 'bridge-refreshed',
+      candidateSha,
+      backupPath,
+      snapshot: unitSnapshot(sandbox),
+    });
+
+    const result = manager(sandbox, ['update', '--install-dir', sandbox.root]);
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain('Restored the Claude status line');
+    const restored = (
+      JSON.parse(readFileSync(settingsPath, 'utf8')) as { statusLine: { command: string } }
+    ).statusLine.command;
+    expect(restored).toContain(activeRelease);
+    expect(restored).not.toContain(candidateRelease);
+    expect(existsSync(join(sandbox.root, 'operation.json'))).toBe(false);
     server.close();
   });
 });

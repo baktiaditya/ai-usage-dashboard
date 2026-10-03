@@ -3,7 +3,15 @@
  * manifest validation, strict state/journal/ownership parsing, path safety,
  * retention, unit ownership, and launcher/bridge helpers.
  */
-import { chmodSync, mkdirSync, readFileSync, readlinkSync, statSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  mkdirSync,
+  readFileSync,
+  readlinkSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -40,7 +48,9 @@ import {
   classifyRoot,
   defaultInstallRoot,
   isInside,
+  isPhysicallyInside,
   normaliseAbsolute,
+  physicalPath,
 } from '../../src/lib/installation/install-paths';
 import { planRetention } from '../../src/lib/installation/retention';
 import { renderUnit, systemdValue } from '../../src/lib/systemd-unit';
@@ -284,6 +294,30 @@ describe('install paths', () => {
     expect(isInside('/a/b/c', '/a/b')).toBe(true);
     expect(isInside('/a/bc', '/a/b')).toBe(false);
     expect(isInside('/a/b', '/a/b')).toBe(true);
+  });
+
+  it('detects nesting through symlinks for the physical boundary', () => {
+    const dir = sandbox();
+    const root = join(dir, 'root');
+    const inside = join(root, 'releases', 'a'.repeat(40), 'data');
+    const outside = join(dir, 'outside');
+    mkdirSync(inside, { recursive: true });
+    mkdirSync(outside, { recursive: true });
+
+    // Named outside the root, physically inside it.
+    const inward = join(dir, 'data-link');
+    symlinkSync(inside, inward);
+    expect(isInside(inward, root)).toBe(false);
+    expect(isPhysicallyInside(inward, root)).toBe(true);
+
+    // A symlink that points outside stays outside.
+    const outward = join(dir, 'outward');
+    symlinkSync(outside, outward);
+    expect(isPhysicallyInside(outward, root)).toBe(false);
+
+    // A missing tail resolves through the longest existing ancestor.
+    expect(physicalPath(join(inward, 'usage.db'))).toBe(join(inside, 'usage.db'));
+    expect(isPhysicallyInside(join(inward, 'usage.db'), root)).toBe(true);
   });
 
   it('classifies empty, managed, partial, and occupied roots', () => {

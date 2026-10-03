@@ -147,22 +147,45 @@ remove_owned_remnants() {
     ai-usage-dashboard-collector.timer
     ai-usage-dashboard-web.service
   )
+  local collector_service="$unit_dir/ai-usage-dashboard-collector.service"
   local removed=0
+  local -a owned_units=()
+  # Decide ownership for every unit before removing any: the timer is owned
+  # through the collector service file, which the removal below would delete.
   for unit in "${units[@]}"; do
     local file="$unit_dir/$unit"
     [[ -f "$file" ]] || continue
-    if grep -q "^WorkingDirectory=$ROOT/releases/" "$file"; then
-      systemctl --user stop "$unit" >/dev/null 2>&1 || true
-      systemctl --user disable "$unit" >/dev/null 2>&1 || true
-      rm -f "$file"
-      removed=1
+    # The service units carry WorkingDirectory under this root's releases. The
+    # timer carries no such line; mirror the manager and call it owned when it
+    # activates this root's collector service.
+    local owned=0
+    if [[ "$unit" == *.timer ]]; then
+      if grep -qF 'Unit=ai-usage-dashboard-collector.service' "$file" \
+        && [[ -f "$collector_service" ]] \
+        && grep -qF "WorkingDirectory=$ROOT/releases/" "$collector_service"; then
+        owned=1
+      fi
+    elif grep -qF "WorkingDirectory=$ROOT/releases/" "$file"; then
+      owned=1
+    fi
+    if [[ $owned -eq 1 ]]; then
+      owned_units+=("$unit")
     else
       printf 'warning: leaving foreign unit %s untouched\n' "$file" >&2
     fi
   done
+  for unit in ${owned_units[@]+"${owned_units[@]}"}; do
+    local file="$unit_dir/$unit"
+    systemctl --user stop "$unit" >/dev/null 2>&1 || true
+    systemctl --user disable "$unit" >/dev/null 2>&1 || true
+    rm -f "$file"
+    removed=1
+  done
   [[ $removed -eq 1 ]] && systemctl --user daemon-reload >/dev/null 2>&1 || true
   local launcher="$HOME/.local/bin/ai-usage-dashboard"
-  if [[ -f "$launcher" ]] && grep -q "managed by the ai-usage-dashboard installer" "$launcher"; then
+  if [[ -f "$launcher" ]] \
+    && grep -qF "managed by the ai-usage-dashboard installer" "$launcher" \
+    && grep -qF "AUD_INSTALL_ROOT='$ROOT'" "$launcher"; then
     rm -f "$launcher"
     removed=1
   fi
@@ -301,6 +324,19 @@ if [[ $dry_run -eq 1 ]]; then
   log "  the user units, run one collection, and write the launcher."
   exit 0
 fi
+
+# --- lifecycle lock ---------------------------------------------------------
+
+# Take the same lock the manager uses before touching the root, so a bootstrap
+# racing another operation changes nothing and fails fast. The descriptor stays
+# open across the final exec, and AUD_INSTALL_LOCK_HELD tells the manager the
+# lock is already held.
+(umask 077; mkdir -p "$ROOT")
+exec 9>"$ROOT/lifecycle.lock"
+if ! flock --nonblock 9; then
+  die "another managed installation operation is already running for $ROOT; wait for it to finish, then retry"
+fi
+export AUD_INSTALL_LOCK_HELD=1
 
 # --- release checkout fetch -------------------------------------------------
 

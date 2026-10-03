@@ -8,9 +8,9 @@
  *
  * Stdlib-only by design (see `semver.ts`).
  */
-import { readdirSync } from 'node:fs';
+import { readdirSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { isAbsolute, join, resolve, sep } from 'node:path';
+import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path';
 import { exists, isDirectory } from './atomic.ts';
 import { JOURNAL_FILE, LOCK_FILE, OWNERSHIP_FILE, STATE_FILE } from './state.ts';
 
@@ -108,6 +108,37 @@ export function isInside(child: string, parent: string): boolean {
   return normalChild.startsWith(
     normalParent.endsWith(sep) ? normalParent : `${normalParent}${sep}`,
   );
+}
+
+/**
+ * Resolve a path to its physical location, following symlinks in the longest
+ * existing prefix; the missing tail is appended unresolved. A path whose last
+ * component (or any ancestor) symlinks elsewhere therefore reports where it
+ * really lives, not where it is named.
+ */
+export function physicalPath(path: string): string {
+  let current = resolve(path);
+  const suffix: string[] = [];
+  for (;;) {
+    try {
+      const real = realpathSync(current);
+      return suffix.length === 0 ? real : join(real, ...suffix);
+    } catch {
+      const parent = dirname(current);
+      if (parent === current) return resolve(path);
+      suffix.unshift(basename(current));
+      current = parent;
+    }
+  }
+}
+
+/**
+ * True when `child` physically equals or lives under `parent` after resolving
+ * symlinks. This is the boundary that matters before deleting an install root:
+ * a dataset outside the root that symlinks back inside it is inside it.
+ */
+export function isPhysicallyInside(child: string, parent: string): boolean {
+  return isInside(physicalPath(child), physicalPath(parent));
 }
 
 export type RootKind = 'absent' | 'empty-managed' | 'managed' | 'occupied' | 'partial';

@@ -24,9 +24,9 @@
     `data-ownership.json`. Manual/maintainer units, launchers, roots, and databases are
     refused rather than adopted. Effective configuration is persisted and reapplied on
     update; linger changes require `--enable-linger`.
-  - **Evidence performed:** `pnpm run verify` passes (40 files, 716 tests), including 25
-    unit tests for release selection, manifests, state/journal/ownership validation,
-    retention, and unit ownership, and 30 integration tests that drive the real manager against
+  - **Evidence performed:** `pnpm run verify` passes (40 files, 728 tests), including 26
+    unit tests for release selection, manifests, path boundaries, state/journal/ownership
+    validation, retention, and unit ownership, and 41 integration tests that drive the real manager against
     fixture releases with PATH-level systemctl/loginctl/ss stubs. The OKF validator and
     `git diff --check` pass. The rehearsal guard was run for real and refused the
     maintainer's environment (exit 2 without `AUD_INSTALL_SYSTEMD_REHEARSAL=1`, and exit 2
@@ -65,10 +65,27 @@
   - **Archived:** with the CI rehearsal passing, the brief moves to
     [archive](backlog/archive/simplify-linux-installation.md) and the plan's section 4.1.1
     records the delivered state. Release publication remains the user's subsequent call.
-  - **Consequences:** the brief stays in `ready-for-agent/`; its real-systemd, browser, and
-    CI-executed criteria are the outstanding gates. Mocks prove decision and ordering logic
-    only, and the plan's §4.1.1 status was updated to implemented-in-code/release-pending
-    without claiming a release or deployment.
+  - **Review fixes:** an independent review of PR
+    [#38](https://github.com/baktiaditya/ai-usage-dashboard/issues/38) against `e6e8b82` at
+    head `2941dc6` confirmed ten issues, and the working tree now fixes all of them with
+    regression coverage. Data safety first: install and uninstall compare the data directory
+    and database _physically_, so a path named outside the root that symlinks inside it is
+    refused instead of deleted; update refuses to touch units a manual installation has
+    replaced; recovery restores the journaled database through the recorded `state.config`
+    rather than the caller's `AUD_DATA_DIR`; a crash between stopping the writers and
+    journaling that phase restores the snapshotted service state; and recovery rewrites an
+    already-refreshed Claude status line back to the release `state.json` records. Contract
+    fixes: `--dry-run` no longer runs recovery or performs network resolution (install
+    included, and it no longer creates the root); an update whose recorded tag resolves to a
+    different commit is refused as a moved tag; the bootstrap takes the lifecycle lock before
+    provisioning, fetching, or chmod; and the bootstrap fallback honours the launcher's
+    `AUD_INSTALL_ROOT` and removes this root's collector timer through its service's
+    ownership.
+  - **Consequences:** mocks prove decision and ordering logic only; the real-systemd,
+    timer, and recovery evidence now comes from the CI rehearsal above, while reboot
+    persistence and installation through the published one-line command remain unclaimed.
+    The plan's §4.1.1 status records implemented-in-code/release-pending without claiming a
+    release or deployment.
 
 - **Decision**: simplify end-user Linux installation through a managed, per-user
   source installer and lifecycle launcher. [Plan §4.1.1](plan/ai-usage-dashboard-implementation-plan.md#411-managed-linux-installation)

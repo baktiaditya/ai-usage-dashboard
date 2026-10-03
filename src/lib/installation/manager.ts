@@ -20,7 +20,7 @@ import {
   cacheDir,
   classifyRoot,
   defaultInstallRoot,
-  isInside,
+  isPhysicallyInside,
   launcherPathFor,
   releaseDir,
   releasesDir,
@@ -311,9 +311,15 @@ async function recoverUpdate(
     phaseIndex('update', journal.phase) >= phaseIndex('update', 'writers-stopped');
 
   if (!writersStopped) {
+    // The snapshot is journaled before the writers are stopped, so an
+    // interruption inside `stopWriters` leaves services down while the release
+    // and data are untouched. Put the recorded service state back.
+    if (journal.snapshot !== null) applySnapshot(journal.snapshot);
     finishJournal(ctx.root);
     process.stdout.write(
-      'The update had not changed anything yet; the active release is unchanged.\n',
+      journal.snapshot === null
+        ? 'The update had not changed anything yet; the active release is unchanged.\n'
+        : 'The update was interrupted while stopping the writers; the previous service state was restored and the active release is unchanged.\n',
     );
     return;
   }
@@ -321,9 +327,13 @@ async function recoverUpdate(
   if (crossedDatabaseBoundary) stopOwnedServicesBestEffort();
 
   if (crossedDatabaseBoundary && journal.backupPath !== null) {
-    const restore = runRelease(previousPath, previous.runtime, 'scripts/db-restore.ts', [
-      journal.backupPath,
-    ]);
+    const restore = runRelease(
+      previousPath,
+      previous.runtime,
+      'scripts/db-restore.ts',
+      [journal.backupPath],
+      { extraEnv: serviceEnv(state.config, previous.runtime) },
+    );
     if (restore.status !== 0) {
       process.stderr.write(
         `restoring the pre-cutover backup failed: ${restore.stderr.trim() || `status ${restore.status}`}\n`,
@@ -332,7 +342,7 @@ async function recoverUpdate(
         `Writers are stopped. Retained: previous release ${previousPath}, backup ${journal.backupPath}, journal ${ctx.root}/operation.json\n`,
       );
       process.stderr.write(
-        `To recover by hand, run: ${runtimeNodeBin(previous.runtime)} ${join(previousPath, 'node_modules/tsx/dist/cli.mjs')} ${join(previousPath, 'scripts/db-restore.ts')} ${journal.backupPath}\n`,
+        `To recover by hand, run: AUD_DATA_DIR=${state.config.dataDir} AUD_ENV_FILE=${state.config.envFile} ${runtimeNodeBin(previous.runtime)} ${join(previousPath, 'node_modules/tsx/dist/cli.mjs')} ${join(previousPath, 'scripts/db-restore.ts')} ${journal.backupPath}\n`,
       );
       throw new InstallationError('automatic recovery failed; the installation is stopped');
     }
@@ -348,6 +358,17 @@ async function recoverUpdate(
 
   renderAndInstallUnits(previousPath, previous.runtime, state.config);
   if (journal.snapshot !== null) applySnapshot(journal.snapshot);
+  if (state.bridge !== null && journal.candidate !== null) {
+    // An interrupted update may have repointed the Claude status line at the
+    // candidate before the release was committed. Rewrite it to the release
+    // that state still records; an externally replaced command is left alone.
+    const candidateRelease = releaseDir(ctx.root, journal.candidate.sha);
+    const currentCommand = bridgeCommandFromSettings(state.bridge.settingsPath);
+    if (currentCommand !== null && currentCommand.includes(candidateRelease)) {
+      refreshOwnedBridge(previousPath, previous.runtime, state.config);
+      process.stdout.write('Restored the Claude status line to the previous release.\n');
+    }
+  }
   const recovered: InstallationState = { ...state, updatedAt: new Date().toISOString() };
   writeCommitArtifacts(recovered, ctx.repo);
   finishJournal(ctx.root);
@@ -511,10 +532,10 @@ function resolveInstallConfig(
     codexDir: codex.codexDir,
   };
   validateInstalledConfig(config);
-  if (isInside(config.dataDir, root)) {
+  if (isPhysicallyInside(config.dataDir, root) || isPhysicallyInside(config.databasePath, root)) {
     fail(
-      `the application data directory ${config.dataDir} is inside the install root ${root}`,
-      'Choose a data directory outside the install root (AUD_DATA_DIR), because the install root is removed on uninstall.',
+      `the application data directory ${config.dataDir} or its database physically resolves inside the install root ${root}`,
+      'Choose a data directory outside the install root (AUD_DATA_DIR) with no symlinks into it, because the install root is removed on uninstall.',
     );
   }
   return config;
@@ -535,6 +556,46 @@ async function cmdInstall(
   args: ManagerArgs,
   installEnv: InstallEnvironment,
 ): Promise<number> {
+  if (args.dryRun) {
+    const rootKindBefore = classifyRoot(root);
+    if (rootKindBefore === 'occupied') {
+      fail(
+        `the install root ${root} is not empty and is not a managed installation`,
+        'Choose another --install-dir, or move the unrelated files aside. Managed installs never take over a manual or maintainer installation.',
+      );
+    }
+    const stateBefore = readState(root);
+    const pendingBefore = readJournal(root);
+    const release =
+      installEnv.tag !== null && installEnv.sha !== null
+        ? `${installEnv.tag} (${installEnv.sha})`
+        : args.version !== null
+          ? `would resolve --version ${args.version} (requires network access)`
+          : 'would resolve the highest stable release (requires network access)';
+    process.stdout.write(
+      [
+        'DRY RUN — nothing was written.',
+        '',
+        `install root : ${root}`,
+        `release      : ${release}`,
+        stateBefore === null
+          ? 'state        : fresh managed installation'
+          : `state        : repair of ${stateBefore.tag}`,
+        ...(pendingBefore === null
+          ? []
+          : [
+              `recovery     : PENDING — interrupted ${pendingBefore.kind} at phase ${pendingBefore.phase}; a dry run does not recover it`,
+            ]),
+        '',
+        'Would: resolve the runtime, install dependencies with the frozen lockfile, build,',
+        'resolve configuration, check database ownership, install and start the units,',
+        'run one collection, enable the web unit and timer, and write the launcher.',
+        '',
+      ].join('\n'),
+    );
+    return 0;
+  }
+
   if (!exists(root)) mkdirSync(root, { recursive: true, mode: 0o700 });
   ensureMode(root, 0o700);
 
@@ -567,26 +628,6 @@ async function cmdInstall(
       `this root already has ${state.tag} (${state.sha.slice(0, 12)}) installed, and ${resolved.tag} (${resolved.sha.slice(0, 12)}) is a different release`,
       'Use `ai-usage-dashboard update` to move to another release.',
     );
-  }
-
-  if (args.dryRun) {
-    process.stdout.write(
-      [
-        'DRY RUN — nothing was written.',
-        '',
-        `install root : ${root}`,
-        `release      : ${resolved.tag} (${resolved.sha})`,
-        state === null
-          ? 'state        : fresh managed installation'
-          : `state        : repair of ${state.tag}`,
-        '',
-        'Would: resolve the runtime, install dependencies with the frozen lockfile, build,',
-        'resolve configuration, check database ownership, install and start the units,',
-        'run one collection, enable the web unit and timer, and write the launcher.',
-        '',
-      ].join('\n'),
-    );
-    return 0;
   }
 
   const staged = await stageRelease(root, repo, resolved, state?.runtime ?? null, (line) =>
@@ -886,6 +927,41 @@ async function cmdUpdate(root: string, repo: string, args: ManagerArgs): Promise
   if (state === null) {
     fail(`there is no managed installation at ${root}`, 'Run the one-line installer first.');
   }
+
+  if (args.dryRun) {
+    const journal = readJournal(root);
+    process.stdout.write(
+      [
+        'DRY RUN — nothing was written, downloaded, stopped, or migrated.',
+        '',
+        `install root : ${root}`,
+        `active       : ${state.tag} (${state.sha.slice(0, 12)})`,
+        args.version === null
+          ? 'candidate    : would resolve the highest stable release (requires network access)'
+          : `candidate    : would resolve --version ${args.version} (requires network access)`,
+        ...(journal === null
+          ? []
+          : [
+              `recovery     : PENDING — interrupted ${journal.kind} at phase ${journal.phase}; a dry run does not recover it`,
+            ]),
+        '',
+        'Would stage the candidate, snapshot the units, stop writers, take a verified',
+        'backup, migrate, install candidate units, health-check, refresh an owned',
+        'Claude bridge, commit, and prune unreferenced releases.',
+        '',
+      ].join('\n'),
+    );
+    return 0;
+  }
+
+  const foreign = foreignManagedUnits(root);
+  if (foreign.length > 0) {
+    fail(
+      `these installed units are not owned by the managed root ${root}: ${foreign.map((unit) => `${unit.name} (${unit.path})`).join(', ')}`,
+      'They belong to a manual or maintainer installation and an update would overwrite them. Remove them through that installation, or reinstall the managed root.',
+    );
+  }
+
   await recoverIfNeeded({ root, repo });
   const stateAfterRecovery = readState(root);
   if (stateAfterRecovery !== null && stateAfterRecovery.sha !== state.sha) {
@@ -896,49 +972,19 @@ async function cmdUpdate(root: string, repo: string, args: ManagerArgs): Promise
   }
   const active = stateAfterRecovery ?? state;
 
-  if (args.dryRun && args.version === null) {
-    process.stdout.write(
-      [
-        'DRY RUN — nothing was written, downloaded, stopped, or migrated.',
-        '',
-        `install root : ${root}`,
-        `active       : ${active.tag} (${active.sha.slice(0, 12)})`,
-        'candidate    : would resolve the highest stable release (requires network access)',
-        '',
-        'Would stage the candidate, snapshot the units, stop writers, take a verified',
-        'backup, migrate, install candidate units, health-check, refresh an owned',
-        'Claude bridge, commit, and prune unreferenced releases.',
-        '',
-      ].join('\n'),
-    );
-    return 0;
-  }
-
   const candidate: ResolvedRelease = resolveRelease(args.version, { repoUrl: repo });
-
-  if (args.dryRun) {
-    process.stdout.write(
-      [
-        'DRY RUN — nothing was written, downloaded, stopped, or migrated.',
-        '',
-        `install root : ${root}`,
-        `active       : ${active.tag} (${active.sha.slice(0, 12)})`,
-        `candidate    : ${candidate.tag} (${candidate.sha})`,
-        '',
-        'Would stage the candidate, snapshot the units, stop writers, take a verified',
-        'backup, migrate, install candidate units, health-check, refresh an owned',
-        'Claude bridge, commit, and prune unreferenced releases.',
-        '',
-      ].join('\n'),
-    );
-    return 0;
-  }
 
   if (candidate.sha === active.sha) {
     process.stdout.write(
       `${active.tag} (${active.sha.slice(0, 12)}) is already active; nothing to do.\n`,
     );
     return 0;
+  }
+  if (candidate.tag === active.tag) {
+    fail(
+      `tag ${candidate.tag} moved: this installation records commit ${active.sha}, but the tag now resolves to ${candidate.sha}`,
+      'Refusing to redeploy a moved tag. Publish a new version tag for the new commit.',
+    );
   }
   if (compareTagStrings(candidate.tag, active.tag) < 0) {
     fail(
@@ -1306,24 +1352,25 @@ async function cmdUninstall(root: string, args: ManagerArgs): Promise<number> {
     process.stdout.write(`No managed installation at ${root}; nothing to remove.\n`);
     return 0;
   }
-  const state = readState(root);
-  await recoverIfNeeded({ root, repo: repoUrl(process.env) });
-  const recovered = readState(root);
-  if (state !== null && recovered === null) {
-    process.stdout.write('Recovered a committed operation; retrying uninstall.\n');
-    return cmdUninstall(root, args);
-  }
-  if (recovered === null) {
-    return uninstallRemnants(root, args);
-  }
   if (args.dryRun) {
+    const stateBefore = readState(root);
+    if (stateBefore === null) {
+      process.stdout.write(`DRY RUN — would remove any owned remnants at ${root}.\n`);
+      return 0;
+    }
+    const journal = readJournal(root);
     process.stdout.write(
       [
         'DRY RUN — nothing was written or stopped.',
         '',
         `install root : ${root}`,
-        `version      : ${recovered.tag} (${recovered.sha})`,
-        `data kept    : ${recovered.config.dataDir}`,
+        `version      : ${stateBefore.tag} (${stateBefore.sha})`,
+        `data kept    : ${stateBefore.config.dataDir}`,
+        ...(journal === null
+          ? []
+          : [
+              `recovery     : PENDING — interrupted ${journal.kind} at phase ${journal.phase}; a dry run does not recover it`,
+            ]),
         '',
         'Would stop the owned timer and web unit, remove owned units, remove an owned',
         'Claude bridge, remove the launcher, releases, runtime, cache, and metadata,',
@@ -1333,6 +1380,16 @@ async function cmdUninstall(root: string, args: ManagerArgs): Promise<number> {
       ].join('\n'),
     );
     return 0;
+  }
+  const state = readState(root);
+  await recoverIfNeeded({ root, repo: repoUrl(process.env) });
+  const recovered = readState(root);
+  if (state !== null && recovered === null) {
+    process.stdout.write('Recovered a committed operation; retrying uninstall.\n');
+    return cmdUninstall(root, args);
+  }
+  if (recovered === null) {
+    return uninstallRemnants(root, args);
   }
   return runUninstall(root, recovered);
 }
@@ -1391,10 +1448,13 @@ async function runUninstall(root: string, state: InstallationState): Promise<num
       fail(`${state.launcherPath} was not installed by this managed root; leaving it untouched`);
     }
   }
-  if (isInside(state.config.dataDir, root)) {
+  if (
+    isPhysicallyInside(state.config.dataDir, root) ||
+    isPhysicallyInside(state.config.databasePath, root)
+  ) {
     fail(
-      `the application data directory ${state.config.dataDir} is inside the install root ${root}`,
-      'Uninstalling would delete application data. Move AUD_DATA_DIR outside the install root first.',
+      `the application data directory ${state.config.dataDir} or its database physically resolves inside the install root ${root}`,
+      'Uninstalling would delete application data. Move AUD_DATA_DIR and the database outside the install root first.',
     );
   }
 
