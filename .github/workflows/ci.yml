@@ -47,11 +47,22 @@ jobs:
           sudo useradd --create-home --shell /bin/bash audrehearsal
           sudo loginctl enable-linger audrehearsal
           uid=$(id -u audrehearsal)
-          for _ in $(seq 1 60); do
-            [[ -S /run/user/$uid/systemd/private ]] && break
-            sleep 1
-          done
-          test -S /run/user/$uid/systemd/private
+          wait_for_manager() {
+            for _ in $(seq 1 60); do
+              [[ -S "/run/user/$uid/systemd/private" ]] && return 0
+              sleep 1
+            done
+            return 1
+          }
+          if ! wait_for_manager; then
+            # Linger did not bring the manager up by itself on this image;
+            # start the same units systemd-logind would start for a session.
+            sudo systemctl start "user-runtime-dir@$uid.service" || true
+            sudo systemctl start "user@$uid.service" || true
+            wait_for_manager
+          fi
+          sudo -u audrehearsal env XDG_RUNTIME_DIR="/run/user/$uid" \
+            systemctl --user show-environment >/dev/null
 
       - name: Hand the checkout to the disposable account
         run: |

@@ -15,7 +15,6 @@ import {
   chmodSync,
   copyFileSync,
   existsSync,
-  linkSync,
   mkdirSync,
   readdirSync,
   readFileSync,
@@ -116,7 +115,8 @@ if (name === 'installation-probe.ts') {
       else delete settings.statusLine;
     }
   } else {
-    const command = "AUD_SPOOL_PATH='" + config.dataDir + "/spool/claude-statusline.json' '" + process.execPath + "' '" + process.cwd() + "/scripts/claude-statusline-bridge.mjs'";
+    const runtimeNode = process.env.AUD_TEST_RUNTIME_NODE || process.execPath;
+    const command = "AUD_SPOOL_PATH='" + config.dataDir + "/spool/claude-statusline.json' '" + runtimeNode + "' '" + process.cwd() + "/scripts/claude-statusline-bridge.mjs'";
     settings.statusLine = settings.statusLine
       ? { ...settings.statusLine, type: 'command', command }
       : { type: 'command', command, padding: 0 };
@@ -189,6 +189,11 @@ interface Sandbox {
     args: readonly string[],
     extraEnv?: Record<string, string>,
   ) => { status: number | null; stdout: string; stderr: string };
+  readonly runAsync: (
+    command: string,
+    args: readonly string[],
+    extraEnv?: Record<string, string>,
+  ) => Promise<{ status: number | null; stdout: string; stderr: string }>;
   readonly runBootstrap: (
     args: readonly string[],
     extraEnv?: Record<string, string>,
@@ -217,6 +222,22 @@ function writeFile(path: string, content: string | Uint8Array, mode = 0o644): vo
   mkdirSync(join(path, '..'), { recursive: true });
   writeFileSync(path, content, { mode });
   chmodSync(path, mode);
+}
+
+/**
+ * A version-faking `node` executable: it reports the pinned version/platform
+ * the installer validates, and delegates everything else to the Node running
+ * the tests. That keeps fixtures independent of the runner's exact Node
+ * version and filesystem layout.
+ */
+function nodeWrapper(realNode: string, version: string): string {
+  return `#!/usr/bin/env bash
+set -euo pipefail
+if [[ "\${1:-}" == "--version" ]]; then echo "v${version}"; exit 0; fi
+if [[ "\${1:-}" == "-p" && "\${2:-}" == "process.platform" ]]; then echo linux; exit 0; fi
+if [[ "\${1:-}" == "-p" && "\${2:-}" == "process.arch" ]]; then echo x64; exit 0; fi
+exec "${realNode}" "$@"
+`;
 }
 
 function releaseFiles(
@@ -310,7 +331,7 @@ function placeRuntime(root: string): void {
   const bin = join(root, 'runtime', `node-v${NODE_VERSION}`, 'bin');
   mkdirSync(bin, { recursive: true, mode: 0o700 });
   rmSync(join(bin, 'node'), { force: true });
-  linkSync(process.execPath, join(bin, 'node'));
+  writeFile(join(bin, 'node'), nodeWrapper(process.execPath, NODE_VERSION), 0o755);
   writeFile(join(bin, 'corepack'), COREPACK_STUB, 0o755);
   writeFile(join(root, 'runtime', `node-v${NODE_VERSION}`, '.validated'), '');
 }
@@ -433,6 +454,7 @@ function makeSandbox(options: {
     PATH: `${bin}:${process.env['PATH'] ?? ''}`,
     AUD_TEST_SYSTEMD_STATE: systemd,
     AUD_TEST_FIXTURE_CONFIG: configPath,
+    AUD_TEST_RUNTIME_NODE: join(root, 'runtime', `node-v${NODE_VERSION}`, 'bin', 'node'),
     AUD_INSTALL_REPO_URL: repo,
     AUD_INSTALL_HEALTH_TIMEOUT_SECONDS: '3',
     ...extra,
@@ -465,6 +487,23 @@ function makeSandbox(options: {
         cwd: dir,
       });
       return { status: result.status, stdout: result.stdout, stderr: result.stderr };
+    },
+    runAsync: async (command, args, extraEnv = {}) => {
+      try {
+        const result = await execFileAsync(command, [...args], {
+          encoding: 'utf8',
+          env: env(extraEnv),
+          cwd: dir,
+        });
+        return { status: 0, stdout: result.stdout, stderr: result.stderr };
+      } catch (err) {
+        const failure = err as { code?: number; stdout?: string; stderr?: string };
+        return {
+          status: typeof failure.code === 'number' ? failure.code : 1,
+          stdout: failure.stdout ?? '',
+          stderr: failure.stderr ?? '',
+        };
+      }
     },
     runBootstrap: async (args, extraEnv = {}) => {
       try {
@@ -624,7 +663,7 @@ describe('managed installer bootstrap', () => {
     cleanups.push(build);
     const tree = join(build, `node-v${NODE_VERSION}-linux-x64`);
     mkdirSync(join(tree, 'bin'), { recursive: true });
-    linkSync(process.execPath, join(tree, 'bin', 'node'));
+    writeFile(join(tree, 'bin', 'node'), nodeWrapper(process.execPath, NODE_VERSION), 0o755);
     writeFile(join(tree, 'bin', 'corepack'), COREPACK_STUB, 0o755);
     archivePath = join(build, `node-v${NODE_VERSION}-linux-x64.tar.xz`);
     execFileSync('tar', [
@@ -820,7 +859,28 @@ describe('managed installer bootstrap', () => {
 });
 
 describe('managed installation lifecycle', () => {
-  const manifestSha = 'a'.repeat(64);
+  let archivePath = '';
+  let manifestSha = 'a'.repeat(64);
+
+  beforeAll(() => {
+    const build = mkdtempSync(join(tmpdir(), 'aud-node-archive-'));
+    cleanups.push(build);
+    const tree = join(build, `node-v${NODE_VERSION}-linux-x64`);
+    mkdirSync(join(tree, 'bin'), { recursive: true });
+    writeFile(join(tree, 'bin', 'node'), nodeWrapper(process.execPath, NODE_VERSION), 0o755);
+    writeFile(join(tree, 'bin', 'corepack'), COREPACK_STUB, 0o755);
+    archivePath = join(build, `node-v${NODE_VERSION}-linux-x64.tar.xz`);
+    execFileSync('tar', [
+      '-I',
+      'xz -T0 -0',
+      '-cf',
+      archivePath,
+      '-C',
+      build,
+      `node-v${NODE_VERSION}-linux-x64`,
+    ]);
+    manifestSha = createHash('sha256').update(readFileSync(archivePath)).digest('hex');
+  }, 60_000);
 
   function freshSandbox(port = nextPort()): Sandbox {
     return makeSandbox({
@@ -986,6 +1046,26 @@ describe('managed installation lifecycle', () => {
     expect(
       readFileSync(join(foreignLauncher.home, '.local', 'bin', 'ai-usage-dashboard'), 'utf8'),
     ).toContain('echo mine');
+  });
+
+  it('provisions the private runtime through the manager when none is present', async () => {
+    const sandbox = freshSandbox();
+    const server = await startDashboard(sandbox.port);
+    suiteServer.push(server);
+    registerArchive(archivePath);
+    const result = await sandbox.runAsync(
+      process.execPath,
+      ['--disable-warning=ExperimentalWarning', MANAGER, 'install', '--install-dir', sandbox.root],
+      installEnv(sandbox, 'v0.1.0', tagSha(sandbox.repo, 'v0.1.0'), {
+        AUD_INSTALL_NODE_DIST_BASE: `http://127.0.0.1:${archiveServerPort}`,
+      }),
+    );
+    expect(result.status, result.stderr).toBe(0);
+    expect(existsSync(join(sandbox.root, 'runtime', `node-v${NODE_VERSION}`, 'bin', 'node'))).toBe(
+      true,
+    );
+    expect(existsSync(join(sandbox.root, 'runtime', 'current', 'bin', 'node'))).toBe(true);
+    server.close();
   });
 
   it('refuses an unrecorded, in-use, or newer database before any writable open', async () => {

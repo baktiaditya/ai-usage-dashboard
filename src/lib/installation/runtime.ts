@@ -171,8 +171,9 @@ export async function ensureRuntime(options: EnsureRuntimeOptions): Promise<Runt
   mkdirSync(staging, { recursive: true, mode: 0o700 });
   const archive = join(staging, archiveName(manifest.nodeVersion));
   try {
-    log(`downloading Node v${manifest.nodeVersion} from ${distBase()}`);
-    await downloadTo(distBase(), archiveName(manifest.nodeVersion), archive);
+    const distRoot = `${distBase()}/v${manifest.nodeVersion}`;
+    log(`downloading Node v${manifest.nodeVersion} from ${distRoot}`);
+    await downloadTo(distRoot, archiveName(manifest.nodeVersion), archive);
     const digest = sha256File(archive);
     if (digest !== manifest.nodeSha256LinuxX64) {
       throw new RuntimeError(
