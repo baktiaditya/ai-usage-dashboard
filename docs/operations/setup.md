@@ -917,8 +917,8 @@ install failure.
   including during an incomplete first install. If another operation holds it, uninstall
   refuses before cleanup; wait for that operation to finish and retry. Bootstrap fallback
   status and dry runs remain available without taking the lock; when the runtime is missing,
-  the uninstall preview names the owned units, launcher, and proven trees a real run would
-  remove, and reports an unproven or empty root as nothing to remove.
+  the uninstall preview names the owned units, launcher, and existing proven trees a real run
+  would remove, and reports an unproven or empty root as nothing to remove.
 - **reinstall** from the same root and configuration recognizes the retained database through
   `data-ownership.json`, checks applied migrations read-only, refuses a database that is newer
   than the release, in use, or at a path the ownership record does not name, and takes a

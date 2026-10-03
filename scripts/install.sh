@@ -284,7 +284,15 @@ preview_owned_remnants() {
   # service effects a real run would apply, and touches nothing.
   local remove_root="${1:-1}"
   collect_owned_remnants
-  if [[ ${#OWNED_UNITS[@]} -eq 0 && $OWNED_LAUNCHER -eq 0 && $OWNED_ROOT -eq 0 ]]; then
+  # Name only paths that exist: removing a missing one is a no-op.
+  local -a paths=()
+  local path
+  if [[ $OWNED_ROOT -eq 1 && $remove_root -eq 1 ]]; then
+    for path in "$ROOT/releases" "$ROOT/runtime" "$ROOT/cache" "$ROOT/operation.json"; do
+      if [[ -e "$path" || -L "$path" ]]; then paths+=("$path"); fi
+    done
+  fi
+  if [[ ${#OWNED_UNITS[@]} -eq 0 && $OWNED_LAUNCHER -eq 0 && ${#paths[@]} -eq 0 ]]; then
     log "DRY RUN — no managed installation at $ROOT; nothing to remove."
     return 0
   fi
@@ -296,9 +304,9 @@ preview_owned_remnants() {
   if [[ $OWNED_LAUNCHER -eq 1 ]]; then
     log "  launcher : $HOME/.local/bin/ai-usage-dashboard"
   fi
-  if [[ $OWNED_ROOT -eq 1 && $remove_root -eq 1 ]]; then
-    log "  path     : $ROOT/releases, $ROOT/runtime, $ROOT/cache, $ROOT/operation.json"
-  fi
+  for path in ${paths[@]+"${paths[@]}"}; do
+    log "  path     : $path"
+  done
   if [[ $remove_root -eq 0 ]]; then
     log "  root     : absent; it would not be created"
   fi

@@ -2069,7 +2069,11 @@ exit 0
       '--dry-run',
     ]);
     expect(preview.status, preview.stderr).toBe(0);
-    expect(preview.stdout).toContain('path     :');
+    for (const path of ['releases', 'cache', 'operation.json']) {
+      expect(preview.stdout).toContain(`path     : ${join(sandbox.root, path)}\n`);
+    }
+    // The runtime tree is already gone, so the preview does not name it.
+    expect(preview.stdout).not.toContain(join(sandbox.root, 'runtime'));
     expect(existsSync(join(sandbox.root, 'releases'))).toBe(true);
     expect(existsSync(join(sandbox.root, 'operation.json'))).toBe(true);
     const result = await sandbox.runBootstrap(['uninstall', '--install-dir', sandbox.root]);
@@ -2078,6 +2082,21 @@ exit 0
     expect(existsSync(join(sandbox.root, 'runtime'))).toBe(false);
     expect(existsSync(join(sandbox.root, 'cache'))).toBe(false);
     expect(existsSync(join(sandbox.root, 'operation.json'))).toBe(false);
+  });
+
+  it('previews a proven root with no execution trees left as nothing to remove', async () => {
+    const sandbox = freshSandbox();
+    writeFile(join(sandbox.root, 'data-ownership.json'), '{}');
+    const preview = await sandbox.runBootstrap([
+      'uninstall',
+      '--install-dir',
+      sandbox.root,
+      '--dry-run',
+    ]);
+    expect(preview.status, preview.stderr).toBe(0);
+    expect(preview.stdout).toContain('nothing to remove');
+    expect(preview.stdout).not.toContain('path     :');
+    expect(readFileSync(join(sandbox.root, 'data-ownership.json'), 'utf8')).toBe('{}');
   });
 
   it('leaves an unproven root tree alone in the bootstrap fallback', async () => {

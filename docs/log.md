@@ -2,6 +2,13 @@
 
 ## 2026-10-04
 
+- **Update**: the bootstrap `uninstall --dry-run` preview now names only release, runtime,
+  cache, and journal paths that exist, one per line, and reports a proven root with none of
+  them left (and no owned unit or launcher) as nothing to remove. A real run already treated
+  missing paths as no-ops. Regression assertions cover a journal-proven root whose runtime
+  tree is gone and an ownership-record-only root.
+  Validation: `pnpm run verify` passes (41 files, 758 tests); Bash syntax passes.
+
 - **Update**: addressed the dry-run preview nit in PR
   [#38](https://github.com/baktiaditya/ai-usage-dashboard/pull/38#issuecomment-5972857408).
   When no runtime can run the manager, `uninstall --dry-run` no longer reports "nothing to
@@ -85,9 +92,9 @@
     `data-ownership.json`. Manual/maintainer units, launchers, roots, and databases are
     refused rather than adopted. Effective configuration is persisted and reapplied on
     update; linger changes require `--enable-linger`.
-  - **Evidence performed:** `pnpm run verify` passes (41 files, 757 tests), including 27
+  - **Evidence performed:** `pnpm run verify` passes (41 files, 758 tests), including 27
     unit tests for release selection, manifests, path boundaries, atomic-temp handling,
-    state/journal/ownership validation, retention, and unit ownership, and 65 integration tests that drive the real manager against
+    state/journal/ownership validation, retention, and unit ownership, and 66 integration tests that drive the real manager against
     fixture releases with PATH-level systemctl/loginctl/ss stubs, plus 4 health-server
     helper tests. The OKF validator and
     `git diff --check` pass. The rehearsal guard was run for real and refused the
