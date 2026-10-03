@@ -2,6 +2,28 @@
 
 ## 2026-10-03
 
+- **Decision**: simplify end-user Linux installation through a managed, per-user
+  source installer and lifecycle launcher. [Plan §4.1.1](plan/ai-usage-dashboard-implementation-plan.md#411-managed-linux-installation-planned)
+  records the approved scope: private checksum-verified Node/Corepack, pinned pnpm,
+  stable release commits, existing hardened user systemd units, explicit linger,
+  unchanged provider/credential onboarding, staged updates with quiescent backup
+  and database-aware recovery, and data-preserving uninstall. The initial managed
+  bootstrap targets Linux x86_64/glibc; existing manual installations remain supported.
+  Automatic adoption of maintainer/manual installations and release publication are
+  outside implementation authorization.
+- **Creation**: [simplify-linux-installation](backlog/ready-for-agent/simplify-linux-installation.md)
+  is ready for agent with resolved design choices, command/path/ownership contracts,
+  implementation sequence, crash recovery, verified existing owners, acceptance
+  criteria, and disposable-systemd/browser proof requirements. Assessment baseline:
+  `d7a6543`. Tracked in [#37](https://github.com/baktiaditya/ai-usage-dashboard/issues/37).
+  Validation added a glibc 2.28 preflight, the `better-sqlite3` prebuilt/toolchain
+  fallback, prompt-free Corepack and child stdin, a release/runtime retention rule,
+  and rehearsal isolation through a dedicated account or VM rather than a substitute
+  `HOME`. Review added a data ownership record that survives uninstall, so reinstall
+  from the same root reuses the retained database after a newer-schema check and a
+  verified backup instead of refusing it as unowned. This change adds documentation only; installer implementation, runtime
+  rehearsal, tagging, publication, and deployment have not occurred.
+
 - **Update**: the [README](../README.md) Quick start becomes an Installation section. It now
   covers:
   - platform scope: Linux supported, macOS untested with no scheduler yet (#29), Windows
