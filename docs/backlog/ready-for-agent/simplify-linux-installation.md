@@ -226,6 +226,7 @@ the full launcher path and a shell-neutral instruction. No profile edits.
   state.json                      versioned, owner-only installation metadata
   operation.json                  owner-only durable recovery journal
   lifecycle.lock                  concurrent-operation lock
+  data-ownership.json             owner-only record of databases this root created
   cache/                          private package-manager caches
 ```
 
@@ -259,10 +260,21 @@ Use one exclusive `flock` across install/update/uninstall. Contention fails befo
 mutation. Recheck ownership before activation/removal. Status may read state without
 the exclusive lock and must report an operation/recovery in progress coherently.
 Keep the root and its lock sentinel across uninstall so reinstall cannot acquire
-a different lock inode while removal is still running. A root containing only
-that recognized sentinel is an empty managed root, not a foreign installation.
+a different lock inode while removal is still running.
 
-Completion: repeated install recognizes its own metadata; unrelated files, units,
+Database ownership has its own record, `<install-root>/data-ownership.json`
+(owner-only, written atomically, parsed as strict data). Each entry names the
+canonical data directory and database path, the installation identifier that
+created the database, and the time it was created. The installation adds an entry
+when it creates the database (§4 step 5); nothing else adds one. Uninstall keeps
+this file with the lock sentinel, because the database it describes is kept too.
+A root containing only the recognized sentinel and ownership record is an empty
+managed root, not a foreign installation. The record proves only that this root's
+managed installation created the database at that path. It never adopts a
+database it did not create, and removing the install root forfeits the claim.
+
+Completion: repeated install recognizes its own metadata and, after uninstall, its
+own retained database; unrelated files, units,
 configuration, data symlinks, and launcher collisions are preserved/refused.
 
 ### 4. Implement first installation as a staged activation
@@ -273,11 +285,21 @@ configuration, data symlinks, and launcher collisions are preserved/refused.
    `AUD_ENV_FILE`, controlled AUD settings, and Next telemetry disabled. Build and
    tests must not open the user's actual database or invoke configured providers.
 4. Resolve/validate the real configuration, render units, and record the operation
-   journal before the first database or unit mutation. If an existing unowned
-   application database occupies the resolved path, refuse adoption before opening
-   it. A nonexistent/empty target directory is eligible.
-5. Initialize the real database. Record whether this operation created it; preserve
-   it on a later failure so retry/recovery never destroys user data.
+   journal before the first database or unit mutation. A nonexistent/empty target
+   directory is eligible. A database at the resolved path is reused only when the
+   ownership record names that canonical path; otherwise refuse adoption before
+   opening it and name the remedies: choose another data directory, or move the
+   existing one aside. For a reused database:
+   - read its applied migration versions read-only, and refuse when any exceeds
+     what the candidate knows. `openDb` does not refuse a newer schema itself, so
+     an older release must never open it writable;
+   - refuse while any process holds it, using the existing in-use check;
+   - take and verify a backup with the candidate's backup path before its first
+     writable open, and report the backup's location.
+5. Initialize the real database, or open the reused one. Before creating a new
+   database, record in the journal that this operation is creating it. Once it
+   exists, add its ownership record entry. Preserve it on a later failure so
+   retry/recovery never destroys user data.
 6. Install units without `--enable`, start the web unit, and wait at most 60 seconds
    for HTTP success at the resolved loopback URL (including IPv6 URL brackets).
    Keep the timer stopped until step 7 completes. Preserve hardening.
@@ -299,8 +321,9 @@ remains a separate Settings opt-in.
 First-install failure disables/stops/removes only newly created owned units and
 retains database/configuration for recovery. Record partial state before every
 externally visible step. An interrupted first install recognizes its own journal
-and can resume from retained data; an ordinary pre-existing database without that
-ownership record is still refused. Never print “installed” after failed health.
+and can resume from retained data; an ordinary pre-existing database with neither
+that journal nor an ownership record entry is still refused. Never print
+“installed” after failed health.
 
 Completion: fresh isolated install yields HTTP success and an active timer with
 provider credentials absent; injected failures leave a recognizable recoverable
@@ -400,14 +423,17 @@ returning any wrapped status line. If safe removal cannot be proven, retain the
 referenced runtime/release and return actionable failure. Never delete a runtime
 that a surviving bridge or unit still references.
 
-Remove only the owned launcher and managed source/runtime/cache/metadata. Preserve
+Remove only the owned launcher and managed source/runtime/cache/metadata, never
+the data ownership record. Preserve
 application data, credentials, spool, backups, collector.env, CODEX_HOME, provider
 CLIs, Claude settings backups, and previously chosen linger state. Refuse a data
 directory nested inside the removable install root. Repeated uninstall of an
 already removed installation is a successful no-op when no owned remnants exist;
 invoke it through the bootstrap recovery entry point once the launcher is gone.
-The empty root/lock sentinel remains; foreign remnants are reported and left
-alone. Retain minimal recovery metadata
+The root, its lock sentinel, and the data ownership record remain, so a later
+install from the same root with the same configuration reuses the retained
+database (§4 step 4). Foreign remnants are reported and left alone. Uninstall
+output names the retained data directory and ownership record. Retain minimal recovery metadata
 until removal completes. Status/removal code must remain executable throughout.
 
 For all mutating commands, `--dry-run` means no persistent writes, downloads,
@@ -493,6 +519,10 @@ necessary launcher/build-related change, as AGENTS.md requires.
       follows updates/recovery and hands back any wrapped command on uninstall.
 - [ ] Uninstall and repeated uninstall preserve data, credentials, configuration,
       provider state, and linger; only demonstrably owned execution surfaces disappear.
+- [ ] Install → uninstall → install from the same root and configuration reuses the
+      retained database after a verified backup, with history and saved keys intact.
+      A database newer than the candidate, one in use, or one at a path the
+      ownership record does not name is refused before any writable open.
 - [ ] Dry runs produce no persistent or external side effects; failures identify
       stage, retained paths, and a concrete remedy without printing secrets.
 - [ ] Real disposable-systemd install/update/failure-recovery/uninstall rehearsal,
@@ -550,6 +580,7 @@ a dedicated account's session must use its own `/run/user/<uid>`.
 | Schema rollback                            | Fixture releases with different migration sets prove the previous restore executable recovers the compatible backup; preserved failed DB is inspectable.              |
 | Crash/concurrency                          | SIGKILL at each journal boundary, contention, stale journal, repeat install/update, and state-write failure.                                                          |
 | Claude settings                            | Preview leaves settings unchanged; apply/wrap/update/recovery/uninstall preserve custom fields; externally replaced bridge is untouched.                              |
+| Reinstall after uninstall                  | Same root/config reuses the retained DB after a verified backup; newer schema, in-use DB, other root, and unrecorded path are refused unopened.                       |
 | Status/uninstall/dry run                   | Snapshot retained files/settings before/after; prove no status/dry-run DB/provider activity and no uninstall escape beyond owned execution paths.                     |
 | Linger                                     | Unrequested state unchanged; explicit requested success/failure reported; persistence claim limited to tested state.                                                  |
 

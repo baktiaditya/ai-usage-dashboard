@@ -19,7 +19,9 @@
   Validation added a glibc 2.28 preflight, the `better-sqlite3` prebuilt/toolchain
   fallback, prompt-free Corepack and child stdin, a release/runtime retention rule,
   and rehearsal isolation through a dedicated account or VM rather than a substitute
-  `HOME`. This change adds documentation only; installer implementation, runtime
+  `HOME`. Review added a data ownership record that survives uninstall, so reinstall
+  from the same root reuses the retained database after a newer-schema check and a
+  verified backup instead of refusing it as unowned. This change adds documentation only; installer implementation, runtime
   rehearsal, tagging, publication, and deployment have not occurred.
 
 - **Update**: the [README](../README.md) Quick start becomes an Installation section. It now
