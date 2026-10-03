@@ -202,6 +202,12 @@ PY
   "
 }
 
+http_ok() {
+  # The unit is active as soon as systemd forks it; the server then needs a
+  # moment to bind. Retry instead of racing the first connection.
+  curl -fsS -o /dev/null --retry 30 --retry-delay 1 --retry-connrefused "http://127.0.0.1:$PORT/"
+}
+
 wait_for_runs() { # wait_for_runs <minimum> <seconds>
   local minimum="$1" deadline=$((SECONDS + $2))
   while (( SECONDS < deadline )); do
@@ -285,7 +291,7 @@ check "launcher installed" test -x "$LAUNCHER"
 check "web unit is active" systemctl --user is-active --quiet ai-usage-dashboard-web.service
 check "web unit is enabled" systemctl --user is-enabled --quiet ai-usage-dashboard-web.service
 check "timer is enabled" systemctl --user is-enabled --quiet ai-usage-dashboard-collector.timer
-check "dashboard answers over HTTP" curl -fsS -o /dev/null "http://127.0.0.1:$PORT/"
+check "dashboard answers over HTTP" http_ok
 check "launcher status exits 0" "$LAUNCHER" status
 check "linger is enabled" test "$(loginctl show-user "$USER" -p Linger --value)" = "yes"
 check "Claude settings were left unchanged by installation" grep -q '"command": "my-wrapped-status --fancy"' "$SETTINGS"
@@ -331,7 +337,7 @@ check "active release is still v0.1.0" test "$(state_value tag)" = "v0.1.0"
 check "recovered database has no candidate migration" test "$(has_rehearsal_marker)" = "no"
 check "pre-cutover backup exists" bash -c "ls \"$DATA_DIR\"/backups/installation-*.db >/dev/null"
 check "failed database copy was retained" bash -c "ls \"$DATA_DIR\"/usage.db.pre-restore-* >/dev/null"
-check "recovered web answers again" curl -fsS -o /dev/null "http://127.0.0.1:$PORT/"
+check "recovered web answers again" http_ok
 check "recovery journal was cleared" test ! -e "$DEFAULT_ROOT/operation.json"
 
 # --- successful update ------------------------------------------------------
@@ -343,7 +349,7 @@ commit_fixture v0.1.2
 "$LAUNCHER" update --version v0.1.2
 check "active release is v0.1.2" test "$(state_value tag)" = "v0.1.2"
 check "previous release is recorded" test "$(json_status "$DEFAULT_ROOT/state.json" previous tag)" = "v0.1.0"
-check "updated web answers" curl -fsS -o /dev/null "http://127.0.0.1:$PORT/"
+check "updated web answers" http_ok
 V012_SHA="$(state_value sha)"
 check "bridge points at the new release" bash -c "grep -q '$V012_SHA' \"$SETTINGS\""
 check "bridge still wraps the original command" grep -q "my-wrapped-status" "$SETTINGS"
@@ -377,7 +383,7 @@ wait "$update_pid" 2>/dev/null || true
 check "the update process was killed at the database boundary" test "$killed" = "1"
 "$LAUNCHER" update --version v0.1.3
 check "recovery completed the v0.1.3 update" test "$(state_value tag)" = "v0.1.3"
-check "web answers after the interrupted update" curl -fsS -o /dev/null "http://127.0.0.1:$PORT/"
+check "web answers after the interrupted update" http_ok
 check "journal is clear after recovery" test ! -e "$DEFAULT_ROOT/operation.json"
 
 # --- uninstall and reinstall ------------------------------------------------
@@ -410,7 +416,7 @@ bash "$SOURCE/scripts/install.sh" --version v0.1.3 --install-dir "$DEFAULT_ROOT"
 check "state is back" test "$(state_value tag)" = "v0.1.3"
 check "reinstall took a verified backup" bash -c "ls \"$DATA_DIR\"/backups/installation-*.db >/dev/null"
 check "history was preserved" test "$(runs_count)" -ge "$RUNS_BEFORE"
-check "reinstalled web answers" curl -fsS -o /dev/null "http://127.0.0.1:$PORT/"
+check "reinstalled web answers" http_ok
 
 # --- summary ----------------------------------------------------------------
 
