@@ -2,8 +2,67 @@
 
 ## 2026-10-03
 
+- **Update**: the managed Linux installer is implemented in the working tree on branch
+  `feat/managed-linux-installer` for
+  [#37](https://github.com/baktiaditya/ai-usage-dashboard/issues/37), following the approved
+  [simplify-linux-installation](backlog/ready-for-agent/simplify-linux-installation.md)
+  brief. Nothing is committed, tagged, published, or deployed by this change, and the public
+  one-line command in the [README](../README.md) stays a labelled placeholder until a tagged
+  release contains the installer.
+  - **Bootstrap and runtime:** `scripts/install.sh` preflights Linux x86_64/glibc ≥ 2.28 and
+    the required tools, refuses root, resolves a stable `vX.Y.Z` tag to an exact commit
+    reachable from `main` (numeric SemVer, tag/package.json agreement, detached checkout,
+    moved-tag refusal), provisions the checksum-verified private Node/Corepack runtime from
+    `scripts/install-runtime.env` (Node 24.19.0, official SHA-256), and hands off through a
+    versioned interface to the selected checkout's `scripts/manage-installation.ts`. Every
+    child runs with stdin on `/dev/null`, so `curl … | bash` never has the piped script
+    consumed.
+  - **Lifecycle:** the manager (`src/lib/installation/`, stdlib-only so it runs before
+    `pnpm install`) implements staged first install, observational status, staged update
+    with a verified pre-cutover backup and journaled recovery, explicit Claude bridge
+    ownership, data-preserving uninstall, and same-root reinstall through a durable
+    `data-ownership.json`. Manual/maintainer units, launchers, roots, and databases are
+    refused rather than adopted. Effective configuration is persisted and reapplied on
+    update; linger changes require `--enable-linger`.
+  - **Evidence performed:** `pnpm run verify` passes (40 files, 715 tests), including 25
+    unit tests for release selection, manifests, state/journal/ownership validation,
+    retention, and unit ownership, and 29 integration tests that drive the real manager against
+    fixture releases with PATH-level systemctl/loginctl/ss stubs. The OKF validator and
+    `git diff --check` pass. The rehearsal guard was run for real and refused the
+    maintainer's environment (exit 2 without `AUD_INSTALL_SYSTEMD_REHEARSAL=1`, and exit 2
+    with it because the account already has dashboard units). A local real-toolchain
+    rehearsal then exercised the same lifecycle with user systemd substituted by a process
+    launcher: a real Node 24.19.0 download verified against the manifest checksum, a real
+    pinned-pnpm frozen-lockfile install, the real `better-sqlite3` prebuilt native module,
+    a real Next.js production build with isolated `AUD_DATA_DIR`/`AUD_ENV_FILE`, real SQLite
+    migrations, a verified pre-cutover backup, a failed candidate that crossed the database
+    boundary and recovered through the previous release's restore executable (failed copy
+    retained as `usage.db.pre-restore-*`), a successful update that refreshed an owned
+    Claude bridge while preserving its wrapped command, real HTTP 200 at the configured
+    loopback URL, and uninstall → reinstall that preserved three collected runs. An
+    `agent-browser` session against that live install captured the dashboard and the
+    Settings entry point (no key was saved) and was closed afterwards. Two real defects
+    were found and fixed on the way: a candidate web unit that fails to start now enters
+    update recovery instead of escaping it, and timer ownership is derived from the owned
+    collector service instead of a `WorkingDirectory` the timer template does not carry.
+  - **Not performed:** real user systemd execution, timer scheduling, linger, and boot
+    behavior, and therefore the CI-executed run, remain unproven. This machine has no
+    disposable account or VM/container with its own user manager: `sudo` requires a
+    password, `useradd`/`machinectl` are unavailable without it, and no container runtime
+    is installed. The executable proof path is `scripts/test-installation-systemd.sh`,
+    which refuses non-disposable environments and is wired to a dedicated linger account in
+    `.github/workflows/ci.yml`; it needs a disposable account, VM, or CI run to complete
+    the required systemd, timer, SIGKILL-at-boundary, and reinstall evidence. The
+    browser-visible claim that is therefore not yet verified end to end is the dashboard
+    served by a systemd-managed unit, as distinct from the HTTP 200 and browser evidence
+    above.
+  - **Consequences:** the brief stays in `ready-for-agent/`; its real-systemd, browser, and
+    CI-executed criteria are the outstanding gates. Mocks prove decision and ordering logic
+    only, and the plan's §4.1.1 status was updated to implemented-in-code/release-pending
+    without claiming a release or deployment.
+
 - **Decision**: simplify end-user Linux installation through a managed, per-user
-  source installer and lifecycle launcher. [Plan §4.1.1](plan/ai-usage-dashboard-implementation-plan.md#411-managed-linux-installation-planned)
+  source installer and lifecycle launcher. [Plan §4.1.1](plan/ai-usage-dashboard-implementation-plan.md#411-managed-linux-installation)
   records the approved scope: private checksum-verified Node/Corepack, pinned pnpm,
   stable release commits, existing hardened user systemd units, explicit linger,
   unchanged provider/credential onboarding, staged updates with quiescent backup

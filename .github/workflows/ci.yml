@@ -33,3 +33,43 @@ jobs:
 
       - name: Format, lint, typecheck, unit and integration tests
         run: pnpm run verify
+
+  installation-systemd:
+    name: disposable-systemd installation rehearsal
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v7
+
+      - name: Create the disposable account with its own user manager
+        run: |
+          sudo useradd --create-home --shell /bin/bash audrehearsal
+          sudo loginctl enable-linger audrehearsal
+          uid=$(id -u audrehearsal)
+          for _ in $(seq 1 60); do
+            [[ -S /run/user/$uid/systemd/private ]] && break
+            sleep 1
+          done
+          test -S /run/user/$uid/systemd/private
+
+      - name: Hand the checkout to the disposable account
+        run: |
+          sudo cp -a "$GITHUB_WORKSPACE" /tmp/aud-rehearsal-source
+          sudo chown -R audrehearsal:audrehearsal /tmp/aud-rehearsal-source
+
+      - name: Run the real install, update, recovery, uninstall, and reinstall rehearsal
+        run: |
+          uid=$(id -u audrehearsal)
+          cat >/tmp/aud-rehearsal-run.sh <<'SCRIPT'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          export HOME=/home/audrehearsal
+          export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+          export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+          export AUD_INSTALL_SYSTEMD_REHEARSAL=1
+          export AUD_INSTALL_REHEARSAL_SOURCE=/tmp/aud-rehearsal-source
+          exec bash /tmp/aud-rehearsal-source/scripts/test-installation-systemd.sh
+          SCRIPT
+          chmod 0755 /tmp/aud-rehearsal-run.sh
+          sudo -u audrehearsal /tmp/aud-rehearsal-run.sh

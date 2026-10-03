@@ -18,6 +18,10 @@ provision all four to get value from one.
 
 ## 1. Install and initialise
 
+For the one-command managed installation (no Node needed, private runtime, updates and
+recovery), see [§12](#12-managed-installation-linux-one-command). The steps below are the
+manual installation.
+
 Requires Node.js 24.15 or a later Node 24 release (`engines.node` is `^24.15.0`). Node 25 no
 longer bundles corepack and is not supported. Corepack runs the exact pnpm version that
 `packageManager` in `package.json` pins and checks it against its sha512 hash. The first run
@@ -762,3 +766,168 @@ the entry for the version it replaces. Approvals stay pinned to exact versions.
   dashboard's local copy;
 - convert subscription quota into a currency estimate, or mix currencies;
 - claim DeepSeek usage from a balance change.
+
+---
+
+## 12. Managed installation (Linux, one command)
+
+The managed installer is the supported route for an end user on Linux x86_64. It provisions
+a private runtime, detaches release checkouts, installs the same hardened user units as §5,
+and adds `update`, `status`, `uninstall`, and `claude-statusline` lifecycle commands. It
+never adopts or repoints a manual checkout, including the
+[production checkout](production-checkout.md).
+
+### Command interface
+
+The published one-line command pins the release tag that also provides the script, because
+the bootstrap and the lifecycle manager it hands off to come from the same commit:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/baktiaditya/ai-usage-dashboard/vX.Y.Z/scripts/install.sh \
+  | bash -s -- --version vX.Y.Z
+```
+
+The first release that contains the installer is not tagged yet; that command is a
+placeholder until it is. Until then, run the same script from a checkout:
+
+```bash
+bash scripts/install.sh [--version vX.Y.Z] [--install-dir ABSOLUTE_PATH]
+                       [--enable-linger] [--dry-run]
+bash scripts/install.sh status    [--install-dir ABSOLUTE_PATH]
+bash scripts/install.sh uninstall [--install-dir ABSOLUTE_PATH] [--dry-run]
+
+ai-usage-dashboard update [--version vX.Y.Z] [--dry-run]
+ai-usage-dashboard status
+ai-usage-dashboard uninstall [--dry-run]
+ai-usage-dashboard claude-statusline [existing status-line installer flags]
+```
+
+`--help` works on the bootstrap and the launcher without an installation. No prompt or TTY
+is required; a `curl … | bash` run needs no answers, and no child process ever reads the
+piped script. Bootstrap `status` and `uninstall` are recovery entry points for when the
+launcher is missing or already removed.
+
+Without `--version`, the bootstrap selects the highest stable `vMAJOR.MINOR.PATCH` tag whose
+commit is reachable from upstream `main` and whose tree carries the managed installer. It
+resolves the tag once to an exact commit SHA, checks out that SHA detached, validates that
+the tag agrees with `package.json`'s version, and records tag plus SHA. A tag that later
+resolves to a different commit is an error, not an upgrade. A floating branch is never
+deployed, and prereleases or malformed tags are never eligible.
+
+### Prerequisites and platform limits
+
+- Linux x86_64 with glibc 2.28 or later (the floor of Node 24's official linux-x64 builds).
+  musl and older glibc are refused before anything is downloaded. ARM and the macOS/Windows
+  platforms are outside this delivery; the manual route is unchanged there.
+- Bash, Git, curl, tar/xz, SHA-256 tooling, `flock`, a user `systemd` session, `journalctl`,
+  and `ss`. Missing tools are listed with installation guidance; OS packages are left to you.
+- Running as root is refused, and nothing is provisioned for another user.
+- `better-sqlite3` normally installs from its published prebuilt binary. When none can be
+  fetched, the native fallback needs Python 3, `make`, and a C++ compiler; the installer
+  names both causes if that fallback fails.
+- The managed runtime stays on the Node 24 line because Node 25 and later no longer ship
+  Corepack. Moving past Node 24 requires replacing the pnpm provisioning step first.
+
+### What it installs
+
+| What            | Where                                                                                                             | Notes                                                                                        |
+| --------------- | ----------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| Install root    | `$XDG_DATA_HOME/ai-usage-dashboard-install` (absolute XDG only), else `~/.local/share/ai-usage-dashboard-install` | `--install-dir` selects another absolute root                                                |
+| Releases        | `<root>/releases/<commit-sha>/`                                                                                   | Detached source, dependencies, and build per release                                         |
+| Runtime         | `<root>/runtime/node-vX.Y.Z/`                                                                                     | Private Node and Corepack                                                                    |
+| Active pointers | `<root>/current`, `<root>/runtime/current`                                                                        | Symlinks, repointed atomically on update                                                     |
+| Metadata        | `<root>/state.json` (owner-only)                                                                                  | Version, tag/SHA, previous release, runtime, resolved paths and port, unit/bridge ownership  |
+| Journal         | `<root>/operation.json`                                                                                           | Durable phase record of an in-flight operation                                               |
+| Ownership       | `<root>/data-ownership.json`                                                                                      | Databases this root created; survives uninstall                                              |
+| Lock sentinel   | `<root>/lifecycle.lock`                                                                                           | One exclusive `flock` for install/update/uninstall; kept across uninstall                    |
+| Caches          | `<root>/cache/`                                                                                                   | Private Corepack/pnpm caches and build isolation                                             |
+| Launcher        | `~/.local/bin/ai-usage-dashboard`                                                                                 | If that directory is not on `PATH`, the installer prints the full path; no profile is edited |
+
+Directories are `0700` and metadata is `0600`. The root is separate from the application data
+directory; a data directory inside the install root is refused, because uninstall removes the
+root and must not remove your data.
+
+### Configuration
+
+The installer resolves `AUD_DATA_DIR`, `AUD_ENV_FILE`, `AUD_HOST`, `AUD_PORT`, and
+`AUD_COLLECT_INTERVAL_MINUTES` through the application's own `getConfig()` (§7 precedence:
+shell exports, then `collector.env`, then defaults) and persists the effective values in
+`state.json`. Updates reapply the persisted configuration, so a different calling shell never
+silently moves the database or port. To change them deliberately, edit `collector.env` and
+re-run the existing unit installer from the active release
+(`<root>/current/scripts/install-systemd.sh --install --with-web`), then update the recorded
+configuration by reinstalling with the bootstrap.
+
+The Codex location is captured before the private Node is selected. The generated units bake
+a `PATH` covering the managed Node and the `codex` directory found at install time, and keep
+`CODEX_HOME` writable, exactly as §5 describes. An absent Codex CLI is a setup hint, not an
+install failure.
+
+### Lifecycle semantics
+
+- **install** stages source, runtime, dependencies, and build before touching services. It
+  then installs the units without enabling them, starts the web unit, waits up to 60 seconds
+  for HTTP, runs one collection, and only then enables and starts the web unit and timer.
+  Collector exit `1` (provider errors with partial results) is installation success with a
+  setup summary; exit `2` (the run could not start) is a failed activation that stops and
+  removes only newly created owned units while keeping the database and configuration for a
+  retry. `ls -l` exit codes from the units are §5's.
+- **status** is observational. It creates no database, migrates nothing, collects nothing,
+  and fetches no update. Exit `0` means an installed, healthy web/timer; `1` means missing,
+  degraded, or recovery pending; `2` means invalid arguments or state. Disabled units are
+  reported distinctly, as are linger and bridge state.
+- **update** refuses intentional downgrades, is a no-op at the active SHA, and stages all
+  downloads and builds before downtime. It snapshots unit state, stops the timer and waits
+  for the collector, stops the web unit, takes a verified backup with the previous release,
+  marks the database as potentially changed, applies candidate migrations, health-checks the
+  candidate, refreshes an owned Claude bridge, restores each unit's prior enabled/active
+  state independently, and commits only after health passes. Only the active release, the
+  recorded previous release, and anything an installed unit or owned bridge still references
+  are retained; backups are never pruned.
+- **recovery** runs on the next mutating command. Before the database-change boundary it
+  restores units and service state without touching data. After that boundary it stops
+  candidate writers, restores the pre-cutover backup with the previous release's own restore
+  executable, reinstalls the previous units, and restores their prior state. The failed
+  database is kept as `usage.db.pre-restore-<timestamp>`; observations or Settings written by
+  the failed candidate live in that retained copy, not in the recovered database. An
+  operation that committed before journal cleanup is finalized, never rolled back. If
+  recovery itself cannot proceed, writers stay stopped and the command prints the exact
+  retained paths and commands.
+- **claude-statusline** forwards the existing installer's preview/apply/wrap/print/uninstall
+  flags from the active release with the managed runtime and installed configuration. Initial
+  installation leaves `~/.claude/settings.json` unchanged; ownership is recorded only after
+  an explicit successful `--apply`. An owned bridge is refreshed on update because its command
+  embeds absolute checkout and runtime paths, preserving wrapped commands and padding; a
+  bridge the user replaced is treated as externally managed and left alone.
+- **uninstall** stops and removes only owned units, removes an owned bridge through the
+  existing restoration logic (handing back any wrapped status line), removes the owned
+  launcher, and deletes releases, runtime, caches, and metadata. It keeps application data,
+  credentials, backups, `collector.env`, `CODEX_HOME`, provider state, linger, the lock
+  sentinel, and `data-ownership.json`. Repeating it is a successful no-op, through the
+  bootstrap once the launcher is gone. Uninstall refuses when a data directory is nested in
+  the install root or safe ownership cannot be proven, and retains referenced resources.
+- **reinstall** from the same root and configuration recognizes the retained database through
+  `data-ownership.json`, checks applied migrations read-only, refuses a database that is newer
+  than the release, in use, or at a path the ownership record does not name, and takes a
+  verified backup before its first writable open. A different root never claims that database.
+- **dry runs** (`--dry-run`) make no persistent writes, downloads, migrations, provider
+  calls, service actions, chmods, or linger changes. Release resolution that would need
+  network access is reported as such.
+
+### Verification and evidence
+
+```bash
+bash -n scripts/install.sh scripts/install-systemd.sh scripts/test-installation-systemd.sh
+pnpm run test:installation
+pnpm run test:installation:systemd   # disposable systemd account/VM only
+```
+
+`pnpm run test:installation` mocks service actions and proves decision and ordering logic;
+it does not prove systemd execution. The rehearsal script exercises real dependency and
+native installation, build, generated units, HTTP health, timer runs, a failed update with
+database recovery, a SIGKILL interruption, Claude composition, uninstall, and reinstall. It
+refuses any environment that is not explicitly disposable (`AUD_INSTALL_SYSTEMD_REHEARSAL=1`)
+and that already has dashboard units, a launcher, an install root, or application data. CI
+runs it in a dedicated account with linger on GitHub-hosted Ubuntu
+(`.github/workflows/ci.yml`). Whether CI or a local disposable account has actually run is
+recorded in the [bundle log](../log.md); the installer's release publication is separate.

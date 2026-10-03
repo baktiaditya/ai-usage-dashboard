@@ -226,11 +226,15 @@ Decided and implemented 2026-09-15 (see the [log](../log.md)); delivered from th
 - **Vitest + Testing Library** for unit/component tests and **Playwright** for browser smoke tests.
 - Pin exact dependency versions via the lockfile and document minimum supported versions for both CLIs.
 
-### 4.1.1 Managed Linux installation (planned)
+### 4.1.1 Managed Linux installation
 
-Decided 2026-10-03; implementation is specified in
+Decided 2026-10-03; implemented in code and specified in
 [simplify-linux-installation](../backlog/ready-for-agent/simplify-linux-installation.md).
-This is approved implementation scope, not delivered installer behavior.
+The implementation, its tests, and its disposable-systemd rehearsal live on the
+`feat/managed-linux-installer` branch; no release is tagged, published, or deployed yet, and
+the [log](../log.md) records the exact evidence and the still-unperformed real-systemd and
+browser checks. Until a release exists, the public one-line command is a placeholder and the
+bootstrap is run from a checkout.
 
 - Add a one-command, per-user source installer and `ai-usage-dashboard` lifecycle
   launcher for update, status, uninstall, and explicit Claude bridge setup.
