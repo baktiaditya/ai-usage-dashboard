@@ -226,6 +226,31 @@ Decided and implemented 2026-09-15 (see the [log](../log.md)); delivered from th
 - **Vitest + Testing Library** for unit/component tests and **Playwright** for browser smoke tests.
 - Pin exact dependency versions via the lockfile and document minimum supported versions for both CLIs.
 
+### 4.1.1 Managed Linux installation (planned)
+
+Decided 2026-10-03; implementation is specified in
+[simplify-linux-installation](../backlog/ready-for-agent/simplify-linux-installation.md).
+This is approved implementation scope, not delivered installer behavior.
+
+- Add a one-command, per-user source installer and `ai-usage-dashboard` lifecycle
+  launcher for update, status, uninstall, and explicit Claude bridge setup.
+- Bootstrap a private, checksum-verified compatible Node/Corepack runtime and use
+  the repository-pinned pnpm without changing the user's default Node or shell profiles.
+- Initial managed bootstrap targets Linux x86_64 with glibc and user systemd.
+  Existing manual installation and platform contracts remain unchanged.
+- Deploy exact detached commits from stable release tags reachable from `main`;
+  stage dependencies/build before downtime and preserve the previous release.
+- Preserve existing configuration, loopback binding, unit hardening, provider
+  onboarding, and credential contracts. Linger changes require an explicit flag.
+- Updates stop writers and take a verified database backup before candidate
+  migration; recovery after that boundary restores data with the previous release
+  as well as restoring source/runtime/units. Journal interrupted activation.
+- Uninstall removes only owned execution surfaces and preserves application data,
+  credentials, backups, provider state, configuration, and linger settings.
+- Managed installs refuse automatic adoption of manual/maintainer installations.
+  Prebuilt bundles, extra schedulers/platform bootstraps, npm publication, automatic
+  background updates, and data purge are outside this delivery.
+
 ### 4.2 Modules
 
 - `ProviderAdapter`: pull-adapter contract with `collect()` and a normalized result/error.

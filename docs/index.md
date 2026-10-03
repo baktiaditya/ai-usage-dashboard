@@ -35,3 +35,5 @@ provider is worth switching away from right now. This bundle follows
 - [Backlog](backlog/index.md) - Triaged work briefs. Working context, not source of
   truth — it never overrides the canonical documents above.
 - [Brief Template](backlog/template.md) - Skeleton for new backlog briefs.
+- [Simplify Linux installation](backlog/ready-for-agent/simplify-linux-installation.md) -
+  Agent-ready managed installer, lifecycle, recovery, and verification brief.

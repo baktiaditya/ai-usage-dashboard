@@ -54,3 +54,8 @@ Issues are the tracking unit; briefs are the specification. A small brief does n
 need its own file — write it directly in the issue. Create a file here when the
 brief is long, needs separate review, or must outlive its issue. When both exist,
 link them to each other.
+
+## Ready for Agent
+
+- [Simplify Linux installation](ready-for-agent/simplify-linux-installation.md) —
+  Managed per-user installer, update/status/uninstall, and database-aware recovery.
