@@ -137,6 +137,13 @@ run_manager_if_available() {
   return 1
 }
 
+active_unit_value() {
+  # The value of the first active (non-comment) `Key=` directive in a unit.
+  # Commented lines never count: a unit that merely mentions the root in a
+  # comment is foreign.
+  sed -n "s/^[[:space:]]*$2=\(.*\)\$/\1/p" "$1" | head -n1
+}
+
 remove_owned_remnants() {
   # Used only when the runtime is gone: remove execution surfaces whose unit
   # files were demonstrably written by this managed root. Application data,
@@ -160,12 +167,12 @@ remove_owned_remnants() {
     # activates this root's collector service.
     local owned=0
     if [[ "$unit" == *.timer ]]; then
-      if grep -qF 'Unit=ai-usage-dashboard-collector.service' "$file" \
+      if [[ "$(active_unit_value "$file" Unit)" == "ai-usage-dashboard-collector.service" ]] \
         && [[ -f "$collector_service" ]] \
-        && grep -qF "WorkingDirectory=$ROOT/releases/" "$collector_service"; then
+        && [[ "$(active_unit_value "$collector_service" WorkingDirectory)" == "$ROOT/releases/"* ]]; then
         owned=1
       fi
-    elif grep -qF "WorkingDirectory=$ROOT/releases/" "$file"; then
+    elif [[ "$(active_unit_value "$file" WorkingDirectory)" == "$ROOT/releases/"* ]]; then
       owned=1
     fi
     if [[ $owned -eq 1 ]]; then
@@ -300,6 +307,29 @@ resolve_release() {
   die "no stable release of $REPO_URL is reachable from main and carries the managed installer; publish one first"
 }
 
+# --- dry run ----------------------------------------------------------------
+
+if [[ $dry_run -eq 1 ]]; then
+  # The guard precedes every fetch: a preview must not need or touch the
+  # network, and an unavailable repository must not surface as a Git error.
+  if [[ -n "$version" && ! "$version" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+    die "--version must be a stable vX.Y.Z tag (got $version)"
+  fi
+  log "DRY RUN — nothing was written, downloaded, resolved, or started."
+  log "  install root : $ROOT"
+  if [[ -n "$version" ]]; then
+    log "  release      : $version (would resolve to an exact commit; requires network access)"
+  else
+    log "  release      : would resolve the highest stable release (requires network access)"
+  fi
+  log "  would provision a private Node runtime under $ROOT/runtime, fetch the release"
+  log "  checkout under $ROOT/releases, install dependencies, build, install and start"
+  log "  the user units, run one collection, and write the launcher."
+  exit 0
+fi
+
+# --- release resolution -----------------------------------------------------
+
 resolve_release "$version"
 log "Release: $RELEASE_TAG ($RELEASE_SHA)"
 
@@ -313,16 +343,31 @@ if [[ -f "$ROOT/state.json" ]]; then
   fi
 fi
 
-# --- dry run ----------------------------------------------------------------
+# --- root ownership ---------------------------------------------------------
 
-if [[ $dry_run -eq 1 ]]; then
-  log "DRY RUN — nothing was written, downloaded, or started."
-  log "  install root : $ROOT"
-  log "  release      : $RELEASE_TAG ($RELEASE_SHA)"
-  log "  would provision a private Node runtime under $ROOT/runtime, fetch the release"
-  log "  checkout under $ROOT/releases, install dependencies, build, install and start"
-  log "  the user units, run one collection, and write the launcher."
-  exit 0
+root_unrelated_entry() {
+  # The first entry of $ROOT that classifyRoot would call occupied. The
+  # subshell keeps nullglob/dotglob local; an absent, empty, or recognisably
+  # managed/partial root prints nothing.
+  local entry base
+  shopt -s nullglob dotglob
+  for entry in "$ROOT"/*; do
+    base="${entry##*/}"
+    case "$base" in
+      lifecycle.lock|data-ownership.json|releases|runtime|cache|operation.json|current|state.json) continue ;;
+    esac
+    printf '%s\n' "$base"
+    return 0
+  done
+  return 0
+}
+
+if [[ -e "$ROOT" && ! -d "$ROOT" ]]; then
+  die "the install root $ROOT exists and is not a directory"
+fi
+unrelated_entry="$(root_unrelated_entry)"
+if [[ -n "$unrelated_entry" ]]; then
+  die "the install root $ROOT contains unrelated entries (${unrelated_entry}); choose another --install-dir or move them aside"
 fi
 
 # --- lifecycle lock ---------------------------------------------------------

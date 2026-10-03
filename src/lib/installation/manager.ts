@@ -13,7 +13,7 @@
 import { randomUUID } from 'node:crypto';
 import { mkdirSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { exists } from './atomic.ts';
 import { run } from './exec.ts';
 import {
@@ -365,7 +365,7 @@ async function recoverUpdate(
     const candidateRelease = releaseDir(ctx.root, journal.candidate.sha);
     const currentCommand = bridgeCommandFromSettings(state.bridge.settingsPath);
     if (currentCommand !== null && currentCommand.includes(candidateRelease)) {
-      refreshOwnedBridge(previousPath, previous.runtime, state.config);
+      refreshOwnedBridge(previousPath, previous.runtime, state.config, state.bridge.settingsPath);
       process.stdout.write('Restored the Claude status line to the previous release.\n');
     }
   }
@@ -1072,8 +1072,9 @@ async function cmdUpdate(root: string, repo: string, args: ManagerArgs): Promise
       bridge = null;
     } else {
       try {
-        refreshOwnedBridge(staged.path, staged.runtime, active.config);
-        bridge = bridgeRecordFromSettings(staged.path, staged.runtime) ?? bridge;
+        refreshOwnedBridge(staged.path, staged.runtime, active.config, bridge.settingsPath);
+        bridge =
+          bridgeRecordFromSettings(staged.path, staged.runtime, bridge.settingsPath) ?? bridge;
       } catch (err) {
         return failUpdateActivation(root, journal, active, snapshot, err);
       }
@@ -1208,8 +1209,8 @@ export function bridgeMatchesRecorded(bridge: {
 function bridgeRecordFromSettings(
   releasePath: string,
   runtime: RuntimeRecord,
+  settingsPath: string = claudeSettingsPath(),
 ): InstallationState['bridge'] {
-  const settingsPath = claudeSettingsPath();
   const command = bridgeCommandFromSettings(settingsPath);
   if (command === null || !command.includes(releasePath)) return null;
   return {
@@ -1221,17 +1222,24 @@ function bridgeRecordFromSettings(
   };
 }
 
+/**
+ * Refresh the bridge at the *recorded* settings path. The caller's
+ * `CLAUDE_CONFIG_DIR` must not move an owned bridge to another settings file:
+ * the release script reads `CLAUDE_CONFIG_DIR`, so point it at the directory
+ * `state.bridge.settingsPath` records.
+ */
 function refreshOwnedBridge(
   releasePath: string,
   runtime: RuntimeRecord,
   config: InstalledConfig,
+  settingsPath: string,
 ): void {
   const result = runReleaseScript(
     releasePath,
     runtime,
     'scripts/install-claude-statusline.ts',
     ['--apply'],
-    { extraEnv: serviceEnv(config, runtime) },
+    { extraEnv: { ...serviceEnv(config, runtime), CLAUDE_CONFIG_DIR: dirname(settingsPath) } },
   );
   if (result.status !== 0) {
     fail(
@@ -1476,7 +1484,12 @@ async function runUninstall(root: string, state: InstallationState): Promise<num
         state.runtime,
         'scripts/install-claude-statusline.ts',
         ['--uninstall', '--apply'],
-        { extraEnv: serviceEnv(state.config, state.runtime) },
+        {
+          extraEnv: {
+            ...serviceEnv(state.config, state.runtime),
+            CLAUDE_CONFIG_DIR: dirname(state.bridge.settingsPath),
+          },
+        },
       );
       writeCollectedOutput(result.stdout, result.stderr);
       if (result.status !== 0) {

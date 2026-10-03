@@ -103,7 +103,9 @@ if (name === 'installation-probe.ts') {
   if (cfg.markerDir) writeFileSync(cfg.markerDir + '/restored', source);
   console.log(JSON.stringify({ restored: config.databasePath, from: source, migrated: 0, previous: null }));
 } else if (name === 'install-claude-statusline.ts') {
-  const settingsPath = cfg.settingsPath;
+  const settingsPath = process.env.CLAUDE_CONFIG_DIR
+    ? process.env.CLAUDE_CONFIG_DIR.replace(/\\/$/, '') + '/settings.json'
+    : cfg.settingsPath;
   const apply = args.includes('--apply');
   const uninstall = args.includes('--uninstall');
   if (!apply) { process.stdout.write('DRY RUN\\n'); process.exit(0); }
@@ -1929,7 +1931,11 @@ describe('managed installation lifecycle', () => {
       snapshot: unitSnapshot(sandbox),
     });
 
-    const result = manager(sandbox, ['update', '--install-dir', sandbox.root]);
+    // The caller's CLAUDE_CONFIG_DIR must not redirect the restoration.
+    const elsewhere = join(sandbox.dir, 'claude-elsewhere');
+    const result = manager(sandbox, ['update', '--install-dir', sandbox.root], {
+      CLAUDE_CONFIG_DIR: elsewhere,
+    });
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toContain('Restored the Claude status line');
     const restored = (
@@ -1937,7 +1943,95 @@ describe('managed installation lifecycle', () => {
     ).statusLine.command;
     expect(restored).toContain(activeRelease);
     expect(restored).not.toContain(candidateRelease);
+    expect(existsSync(join(elsewhere, 'settings.json'))).toBe(false);
     expect(existsSync(join(sandbox.root, 'operation.json'))).toBe(false);
+    server.close();
+  });
+
+  it('leaves an unowned root untouched instead of provisioning into it', async () => {
+    const sandbox = freshSandbox();
+    mkdirSync(sandbox.root, { recursive: true });
+    chmodSync(sandbox.root, 0o755);
+    writeFile(join(sandbox.root, 'unrelated.txt'), 'leave me');
+    const result = await sandbox.runBootstrap(['--install-dir', sandbox.root]);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('unrelated entries');
+    expect(statSync(sandbox.root).mode & 0o777).toBe(0o755);
+    expect(existsSync(join(sandbox.root, 'releases'))).toBe(false);
+    expect(existsSync(join(sandbox.root, 'runtime'))).toBe(false);
+    expect(existsSync(join(sandbox.root, 'cache'))).toBe(false);
+    expect(existsSync(join(sandbox.root, 'lifecycle.lock'))).toBe(false);
+  });
+
+  it('prints a bootstrap dry run without fetching or creating the root', async () => {
+    const sandbox = freshSandbox();
+    const result = await sandbox.runBootstrap(['--dry-run', '--install-dir', sandbox.root], {
+      AUD_INSTALL_REPO_URL: join(sandbox.dir, 'absent-repo'),
+    });
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain('DRY RUN');
+    expect(result.stdout).toContain('requires network access');
+    expect(existsSync(sandbox.root)).toBe(false);
+  });
+
+  it('ignores commented directives when the bootstrap fallback decides unit ownership', async () => {
+    const sandbox = freshSandbox();
+    const unitDir = join(sandbox.home, '.config', 'systemd', 'user');
+    writeFile(
+      join(unitDir, WEB),
+      `[Service]\n# Previous WorkingDirectory=${sandbox.root}/releases/${'a'.repeat(40)}\nWorkingDirectory=/manual/checkout\n`,
+    );
+    const result = await sandbox.runBootstrap(['uninstall', '--install-dir', sandbox.root]);
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stderr).toContain('foreign unit');
+    expect(unitFile(sandbox, WEB)).not.toBeNull();
+  });
+
+  it('keeps the bridge at the recorded settings path regardless of the caller environment', async () => {
+    const sandbox = freshSandbox();
+    const server = await startDashboard(sandbox.port);
+    suiteServer.push(server);
+    const dirA = join(sandbox.dir, 'claude-a');
+    const dirB = join(sandbox.dir, 'claude-b');
+    expect(installV010(sandbox).status).toBe(0);
+    const apply = manager(
+      sandbox,
+      ['claude-statusline', '--install-dir', sandbox.root, '--apply'],
+      { CLAUDE_CONFIG_DIR: dirA },
+    );
+    expect(apply.status, apply.stderr).toBe(0);
+    const settingsA = join(dirA, 'settings.json');
+    expect((readState(sandbox)['bridge'] as Record<string, unknown>)['settingsPath']).toBe(
+      settingsA,
+    );
+
+    const nextSha = commitNextRelease(sandbox.repo, {
+      version: '0.1.1',
+      tag: 'v0.1.1',
+      manifestSha,
+    });
+    const update = manager(
+      sandbox,
+      ['update', '--install-dir', sandbox.root, '--version', 'v0.1.1'],
+      { CLAUDE_CONFIG_DIR: dirB },
+    );
+    expect(update.status, update.stderr).toBe(0);
+    const commandA = (
+      JSON.parse(readFileSync(settingsA, 'utf8')) as { statusLine: { command: string } }
+    ).statusLine.command;
+    expect(commandA).toContain(nextSha);
+    expect(existsSync(join(dirB, 'settings.json'))).toBe(false);
+    expect((readState(sandbox)['bridge'] as Record<string, unknown>)['settingsPath']).toBe(
+      settingsA,
+    );
+
+    const uninstall = manager(sandbox, ['uninstall', '--install-dir', sandbox.root], {
+      CLAUDE_CONFIG_DIR: dirB,
+    });
+    expect(uninstall.status, uninstall.stderr).toBe(0);
+    const after = JSON.parse(readFileSync(settingsA, 'utf8')) as { statusLine?: unknown };
+    expect(after.statusLine).toBeUndefined();
+    expect(existsSync(join(dirB, 'settings.json'))).toBe(false);
     server.close();
   });
 });

@@ -24,9 +24,9 @@
     `data-ownership.json`. Manual/maintainer units, launchers, roots, and databases are
     refused rather than adopted. Effective configuration is persisted and reapplied on
     update; linger changes require `--enable-linger`.
-  - **Evidence performed:** `pnpm run verify` passes (40 files, 728 tests), including 26
+  - **Evidence performed:** `pnpm run verify` passes (40 files, 732 tests), including 26
     unit tests for release selection, manifests, path boundaries, state/journal/ownership
-    validation, retention, and unit ownership, and 41 integration tests that drive the real manager against
+    validation, retention, and unit ownership, and 45 integration tests that drive the real manager against
     fixture releases with PATH-level systemctl/loginctl/ss stubs. The OKF validator and
     `git diff --check` pass. The rehearsal guard was run for real and refused the
     maintainer's environment (exit 2 without `AUD_INSTALL_SYSTEMD_REHEARSAL=1`, and exit 2
@@ -81,6 +81,14 @@
     provisioning, fetching, or chmod; and the bootstrap fallback honours the launcher's
     `AUD_INSTALL_ROOT` and removes this root's collector timer through its service's
     ownership.
+  - **Second review pass:** a re-review of `61b9e70` verified both first-pass P1s fixed and
+    reported four more P2s, now fixed in the working tree: the bootstrap validates the root
+    before creating directories or chmodding (an unowned root is rejected untouched), and
+    its `--dry-run` guard precedes release resolution, so a preview needs no network; the
+    fallback uninstall reads only active unit directives, so a commented
+    `WorkingDirectory=` no longer marks a manual unit owned; and bridge refresh, recovery,
+    and uninstall write at the recorded `state.bridge.settingsPath` rather than the
+    caller's `CLAUDE_CONFIG_DIR`. The full suite is 732 tests.
   - **Consequences:** mocks prove decision and ordering logic only; the real-systemd,
     timer, and recovery evidence now comes from the CI rehearsal above, while reboot
     persistence and installation through the published one-line command remain unclaimed.
