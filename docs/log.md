@@ -2,6 +2,20 @@
 
 ## 2026-10-03
 
+- **Proposed**: macOS support, split into two briefs after an assessment at `c7b6c05`. That
+  assessment found the application portable apart from the two couplings the README names.
+  [support-database-restore-on-macos](backlog/ready-for-agent/support-database-restore-on-macos.md)
+  goes straight to `ready-for-agent/`. It adds an `lsof` fallback, failing closed, when the restore
+  guard cannot read `/proc`, and puts `/opt/homebrew/bin` in the Husky fallback `PATH`. It changes
+  no canonical contract, and it can be proven on Linux; a run on real macOS stays unperformed.
+  [schedule-collection-with-launchd-on-macos](backlog/ready-for-human/schedule-collection-with-launchd-on-macos.md)
+  waits in `ready-for-human/`. Plan §3.3 and §5 fix the scheduler as user systemd, so adding
+  LaunchAgents is a scope decision for the user. The brief also needs the user's acceptance of
+  unsandboxed agents, a decision on who verifies on a real Mac, and a decision on a macOS CI job.
+  The briefs are tracked by [#28](https://github.com/baktiaditya/ai-usage-dashboard/issues/28)
+  (`ready-for-agent`) and [#29](https://github.com/baktiaditya/ai-usage-dashboard/issues/29)
+  (`ready-for-human`).
+
 - **Update**: the [README](../README.md) keeps the product overview and quick start while
   linking changing details to their owning sources: Node and pnpm requirements to
   `package.json` and `.nvmrc`, commands to package scripts and Setup, and dated provider
