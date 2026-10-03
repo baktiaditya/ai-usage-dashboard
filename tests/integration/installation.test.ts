@@ -1815,6 +1815,95 @@ describe('managed installation lifecycle', () => {
     expect(unitFile(sandbox, WEB)).not.toBeNull();
   });
 
+  it.each(['units', 'launcher', 'both'])(
+    'cleans owned %s remnants when the bootstrap root is absent without creating it',
+    async (kind) => {
+      const sandbox = freshSandbox();
+      const ownsUnits = kind !== 'launcher';
+      const ownsLauncher = kind !== 'units';
+      const otherRoot = join(sandbox.home, 'other-install');
+      const unitRoot = ownsUnits ? sandbox.root : otherRoot;
+      const unitDir = join(sandbox.home, '.config', 'systemd', 'user');
+      writeFile(
+        join(unitDir, COLLECTOR),
+        `[Service]\nWorkingDirectory=${unitRoot}/releases/missing\n`,
+      );
+      writeFile(join(unitDir, TIMER), '[Timer]\nUnit=ai-usage-dashboard-collector.service\n');
+      writeFile(join(unitDir, WEB), `[Service]\nWorkingDirectory=${unitRoot}/releases/missing\n`);
+      const launcher = join(sandbox.home, '.local', 'bin', 'ai-usage-dashboard');
+      const launcherRoot = ownsLauncher ? sandbox.root : otherRoot;
+      writeFile(
+        launcher,
+        `#!/usr/bin/env bash\n# managed by the ai-usage-dashboard installer\nAUD_INSTALL_ROOT='${launcherRoot}'\n`,
+        0o755,
+      );
+      const before = [COLLECTOR, TIMER, WEB].map((unit) => unitFile(sandbox, unit));
+      const launcherBefore = readFileSync(launcher, 'utf8');
+      for (const unit of [COLLECTOR, TIMER, WEB]) {
+        markUnitActive(sandbox, unit, true);
+        writeFile(join(sandbox.systemd, 'enabled', unit), 'enabled');
+      }
+      const database = join(sandbox.dataDir, 'usage.db');
+      writeFile(database, 'keep database');
+      expect(existsSync(sandbox.root)).toBe(false);
+      const preview = await sandbox.runBootstrap([
+        'uninstall',
+        '--install-dir',
+        sandbox.root,
+        '--dry-run',
+      ]);
+      expect(preview.status, preview.stderr).toBe(0);
+      expect([COLLECTOR, TIMER, WEB].map((unit) => unitFile(sandbox, unit))).toEqual(before);
+      expect(readFileSync(launcher, 'utf8')).toBe(launcherBefore);
+      expect(existsSync(sandbox.root)).toBe(false);
+
+      const result = await sandbox.runBootstrap(['uninstall', '--install-dir', sandbox.root]);
+      expect(result.status, result.stderr).toBe(0);
+      for (const [index, unit] of [COLLECTOR, TIMER, WEB].entries()) {
+        expect(unitFile(sandbox, unit)).toBe(ownsUnits ? null : before[index]);
+        expect(existsSync(join(sandbox.systemd, 'active', unit))).toBe(!ownsUnits);
+        expect(existsSync(join(sandbox.systemd, 'enabled', unit))).toBe(!ownsUnits);
+      }
+      expect(existsSync(launcher)).toBe(!ownsLauncher);
+      if (!ownsLauncher) expect(readFileSync(launcher, 'utf8')).toBe(launcherBefore);
+      expect(existsSync(sandbox.root)).toBe(false);
+      expect(readFileSync(database, 'utf8')).toBe('keep database');
+      const again = await sandbox.runBootstrap(['uninstall', '--install-dir', sandbox.root]);
+      expect(again.status, again.stderr).toBe(0);
+      expect(existsSync(sandbox.root)).toBe(false);
+    },
+  );
+
+  it('leaves a root that appears during external-remnant cleanup untouched', async () => {
+    const sandbox = freshSandbox();
+    const unitDir = join(sandbox.home, '.config', 'systemd', 'user');
+    writeFile(join(unitDir, WEB), `[Service]\nWorkingDirectory=${sandbox.root}/releases/missing\n`);
+    writeFile(
+      join(sandbox.bin, 'systemctl'),
+      `#!/usr/bin/env bash
+set -euo pipefail
+if [[ "$*" == "--user stop ${WEB}" ]]; then
+  mkdir -p '${sandbox.root}/releases' '${sandbox.root}/runtime' '${sandbox.root}/cache'
+  for tree in releases runtime cache; do
+    printf 'new operation' > '${sandbox.root}/'"$tree"'/MARKER'
+  done
+  printf 'new journal' > '${sandbox.root}/operation.json'
+fi
+exit 0
+`,
+      0o755,
+    );
+    expect(existsSync(sandbox.root)).toBe(false);
+    const result = await sandbox.runBootstrap(['uninstall', '--install-dir', sandbox.root]);
+    expect(result.status, result.stderr).toBe(0);
+    expect(unitFile(sandbox, WEB)).toBeNull();
+    for (const tree of ['releases', 'runtime', 'cache']) {
+      expect(readFileSync(join(sandbox.root, tree, 'MARKER'), 'utf8')).toBe('new operation');
+    }
+    expect(readFileSync(join(sandbox.root, 'operation.json'), 'utf8')).toBe('new journal');
+    expect(existsSync(join(sandbox.root, 'lifecycle.lock'))).toBe(false);
+  });
+
   it('removes this root collector timer in the bootstrap fallback', async () => {
     const sandbox = freshSandbox();
     const release = join(sandbox.root, 'releases', 'c'.repeat(40));

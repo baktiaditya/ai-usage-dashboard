@@ -2,6 +2,24 @@
 
 ## 2026-10-04
 
+- **Update**: corrected the absent-root cleanup regression reported in PR
+  [#38](https://github.com/baktiaditya/ai-usage-dashboard/pull/38#issuecomment-5972228752).
+  Bootstrap uninstall checks owned services and launcher before requiring the root to
+  exist. If owned external remnants survive a removed root, it stops/disables/removes only
+  those units and removes the owned launcher, without creating a root or lifecycle lock.
+  This cleanup mode cannot delete release/runtime/cache trees or a journal, including if
+  a root appears during the service commands. Existing roots still take the lifecycle lock
+  before manager selection or cleanup. Regression coverage exercises unit-only,
+  launcher-only, and combined remnants, preserves foreign surfaces and application data,
+  verifies dry runs and repeat invocation, and checks that a newly appearing root survives.
+  [Setup](operations/setup.md#lifecycle-semantics) distinguishes absent roots with and
+  without owned remnants.
+  Validation: `pnpm run verify` passes (40 files, 753 tests), including 92 installer tests;
+  Bash syntax, OKF bundle validation, and `git diff --check` pass. An initial full-gate
+  attempt failed to start three existing fixture health servers. The installer suite alone
+  and subsequent full runs passed; the cause remains unconfirmed and temporary diagnostics
+  were removed before the final gate.
+
 - **Update**: addressed the optional foreign/absent-root finding in PR
   [#38](https://github.com/baktiaditya/ai-usage-dashboard/pull/38#issuecomment-5972003666).
   Bootstrap uninstall now checks for managed evidence without writing: an absent root or

@@ -171,19 +171,19 @@ root_has_managed_evidence() {
   # This read-only gate is for uninstall only. Never create a root or a lock in
   # an unrelated directory. Once locked, the manager or fallback rechecks what
   # it may remove; these markers alone do not authorize deleting any tree.
-  [[ -d "$ROOT" ]] || return 1
-  local marker
-  for marker in lifecycle.lock data-ownership.json operation.json state.json; do
-    [[ -f "$ROOT/$marker" ]] && return 0
-  done
-  # A partial uninstall may have lost all metadata but still have owned units
-  # or a launcher. Use the same ownership predicates as fallback cleanup.
+  # A partial uninstall may have lost the entire root but still have owned
+  # units or a launcher. Check these before requiring the root to exist.
   local unit_dir="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
   local service
   for service in ai-usage-dashboard-collector.service ai-usage-dashboard-web.service; do
     service_is_owned "$unit_dir/$service" && return 0
   done
   launcher_is_owned && return 0
+  [[ -d "$ROOT" ]] || return 1
+  local marker
+  for marker in lifecycle.lock data-ownership.json operation.json state.json; do
+    [[ -f "$ROOT/$marker" ]] && return 0
+  done
   return 1
 }
 
@@ -192,6 +192,9 @@ remove_owned_remnants() {
   # demonstrably this managed root's — owned unit files, the launcher, and the
   # release/runtime/cache trees. Application data, backups, credentials, and
   # the ownership record itself are never touched.
+  # An absent-root cleanup passes 0: remove external surfaces only, even if a
+  # new root appears during the service commands. Tree cleanup requires a lock.
+  local remove_root="${1:-1}"
   local unit_dir="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
   local units=(
     ai-usage-dashboard-collector.service
@@ -251,7 +254,7 @@ remove_owned_remnants() {
     && grep -qF "\"root\": \"$ROOT\"" "$ROOT/operation.json"; then
     owned_root=1
   fi
-  if [[ $owned_root -eq 1 ]]; then
+  if [[ $owned_root -eq 1 && $remove_root -eq 1 ]]; then
     rm -rf "$ROOT/releases" "$ROOT/runtime" "$ROOT/cache"
     rm -f "$ROOT/operation.json"
     removed=1
@@ -267,6 +270,11 @@ if [[ "$command_name" == "status" || "$command_name" == "uninstall" ]]; then
     if [[ $dry_run -eq 0 ]]; then
       if ! root_has_managed_evidence; then
         log "No managed installation at $ROOT; nothing to remove."
+        exit 0
+      fi
+      if [[ ! -d "$ROOT" ]]; then
+        remove_owned_remnants 0
+        log "Any owned unit and launcher remnants for $ROOT were removed; application data was left untouched."
         exit 0
       fi
       acquire_lifecycle_lock

@@ -909,9 +909,11 @@ install failure.
   sentinel, and `data-ownership.json`. Repeating it is a successful no-op, through the
   bootstrap once the launcher is gone. Uninstall refuses when a data directory is nested in
   the install root or safe ownership cannot be proven, and retains referenced resources.
-  An absent root or a directory with no managed metadata, retained lock, or owned
+  An absent root with no owned unit/launcher, or a directory with no managed metadata, retained lock, or owned
   unit/launcher is a successful no-op: uninstall creates no directory or lock there.
-  For a recognized root, the bootstrap takes the lifecycle lock before selecting a manager or removing remnants,
+  When the root is absent but owned units or a launcher remain, the bootstrap stops,
+  disables, and removes only those external remnants without recreating the root or lock.
+  For a recognized existing root, the bootstrap takes the lifecycle lock before selecting a manager or removing remnants,
   including during an incomplete first install. If another operation holds it, uninstall
   refuses before cleanup; wait for that operation to finish and retry. Bootstrap fallback
   status and dry runs remain available without taking the lock.
