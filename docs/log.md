@@ -2,6 +2,21 @@
 
 ## 2026-10-04
 
+- **Update**: addressed the optional foreign/absent-root finding in PR
+  [#38](https://github.com/baktiaditya/ai-usage-dashboard/pull/38#issuecomment-5972003666).
+  Bootstrap uninstall now checks for managed evidence without writing: an absent root or
+  an unrecognized directory succeeds without creating a directory or `lifecycle.lock`.
+  Existing lock/metadata files or owned services/launcher still select the locked lifecycle
+  path, whose manager or fallback rechecks removal ownership under the lock. The evidence
+  check and cleanup share service/launcher predicates, preserving recovery for unit-only
+  and launcher-only remnants. Regression tests cover absent, empty, unrelated-file, and
+  unproven-tree roots, plus launcher-only cleanup; the held-lock refusal and retry remain
+  covered. [Setup](operations/setup.md#lifecycle-semantics) records the no-op behavior.
+  Validation: `pnpm run verify` passes (40 files, 749 tests), including 88 installer tests;
+  Bash syntax, OKF bundle validation, and `git diff --check` pass. One full-gate attempt
+  failed to start an existing fixture health server; that test passed in isolation and the
+  subsequent full gate passed. The cause of that startup failure is unconfirmed.
+
 - **Update**: addressed the remaining lifecycle-lock finding in PR
   [#38](https://github.com/baktiaditya/ai-usage-dashboard/pull/38#issuecomment-5971772481).
   The bootstrap now shares its nonblocking install lock with mutating uninstall, taking it

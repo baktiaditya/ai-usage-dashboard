@@ -1807,7 +1807,7 @@ describe('managed installation lifecycle', () => {
     const missingRoot = join(sandbox.home, 'missing-install');
     const result = await sandbox.runBootstrap(['uninstall', '--install-dir', missingRoot]);
     expect(result.status, result.stderr).toBe(0);
-    expect(result.stderr).toContain('foreign unit');
+    expect(existsSync(missingRoot)).toBe(false);
     expect(existsSync(launcher)).toBe(true);
     expect(readFileSync(launcher, 'utf8')).toContain(`AUD_INSTALL_ROOT='${otherRoot}'`);
     expect(unitFile(sandbox, COLLECTOR)).not.toBeNull();
@@ -1828,6 +1828,28 @@ describe('managed installation lifecycle', () => {
     expect(unitFile(sandbox, COLLECTOR)).toBeNull();
     expect(unitFile(sandbox, TIMER)).toBeNull();
     expect(unitFile(sandbox, WEB)).toBeNull();
+  });
+
+  it('removes launcher-only remnants in the bootstrap fallback', async () => {
+    const sandbox = freshSandbox();
+    for (const tree of ['releases', 'runtime', 'cache']) {
+      writeFile(join(sandbox.root, tree, 'MARKER'), 'owned');
+    }
+    const launcher = join(sandbox.home, '.local', 'bin', 'ai-usage-dashboard');
+    writeFile(
+      launcher,
+      `#!/usr/bin/env bash\n# managed by the ai-usage-dashboard installer\nAUD_INSTALL_ROOT='${sandbox.root}'\n`,
+      0o755,
+    );
+    // No metadata or units exist; the launcher's exact root is the only proof.
+    const result = await sandbox.runBootstrap(['uninstall', '--install-dir', sandbox.root]);
+    expect(result.status, result.stderr).toBe(0);
+    expect(existsSync(launcher)).toBe(false);
+    for (const tree of ['releases', 'runtime', 'cache']) {
+      expect(existsSync(join(sandbox.root, tree))).toBe(false);
+    }
+    expect(existsSync(join(sandbox.root, 'lifecycle.lock'))).toBe(true);
+    expect(existsSync(sandbox.dataDir)).toBe(true);
   });
 
   it('refuses bootstrap fallback uninstall while another operation holds the lifecycle lock', async () => {
@@ -1916,11 +1938,27 @@ describe('managed installation lifecycle', () => {
   it.each([
     { args: ['status'], status: 1 },
     { args: ['uninstall', '--dry-run'], status: 0 },
+    { args: ['uninstall'], status: 0 },
   ])('keeps an absent bootstrap root absent for $args', async ({ args, status }) => {
     const sandbox = freshSandbox();
     const result = await sandbox.runBootstrap([...args, '--install-dir', sandbox.root]);
     expect(result.status, result.stderr).toBe(status);
     expect(existsSync(sandbox.root)).toBe(false);
+  });
+
+  it.each(['empty', 'notes'])('leaves an unowned %s root unchanged on uninstall', async (kind) => {
+    const sandbox = freshSandbox();
+    mkdirSync(sandbox.root, { recursive: true });
+    chmodSync(sandbox.root, 0o755);
+    if (kind === 'notes') writeFile(join(sandbox.root, 'notes.txt'), 'leave me');
+    const entries = readdirSync(sandbox.root);
+    const result = await sandbox.runBootstrap(['uninstall', '--install-dir', sandbox.root]);
+    expect(result.status, result.stderr).toBe(0);
+    expect(readdirSync(sandbox.root)).toEqual(entries);
+    expect(statSync(sandbox.root).mode & 0o777).toBe(0o755);
+    if (kind === 'notes') {
+      expect(readFileSync(join(sandbox.root, 'notes.txt'), 'utf8')).toBe('leave me');
+    }
   });
 
   it('removes proven execution trees in the bootstrap fallback', async () => {
@@ -1971,6 +2009,7 @@ describe('managed installation lifecycle', () => {
     const result = await sandbox.runBootstrap(['uninstall', '--install-dir', foreignRoot]);
     expect(result.status, result.stderr).toBe(0);
     expect(readFileSync(join(foreignRelease, 'MARKER'), 'utf8')).toBe('keep');
+    expect(existsSync(join(foreignRoot, 'lifecycle.lock'))).toBe(false);
   });
 
   it('install --dry-run neither creates the root nor recovers', () => {
@@ -2183,6 +2222,9 @@ describe('managed installation lifecycle', () => {
 
   it('ignores commented directives when the bootstrap fallback decides unit ownership', async () => {
     const sandbox = freshSandbox();
+    // A retained lock identifies this root as a managed remnant, so fallback
+    // still inspects unit ownership even though the active directive is foreign.
+    writeFile(join(sandbox.root, 'lifecycle.lock'), '');
     const unitDir = join(sandbox.home, '.config', 'systemd', 'user');
     writeFile(
       join(unitDir, WEB),

@@ -156,6 +156,37 @@ active_unit_value() {
   sed -n "s/^[[:space:]]*$2=\(.*\)\$/\1/p" "$1" | head -n1
 }
 
+service_is_owned() {
+  [[ -f "$1" ]] && [[ "$(active_unit_value "$1" WorkingDirectory)" == "$ROOT/releases/"* ]]
+}
+
+launcher_is_owned() {
+  local launcher="$HOME/.local/bin/ai-usage-dashboard"
+  [[ -f "$launcher" ]] \
+    && grep -qF "managed by the ai-usage-dashboard installer" "$launcher" \
+    && grep -qF "AUD_INSTALL_ROOT='$ROOT'" "$launcher"
+}
+
+root_has_managed_evidence() {
+  # This read-only gate is for uninstall only. Never create a root or a lock in
+  # an unrelated directory. Once locked, the manager or fallback rechecks what
+  # it may remove; these markers alone do not authorize deleting any tree.
+  [[ -d "$ROOT" ]] || return 1
+  local marker
+  for marker in lifecycle.lock data-ownership.json operation.json state.json; do
+    [[ -f "$ROOT/$marker" ]] && return 0
+  done
+  # A partial uninstall may have lost all metadata but still have owned units
+  # or a launcher. Use the same ownership predicates as fallback cleanup.
+  local unit_dir="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
+  local service
+  for service in ai-usage-dashboard-collector.service ai-usage-dashboard-web.service; do
+    service_is_owned "$unit_dir/$service" && return 0
+  done
+  launcher_is_owned && return 0
+  return 1
+}
+
 remove_owned_remnants() {
   # Used only when the runtime is gone: remove execution surfaces that are
   # demonstrably this managed root's — owned unit files, the launcher, and the
@@ -182,11 +213,10 @@ remove_owned_remnants() {
     local owned=0
     if [[ "$unit" == *.timer ]]; then
       if [[ "$(active_unit_value "$file" Unit)" == "ai-usage-dashboard-collector.service" ]] \
-        && [[ -f "$collector_service" ]] \
-        && [[ "$(active_unit_value "$collector_service" WorkingDirectory)" == "$ROOT/releases/"* ]]; then
+        && service_is_owned "$collector_service"; then
         owned=1
       fi
-    elif [[ "$(active_unit_value "$file" WorkingDirectory)" == "$ROOT/releases/"* ]]; then
+    elif service_is_owned "$file"; then
       owned=1
     fi
     if [[ $owned -eq 1 ]]; then
@@ -205,9 +235,7 @@ remove_owned_remnants() {
   done
   [[ $removed -eq 1 ]] && systemctl --user daemon-reload >/dev/null 2>&1 || true
   local launcher="$HOME/.local/bin/ai-usage-dashboard"
-  if [[ -f "$launcher" ]] \
-    && grep -qF "managed by the ai-usage-dashboard installer" "$launcher" \
-    && grep -qF "AUD_INSTALL_ROOT='$ROOT'" "$launcher"; then
+  if launcher_is_owned; then
     rm -f "$launcher"
     removed=1
     owned_root=1
@@ -236,7 +264,13 @@ if [[ "$command_name" == "status" || "$command_name" == "uninstall" ]]; then
   if [[ "$command_name" == "uninstall" ]]; then
     # Serialize manager selection, state validation, and fallback cleanup with
     # install/update. An in-progress first install may have no state/current yet.
-    if [[ $dry_run -eq 0 ]]; then acquire_lifecycle_lock; fi
+    if [[ $dry_run -eq 0 ]]; then
+      if ! root_has_managed_evidence; then
+        log "No managed installation at $ROOT; nothing to remove."
+        exit 0
+      fi
+      acquire_lifecycle_lock
+    fi
     extra=()
     if [[ $dry_run -eq 1 ]]; then extra=(--dry-run); fi
     if run_manager_if_available uninstall --install-dir "$ROOT" "${extra[@]}"; then
