@@ -228,13 +228,13 @@ Decided and implemented 2026-09-15 (see the [log](../log.md)); delivered from th
 
 ### 4.1.1 Managed Linux installation
 
-Decided 2026-10-03; implemented in code and specified in
-[simplify-linux-installation](../backlog/ready-for-agent/simplify-linux-installation.md).
-The implementation, its tests, and its disposable-systemd rehearsal live on the
-`feat/managed-linux-installer` branch; no release is tagged, published, or deployed yet, and
-the [log](../log.md) records the exact evidence and the still-unperformed real-systemd and
-browser checks. Until a release exists, the public one-line command is a placeholder and the
-bootstrap is run from a checkout.
+Decided 2026-10-03; implemented in code and specified in the archived
+[simplify-linux-installation](../backlog/archive/simplify-linux-installation.md) brief.
+The implementation and its tests are delivered on `feat/managed-linux-installer` (PR
+[#38](https://github.com/baktiaditya/ai-usage-dashboard/pull/38)); the
+[log](../log.md) records the evidence, including the disposable-systemd rehearsal that now
+passes in CI. No release is tagged, published, or deployed yet, so the public one-line
+command remains a placeholder and the bootstrap is run from a checkout.
 
 - Add a one-command, per-user source installer and `ai-usage-dashboard` lifecycle
   launcher for update, status, uninstall, and explicit Claude bridge setup.

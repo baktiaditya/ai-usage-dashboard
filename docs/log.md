@@ -5,7 +5,7 @@
 - **Update**: the managed Linux installer is implemented in the working tree on branch
   `feat/managed-linux-installer` for
   [#37](https://github.com/baktiaditya/ai-usage-dashboard/issues/37), following the approved
-  [simplify-linux-installation](backlog/ready-for-agent/simplify-linux-installation.md)
+  [simplify-linux-installation](backlog/archive/simplify-linux-installation.md)
   brief. Nothing is committed, tagged, published, or deployed by this change, and the public
   one-line command in the [README](../README.md) stays a labelled placeholder until a tagged
   release contains the installer.
@@ -24,9 +24,9 @@
     `data-ownership.json`. Manual/maintainer units, launchers, roots, and databases are
     refused rather than adopted. Effective configuration is persisted and reapplied on
     update; linger changes require `--enable-linger`.
-  - **Evidence performed:** `pnpm run verify` passes (40 files, 715 tests), including 25
+  - **Evidence performed:** `pnpm run verify` passes (40 files, 716 tests), including 25
     unit tests for release selection, manifests, state/journal/ownership validation,
-    retention, and unit ownership, and 29 integration tests that drive the real manager against
+    retention, and unit ownership, and 30 integration tests that drive the real manager against
     fixture releases with PATH-level systemctl/loginctl/ss stubs. The OKF validator and
     `git diff --check` pass. The rehearsal guard was run for real and refused the
     maintainer's environment (exit 2 without `AUD_INSTALL_SYSTEMD_REHEARSAL=1`, and exit 2
@@ -45,17 +45,26 @@
     were found and fixed on the way: a candidate web unit that fails to start now enters
     update recovery instead of escaping it, and timer ownership is derived from the owned
     collector service instead of a `WorkingDirectory` the timer template does not carry.
-  - **Not performed:** real user systemd execution, timer scheduling, linger, and boot
-    behavior, and therefore the CI-executed run, remain unproven. This machine has no
-    disposable account or VM/container with its own user manager: `sudo` requires a
-    password, `useradd`/`machinectl` are unavailable without it, and no container runtime
-    is installed. The executable proof path is `scripts/test-installation-systemd.sh`,
-    which refuses non-disposable environments and is wired to a dedicated linger account in
-    `.github/workflows/ci.yml`; it needs a disposable account, VM, or CI run to complete
-    the required systemd, timer, SIGKILL-at-boundary, and reinstall evidence. The
-    browser-visible claim that is therefore not yet verified end to end is the dashboard
-    served by a systemd-managed unit, as distinct from the HTTP 200 and browser evidence
-    above.
+  - **Disposable-systemd rehearsal:** after the CI job was taught to give the throwaway
+    account a real login session, XDG bases inside its own home, and unprivileged user
+    namespaces, the full rehearsal passes in CI (49 checks, 0 failures): real units and HTTP
+    health, a scheduled timer run, a failed candidate that crossed the database boundary and
+    recovered through the previous release's restore executable, a SIGKILL at the database
+    boundary recovered on the next update, Claude composition, uninstall, and reinstall with
+    history preserved. The rehearsal caught two product defects that were fixed: the
+    manager's runtime downloader omitted the `vX.Y.Z` dist path, and a crash-looping
+    candidate left systemd's start rate limit set, so activation now clears failed unit
+    state first. PR [#38](https://github.com/baktiaditya/ai-usage-dashboard/issues/38)'s
+    checks are the live record.
+  - **Not performed:** reboot persistence (no reboot is exercised, so no boot claim is
+    made), and installation through the published one-line command, which waits on the
+    first tagged release. Browser evidence was captured locally with `agent-browser` against
+    a disposable managed dashboard built by the installer with the service manager
+    substituted, not against the CI systemd dashboard; the CI rehearsal proves that
+    dashboard's units, HTTP health, and timer instead.
+  - **Archived:** with the CI rehearsal passing, the brief moves to
+    [archive](backlog/archive/simplify-linux-installation.md) and the plan's section 4.1.1
+    records the delivered state. Release publication remains the user's subsequent call.
   - **Consequences:** the brief stays in `ready-for-agent/`; its real-systemd, browser, and
     CI-executed criteria are the outstanding gates. Mocks prove decision and ordering logic
     only, and the plan's §4.1.1 status was updated to implemented-in-code/release-pending
@@ -70,7 +79,7 @@
   bootstrap targets Linux x86_64/glibc; existing manual installations remain supported.
   Automatic adoption of maintainer/manual installations and release publication are
   outside implementation authorization.
-- **Creation**: [simplify-linux-installation](backlog/ready-for-agent/simplify-linux-installation.md)
+- **Creation**: [simplify-linux-installation](backlog/archive/simplify-linux-installation.md)
   is ready for agent with resolved design choices, command/path/ownership contracts,
   implementation sequence, crash recovery, verified existing owners, acceptance
   criteria, and disposable-systemd/browser proof requirements. Assessment baseline:
