@@ -95,9 +95,15 @@ check() { # check <description> <command...>
 
 fail_dump() {
   printf '\nREHEARSAL FAILURE during: %s\n' "$CURRENT_STEP" >&2
-  systemctl --user status ai-usage-dashboard-web.service --no-pager >&2 2>/dev/null || true
-  journalctl --user -u ai-usage-dashboard-web.service -n 40 --no-pager >&2 2>/dev/null || true
-  journalctl --user -u ai-usage-dashboard-collector.service -n 40 --no-pager >&2 2>/dev/null || true
+  systemctl --user list-units 'ai-usage-dashboard-*' --all --no-pager >&2 2>/dev/null || true
+  systemctl --user status ai-usage-dashboard-web.service ai-usage-dashboard-collector.timer \
+    --no-pager >&2 2>/dev/null || true
+  journalctl --user -u ai-usage-dashboard-web.service -n 60 --no-pager >&2 2>/dev/null || true
+  journalctl --user -u ai-usage-dashboard-collector.service -n 60 --no-pager >&2 2>/dev/null || true
+  for unit in ai-usage-dashboard-web.service ai-usage-dashboard-collector.service; do
+    file="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/$unit"
+    [[ -f "$file" ]] && { printf -- '--- %s\n' "$file" >&2; cat "$file" >&2; }
+  done
   for file in "$DEFAULT_ROOT/state.json" "$DEFAULT_ROOT/operation.json"; do
     [[ -f "$file" ]] && { printf -- '--- %s\n' "$file" >&2; cat "$file" >&2; }
   done
@@ -269,7 +275,10 @@ cat >"$SETTINGS" <<'JSON'
 JSON
 
 step "Cold install of v0.1.0 (real Node download, pnpm, native module, Next build, units, health, collection)"
-bash "$SOURCE/scripts/install.sh" --version v0.1.0 --install-dir "$DEFAULT_ROOT" --enable-linger
+if ! bash "$SOURCE/scripts/install.sh" --version v0.1.0 --install-dir "$DEFAULT_ROOT" --enable-linger; then
+  fail_dump
+  exit 1
+fi
 check "installer exited successfully" test -f "$DEFAULT_ROOT/state.json"
 check "active release recorded" test "$(state_value tag)" = "v0.1.0"
 check "launcher installed" test -x "$LAUNCHER"
