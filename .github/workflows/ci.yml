@@ -73,9 +73,17 @@ jobs:
           set -euo pipefail
           export HOME=/home/audrehearsal
           export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+          # The runner image exports XDG paths pointing at the runner account;
+          # keep every XDG base inside the disposable home so pnpm and Corepack
+          # never read a config they cannot access.
+          export XDG_CONFIG_HOME="$HOME/.config"
+          export XDG_CACHE_HOME="$HOME/.cache"
+          export XDG_DATA_HOME="$HOME/.local/share"
+          mkdir -p "$XDG_CONFIG_HOME" "$XDG_CACHE_HOME" "$XDG_DATA_HOME"
           export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
           export AUD_INSTALL_SYSTEMD_REHEARSAL=1
           export AUD_INSTALL_REHEARSAL_SOURCE=/tmp/aud-rehearsal-source
+          env | grep -E '^(HOME|XDG_|PNPM|NPM_|COREPACK)' | sort
           exec bash /tmp/aud-rehearsal-source/scripts/test-installation-systemd.sh
           SCRIPT
           chmod 0755 /tmp/aud-rehearsal-run.sh
