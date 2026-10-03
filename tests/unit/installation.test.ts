@@ -205,6 +205,7 @@ describe('state, journal, and ownership validation', () => {
       previous: { tag: state.tag, sha: state.sha, runtime },
       backupPath: null,
       snapshot: null,
+      databasePath: null,
       dbOwnershipRecorded: false,
       failed: null,
       notes: [],
@@ -212,6 +213,11 @@ describe('state, journal, and ownership validation', () => {
       updatedAt: state.updatedAt,
     };
     expect(validateJournal(journal)).toBeTruthy();
+    expect(validateJournal(journal).databasePath).toBeNull();
+    const legacy: Record<string, unknown> = { ...journal };
+    delete legacy['databasePath'];
+    expect(validateJournal(legacy).databasePath).toBeNull();
+    expect(() => validateJournal({ ...journal, databasePath: 'relative/db' })).toThrow(/absolute/);
     expect(() => validateJournal({ ...journal, phase: 'nonsense' })).toThrow(/not a phase/);
     expect(() => validateJournal({ ...journal, kind: 'install' })).toThrow(/not a phase/);
   });
@@ -254,6 +260,7 @@ describe('state, journal, and ownership validation', () => {
       previous: null,
       backupPath: null,
       snapshot: null,
+      databasePath: null,
       dbOwnershipRecorded: false,
       failed: null,
       notes: ['note'],

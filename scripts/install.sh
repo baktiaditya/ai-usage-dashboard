@@ -146,9 +146,10 @@ active_unit_value() {
 }
 
 remove_owned_remnants() {
-  # Used only when the runtime is gone: remove execution surfaces whose unit
-  # files were demonstrably written by this managed root. Application data,
-  # backups, credentials, and the ownership record are never touched.
+  # Used only when the runtime is gone: remove execution surfaces that are
+  # demonstrably this managed root's — owned unit files, the launcher, and the
+  # release/runtime/cache trees. Application data, backups, credentials, and
+  # the ownership record itself are never touched.
   local unit_dir="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
   local units=(
     ai-usage-dashboard-collector.service
@@ -157,6 +158,7 @@ remove_owned_remnants() {
   )
   local collector_service="$unit_dir/ai-usage-dashboard-collector.service"
   local removed=0
+  local owned_root=0
   local -a owned_units=()
   # Decide ownership for every unit before removing any: the timer is owned
   # through the collector service file, which the removal below would delete.
@@ -178,6 +180,7 @@ remove_owned_remnants() {
     fi
     if [[ $owned -eq 1 ]]; then
       owned_units+=("$unit")
+      owned_root=1
     else
       printf 'warning: leaving foreign unit %s untouched\n' "$file" >&2
     fi
@@ -196,7 +199,25 @@ remove_owned_remnants() {
     && grep -qF "AUD_INSTALL_ROOT='$ROOT'" "$launcher"; then
     rm -f "$launcher"
     removed=1
+    owned_root=1
   fi
+  # The release, runtime, and cache trees are execution surfaces of this root.
+  # Remove them only when ownership is demonstrable: an owned unit or launcher
+  # above, the ownership record, or this root's own operation journal. Without
+  # proof they stay, so a foreign directory is never emptied.
+  if [[ $owned_root -eq 0 && -f "$ROOT/data-ownership.json" ]]; then
+    owned_root=1
+  fi
+  if [[ $owned_root -eq 0 && -f "$ROOT/operation.json" ]] \
+    && grep -qF "\"root\": \"$ROOT\"" "$ROOT/operation.json"; then
+    owned_root=1
+  fi
+  if [[ $owned_root -eq 1 ]]; then
+    rm -rf "$ROOT/releases" "$ROOT/runtime" "$ROOT/cache"
+    rm -f "$ROOT/operation.json"
+    removed=1
+  fi
+  [[ $removed -eq 1 ]] && systemctl --user daemon-reload >/dev/null 2>&1 || true
   return 0
 }
 

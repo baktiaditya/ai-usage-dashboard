@@ -22,6 +22,7 @@ import {
   defaultInstallRoot,
   isPhysicallyInside,
   launcherPathFor,
+  physicalPath,
   releaseDir,
   releasesDir,
   runtimeDir,
@@ -157,6 +158,7 @@ interface JournalPatch {
   previous?: ManagedRelease | null;
   backupPath?: string | null;
   snapshot?: OperationJournal['snapshot'];
+  databasePath?: string | null;
   dbOwnershipRecorded?: boolean;
   failed?: string | null;
   notes?: readonly string[];
@@ -180,6 +182,7 @@ function newJournal(
     previous,
     backupPath: null,
     snapshot: null,
+    databasePath: null,
     dbOwnershipRecorded: false,
     failed: null,
     notes: [],
@@ -647,13 +650,17 @@ async function cmdInstall(
 
   // A resumed first install owns the database its own journal was creating even
   // though the ownership record was never written. Adopt that remnant and
-  // finish recording it below instead of refusing it as unrecorded.
+  // finish recording it below instead of refusing it as unrecorded. The journal
+  // must name the same physical database: a retry that resolves another data
+  // directory never adopts a database this operation did not create.
   const adopted =
     databaseExists &&
     !databaseRecorded &&
     resumingInstall &&
     pending !== null &&
-    pending.dbOwnershipRecorded;
+    pending.dbOwnershipRecorded &&
+    pending.databasePath !== null &&
+    physicalPath(pending.databasePath) === physicalPath(databasePath);
 
   let journal =
     resumingInstall && pending !== null
@@ -682,30 +689,36 @@ async function cmdInstall(
         `Choose another data directory (AUD_DATA_DIR), or move the existing database aside. Managed installs never adopt a database they did not create.${state === null ? '' : ` The retained ownership record is ${join(root, 'data-ownership.json')}.`}`,
       );
     }
+    const inspection = inspectDatabase(staged.path, staged.runtime, databasePath);
+    if (inspection.integrity !== null && inspection.integrity !== 'ok') {
+      fail(`the database at ${databasePath} failed its integrity check`);
+    }
+    if (inspection.appliedMax !== null && inspection.appliedMax > inspection.latest) {
+      fail(
+        `the database at ${databasePath} has schema version ${inspection.appliedMax}, newer than the ${inspection.latest} this release knows`,
+        'Install the release that wrote it, or move the database aside to start fresh.',
+      );
+    }
+    const holders = databaseHolders(staged.path, staged.runtime, databasePath);
+    if (holders.length > 0) {
+      fail(
+        `the database at ${databasePath} is open in process(es) ${holders.join(', ')}`,
+        'Stop the dashboard, the collector, and any pnpm run start before installing.',
+      );
+    }
+    // An adopted remnant is this operation's own database, so it needs no
+    // backup; every other existing database is backed up before migration.
     if (!adopted) {
-      const inspection = inspectDatabase(staged.path, staged.runtime, databasePath);
-      if (inspection.integrity !== null && inspection.integrity !== 'ok') {
-        fail(`the database at ${databasePath} failed its integrity check`);
-      }
-      if (inspection.appliedMax !== null && inspection.appliedMax > inspection.latest) {
-        fail(
-          `the database at ${databasePath} has schema version ${inspection.appliedMax}, newer than the ${inspection.latest} this release knows`,
-          'Install the release that wrote it, or move the database aside to start fresh.',
-        );
-      }
-      const holders = databaseHolders(staged.path, staged.runtime, databasePath);
-      if (holders.length > 0) {
-        fail(
-          `the database at ${databasePath} is open in process(es) ${holders.join(', ')}`,
-          'Stop the dashboard, the collector, and any pnpm run start before installing.',
-        );
-      }
       const destination = backupDestination(config.dataDir);
       process.stdout.write(`Backing up the existing database to ${destination}\n`);
       makeBackup(staged.path, staged.runtime, databasePath, destination);
     }
   } else {
-    journal = persistJournal(journal, { phase: 'db-creating', dbOwnershipRecorded: true });
+    journal = persistJournal(journal, {
+      phase: 'db-creating',
+      databasePath: physicalPath(databasePath),
+      dbOwnershipRecorded: true,
+    });
   }
 
   const foreign = foreignManagedUnits(root);

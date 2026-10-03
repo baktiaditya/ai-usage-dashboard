@@ -82,7 +82,7 @@ if (name === 'installation-probe.ts') {
   if (args[0] === 'config') console.log(JSON.stringify(config));
   else if (args[0] === 'db-inspect') {
     const exists = existsSync(config.databasePath);
-    console.log(JSON.stringify({ exists, integrity: 'ok', appliedMax: cfg.appliedMax ?? null, latest: cfg.latest ?? 5 }));
+    console.log(JSON.stringify({ exists, integrity: cfg.integrity ?? 'ok', appliedMax: cfg.appliedMax ?? null, latest: cfg.latest ?? 5 }));
   } else if (args[0] === 'db-holders') console.log(JSON.stringify({ pids: cfg.holders ?? [] }));
 } else if (name === 'migrate.ts') {
   if (cfg.migrateFail) { process.stderr.write('fixture migrate failure\\n'); process.exit(1); }
@@ -640,7 +640,12 @@ function writeUpdateJournal(
 
 function writeInstallJournal(
   sandbox: Sandbox,
-  options: { readonly phase: string; readonly candidateSha: string },
+  options: {
+    readonly phase: string;
+    readonly candidateSha: string;
+    readonly databasePath?: string;
+    readonly dbOwnershipRecorded?: boolean;
+  },
 ): void {
   const runtime = {
     nodeVersion: NODE_VERSION,
@@ -661,7 +666,8 @@ function writeInstallJournal(
         previous: null,
         backupPath: null,
         snapshot: null,
-        dbOwnershipRecorded: true,
+        databasePath: options.databasePath ?? join(sandbox.dataDir, 'usage.db'),
+        dbOwnershipRecorded: options.dbOwnershipRecorded ?? true,
         failed: null,
         notes: [],
         createdAt: new Date().toISOString(),
@@ -1823,6 +1829,56 @@ describe('managed installation lifecycle', () => {
     expect(unitFile(sandbox, WEB)).toBeNull();
   });
 
+  it('removes proven execution trees in the bootstrap fallback', async () => {
+    const sandbox = freshSandbox();
+    const release = join(sandbox.root, 'releases', 'd'.repeat(40));
+    mkdirSync(release, { recursive: true });
+    writeFile(join(sandbox.root, 'cache', 'marker'), 'cache');
+    writeFile(
+      join(sandbox.root, 'operation.json'),
+      JSON.stringify(
+        {
+          schemaVersion: 1,
+          operationId: 'interrupted-uninstall',
+          kind: 'uninstall',
+          phase: 'launcher-removed',
+          pid: 999999,
+          root: sandbox.root,
+          candidate: null,
+          previous: null,
+          backupPath: null,
+          snapshot: null,
+          databasePath: null,
+          dbOwnershipRecorded: false,
+          failed: null,
+          notes: [],
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+        null,
+        2,
+      ),
+    );
+    // No units and no launcher remain: only this root's own journal proves it.
+    const result = await sandbox.runBootstrap(['uninstall', '--install-dir', sandbox.root]);
+    expect(result.status, result.stderr).toBe(0);
+    expect(existsSync(join(sandbox.root, 'releases'))).toBe(false);
+    expect(existsSync(join(sandbox.root, 'runtime'))).toBe(false);
+    expect(existsSync(join(sandbox.root, 'cache'))).toBe(false);
+    expect(existsSync(join(sandbox.root, 'operation.json'))).toBe(false);
+  });
+
+  it('leaves an unproven root tree alone in the bootstrap fallback', async () => {
+    const sandbox = freshSandbox();
+    const foreignRoot = join(sandbox.home, 'foreign-install');
+    const foreignRelease = join(foreignRoot, 'releases', 'e'.repeat(40));
+    mkdirSync(foreignRelease, { recursive: true });
+    writeFile(join(foreignRelease, 'MARKER'), 'keep');
+    const result = await sandbox.runBootstrap(['uninstall', '--install-dir', foreignRoot]);
+    expect(result.status, result.stderr).toBe(0);
+    expect(readFileSync(join(foreignRelease, 'MARKER'), 'utf8')).toBe('keep');
+  });
+
   it('install --dry-run neither creates the root nor recovers', () => {
     const sandbox = freshSandbox();
     const result = manager(sandbox, ['install', '--install-dir', sandbox.root, '--dry-run'], {
@@ -2116,6 +2172,73 @@ describe('managed installation lifecycle', () => {
     // The remnant is adopted, not backed up as if it were somebody else's.
     expect(sandbox.calls()).not.toContain('db-backup.ts');
     server.close();
+  });
+
+  it('refuses to adopt a database the interrupted install was not creating', () => {
+    const sandbox = freshSandbox();
+    placeRuntime(sandbox.root);
+    const sha = tagSha(sandbox.repo, 'v0.1.0');
+    const otherData = join(sandbox.dir, 'other-data');
+    mkdirSync(otherData, { recursive: true, mode: 0o700 });
+    writeFile(join(otherData, 'usage.db'), 'someone-elses-db');
+    // The retry resolves a different data directory than the journal recorded.
+    sandbox.fixture({
+      config: {
+        envFile: join(sandbox.home, '.config', 'ai-usage-dashboard', 'collector.env'),
+        dataDir: otherData,
+        databasePath: join(otherData, 'usage.db'),
+        host: '127.0.0.1',
+        port: sandbox.port,
+        intervalMinutes: 5,
+      },
+    });
+    writeInstallJournal(sandbox, { phase: 'db-creating', candidateSha: sha });
+    const result = manager(
+      sandbox,
+      ['install', '--install-dir', sandbox.root],
+      installEnv(sandbox, 'v0.1.0', sha),
+    );
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('ownership record does not name it');
+    expect(readFileSync(join(otherData, 'usage.db'), 'utf8')).toBe('someone-elses-db');
+    expect(existsSync(join(sandbox.root, 'data-ownership.json'))).toBe(false);
+    expect(sandbox.calls()).not.toContain('migrate.ts');
+    expect(sandbox.calls()).not.toContain('db-backup.ts');
+  });
+
+  it('keeps the holder check for an adopted database', () => {
+    const sandbox = freshSandbox();
+    placeRuntime(sandbox.root);
+    const sha = tagSha(sandbox.repo, 'v0.1.0');
+    writeFile(join(sandbox.dataDir, 'usage.db'), 'partial-db');
+    writeInstallJournal(sandbox, { phase: 'db-creating', candidateSha: sha });
+    sandbox.fixture({ holders: [4321] });
+    const result = manager(
+      sandbox,
+      ['install', '--install-dir', sandbox.root],
+      installEnv(sandbox, 'v0.1.0', sha),
+    );
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('open in process(es) 4321');
+    expect(sandbox.calls()).not.toContain('migrate.ts');
+    expect(existsSync(join(sandbox.root, 'data-ownership.json'))).toBe(false);
+  });
+
+  it('keeps the integrity check for an adopted database', () => {
+    const sandbox = freshSandbox();
+    placeRuntime(sandbox.root);
+    const sha = tagSha(sandbox.repo, 'v0.1.0');
+    writeFile(join(sandbox.dataDir, 'usage.db'), 'partial-db');
+    writeInstallJournal(sandbox, { phase: 'db-creating', candidateSha: sha });
+    sandbox.fixture({ integrity: 'corrupt' });
+    const result = manager(
+      sandbox,
+      ['install', '--install-dir', sandbox.root],
+      installEnv(sandbox, 'v0.1.0', sha),
+    );
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('failed its integrity check');
+    expect(sandbox.calls()).not.toContain('migrate.ts');
   });
 
   it('re-runs the bootstrap when only a stale atomic temp file sits in a managed root', async () => {

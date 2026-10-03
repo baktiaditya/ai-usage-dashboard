@@ -144,6 +144,12 @@ export interface OperationJournal {
   readonly previous: ManagedRelease | null;
   readonly backupPath: string | null;
   readonly snapshot: ServiceSnapshot | null;
+  /**
+   * Canonical path of the database this first install was creating, persisted
+   * at `db-creating`. A resumed install adopts a database only when its path
+   * physically matches; null in journals written before this was recorded.
+   */
+  readonly databasePath: string | null;
   /** Set when this install recorded the new database in the ownership record. */
   readonly dbOwnershipRecorded: boolean;
   readonly failed: string | null;
@@ -409,6 +415,7 @@ export function validateJournal(value: unknown): OperationJournal {
       'previous',
       'backupPath',
       'snapshot',
+      'databasePath',
       'dbOwnershipRecorded',
       'failed',
       'notes',
@@ -451,6 +458,10 @@ export function validateJournal(value: unknown): OperationJournal {
         ? null
         : asAbsolutePath(record['backupPath'], 'journal.backupPath'),
     snapshot: record['snapshot'] === null ? null : validateServiceSnapshot(record['snapshot']),
+    databasePath:
+      record['databasePath'] === undefined || record['databasePath'] === null
+        ? null
+        : asAbsolutePath(record['databasePath'], 'journal.databasePath'),
     dbOwnershipRecorded: asBoolean(record['dbOwnershipRecorded'], 'journal.dbOwnershipRecorded'),
     failed: record['failed'] === null ? null : asString(record['failed'], 'journal.failed'),
     notes,

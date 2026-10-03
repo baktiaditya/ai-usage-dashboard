@@ -24,9 +24,9 @@
     `data-ownership.json`. Manual/maintainer units, launchers, roots, and databases are
     refused rather than adopted. Effective configuration is persisted and reapplied on
     update; linger changes require `--enable-linger`.
-  - **Evidence performed:** `pnpm run verify` passes (40 files, 737 tests), including 27
+  - **Evidence performed:** `pnpm run verify` passes (40 files, 742 tests), including 27
     unit tests for release selection, manifests, path boundaries, atomic-temp handling,
-    state/journal/ownership validation, retention, and unit ownership, and 49 integration tests that drive the real manager against
+    state/journal/ownership validation, retention, and unit ownership, and 54 integration tests that drive the real manager against
     fixture releases with PATH-level systemctl/loginctl/ss stubs. The OKF validator and
     `git diff --check` pass. The rehearsal guard was run for real and refused the
     maintainer's environment (exit 2 without `AUD_INSTALL_SYSTEMD_REHEARSAL=1`, and exit 2
@@ -56,6 +56,12 @@
     candidate left systemd's start rate limit set, so activation now clears failed unit
     state first. PR [#38](https://github.com/baktiaditya/ai-usage-dashboard/issues/38)'s
     checks are the live record.
+  - **Review follow-up:** a fourth review of the resumed-install adoption found that a retry
+    resolving a different data directory could adopt a database the interrupted run never
+    created. The journal now persists the canonical database path at `db-creating`, adoption
+    requires a physical-path match, and the integrity and holder checks gate adopted
+    databases too; the bootstrap uninstall fallback now removes the release/runtime/cache
+    trees when ownership is demonstrable and leaves unproven trees alone.
   - **Not performed:** reboot persistence (no reboot is exercised, so no boot claim is
     made), and installation through the published one-line command, which waits on the
     first tagged release. Browser evidence was captured locally with `agent-browser` against
