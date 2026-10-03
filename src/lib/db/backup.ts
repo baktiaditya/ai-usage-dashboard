@@ -25,6 +25,7 @@
  * restored file with the old WAL still beside it opens as the old database, and
  * passes `integrity_check`.
  */
+import { spawnSync } from 'node:child_process';
 import {
   chmodSync,
   closeSync,
@@ -42,6 +43,7 @@ import {
 } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import Database from 'better-sqlite3';
+import { redactText } from '../redact';
 import { runMigrations } from './client';
 import { MIGRATIONS } from './migrations.generated';
 
@@ -284,20 +286,27 @@ function assertLatestSchema(sqlite: Database.Database, label: string): void {
   );
 }
 
-/** Process IDs holding any of `paths` open, read from `/proc`. */
+function existingRealPaths(paths: readonly string[]): Set<string> {
+  return new Set(paths.filter((path) => existsSync(path)).map((path) => realpathSync(path)));
+}
+
+function inUseUnknown(detail: string): BackupError {
+  return new BackupError(`cannot tell whether the database is in use: ${detail}`);
+}
+
+/**
+ * Process IDs holding any of `paths` open, read from `/proc`, or asked of
+ * `lsof` where there is no `/proc` (macOS).
+ */
 export function processesHolding(paths: readonly string[]): number[] {
-  const wanted = new Set(
-    paths.filter((path) => existsSync(path)).map((path) => realpathSync(path)),
-  );
+  const wanted = existingRealPaths(paths);
   if (wanted.size === 0) return [];
 
   let entries: string[];
   try {
     entries = readdirSync('/proc');
   } catch {
-    throw new BackupError(
-      'cannot tell whether the database is in use: /proc is unavailable on this platform',
-    );
+    return processesHoldingViaLsof(paths);
   }
 
   const holders: number[] = [];
@@ -320,11 +329,96 @@ export function processesHolding(paths: readonly string[]): number[] {
   return holders;
 }
 
+/** What one `lsof` run produced. */
+export interface LsofResult {
+  readonly status: number | null;
+  readonly signal: NodeJS.Signals | null;
+  readonly stdout: string;
+  readonly stderr: string;
+  /** Set when `lsof` could not be started, timed out, or overflowed its buffer. */
+  readonly error?: NodeJS.ErrnoException;
+}
+
+export type LsofRunner = (args: readonly string[]) => LsofResult;
+
+const LSOF_TIMEOUT_MS = 10_000;
+const LSOF_MAX_BUFFER = 1024 * 1024;
+
+function runLsof(args: readonly string[]): LsofResult {
+  const result = spawnSync('lsof', [...args], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+    timeout: LSOF_TIMEOUT_MS,
+    maxBuffer: LSOF_MAX_BUFFER,
+  });
+  return {
+    status: result.status,
+    signal: result.signal,
+    stdout: result.stdout ?? '',
+    stderr: result.stderr ?? '',
+    error: result.error as NodeJS.ErrnoException | undefined,
+  };
+}
+
+/**
+ * Process IDs holding any of `paths` open, as `lsof -t` reports them.
+ *
+ * `lsof` exits 1 when it finds nothing for even one of its arguments, so a
+ * database held open without its `-shm` exits 1 and still prints the holder.
+ * PIDs on stdout are therefore holders whether the exit is 0 or 1, and exit 1
+ * means "none" only with nothing on stdout or stderr. Every other outcome is
+ * not an answer, and refuses rather than lets a restore through.
+ */
+export function processesHoldingViaLsof(
+  paths: readonly string[],
+  run: LsofRunner = runLsof,
+): number[] {
+  const wanted = existingRealPaths(paths);
+  if (wanted.size === 0) return [];
+
+  // `-t` already implies `-w`; it stays explicit so the intent survives edits.
+  const result = run(['-w', '-t', '--', ...wanted]);
+  if (result.error?.code === 'ENOENT') {
+    throw inUseUnknown('/proc is unavailable and lsof was not found');
+  }
+  if (result.error) {
+    throw inUseUnknown(`lsof failed: ${result.error.code ?? redactText(result.error.message)}`);
+  }
+
+  const lines = result.stdout
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line !== '');
+  if ((result.status === 0 || result.status === 1) && lines.length > 0) {
+    if (!lines.every((line) => /^[1-9]\d*$/.test(line))) {
+      throw inUseUnknown('lsof printed something other than process IDs');
+    }
+    return [...new Set(lines.map(Number))].sort((a, b) => a - b);
+  }
+  const stderr = result.stderr.trim();
+  if (result.status === 1 && stderr === '') return [];
+
+  const firstLine = stderr.split('\n')[0]?.trim();
+  const detail = firstLine
+    ? redactText(firstLine)
+    : result.signal
+      ? `killed by ${result.signal}`
+      : `exit status ${result.status} with no process listed`;
+  throw inUseUnknown(`lsof failed: ${detail}`);
+}
+
+/** What to stop before retrying a restore, named for what this platform runs. */
+export function inUseStopHint(platform: NodeJS.Platform = process.platform): string {
+  return platform === 'linux'
+    ? 'Stop ai-usage-dashboard-web.service, ai-usage-dashboard-collector.timer, and any pnpm run dev or pnpm run start, then retry'
+    : 'Stop the scheduled collector, the dashboard server, and any pnpm run dev or pnpm run start, then retry';
+}
+
 function assertNotInUse(database: string): void {
   const holders = processesHolding(withSidecars(database));
   if (holders.length > 0) {
     throw new BackupError(
-      `the database is open in process ${holders.join(', ')}. Stop ai-usage-dashboard-web.service, ai-usage-dashboard-collector.timer, and any pnpm run dev or pnpm run start, then retry`,
+      `the database is open in process ${holders.join(', ')}. ${inUseStopHint()}`,
     );
   }
 }

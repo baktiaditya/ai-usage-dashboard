@@ -24,7 +24,7 @@ loopback dashboard running. They have the same data directory, environment file,
 
 A macOS-support assessment on 2026-10-03, against `c7b6c05`, found the application portable apart
 from two couplings. The restore guard's `/proc` dependency is handled by
-[support-database-restore-on-macos](../ready-for-agent/support-database-restore-on-macos.md). This
+[support-database-restore-on-macos](../archive/support-database-restore-on-macos.md). This
 brief covers the other coupling, the scheduler. It is the larger of the two and needs user decisions.
 
 What exists today:

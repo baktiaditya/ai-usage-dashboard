@@ -2,7 +2,11 @@
 
 ## Status
 
-Ready for agent
+Archived
+
+Delivered on 2026-10-03 on branch `feat/macos-restore-guard`; the delivery is recorded in the
+[log](../../log.md). The contract lives in [Setup](../../operations/setup.md) §1 "Backup and
+restore" and the [README](../../../README.md). This brief is not updated further.
 
 The status above must match the directory that contains this brief. Move the file with
 `git mv` when its readiness changes.

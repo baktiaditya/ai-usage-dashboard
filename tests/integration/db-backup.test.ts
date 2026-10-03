@@ -18,6 +18,7 @@ import {
   BackupError,
   LATEST_SCHEMA_VERSION,
   backupDatabase,
+  processesHoldingViaLsof,
   restoreDatabase,
 } from '@/lib/db/backup';
 import { openDb } from '@/lib/db/client';
@@ -333,6 +334,24 @@ describe('restoreDatabase', () => {
         live.$client.close();
       }
     });
+  });
+});
+
+// The `/proc` scan answers on Linux, so the macOS path is called directly here
+// against the real `lsof`, wherever one is installed.
+const hasLsof = spawnSync('lsof', ['-v'], { stdio: 'ignore' }).error === undefined;
+
+describe.skipIf(!hasLsof)('processesHoldingViaLsof with the real lsof', () => {
+  it('names this process while it holds the database open, and nobody once it closes', () => {
+    const target = database('usage.db', 2);
+    const sidecars = [target, `${target}-wal`, `${target}-shm`, `${target}-journal`];
+    const holder = openDb({ path: target });
+    try {
+      expect(processesHoldingViaLsof(sidecars)).toContain(process.pid);
+    } finally {
+      holder.$client.close();
+    }
+    expect(processesHoldingViaLsof(sidecars)).toEqual([]);
   });
 });
 

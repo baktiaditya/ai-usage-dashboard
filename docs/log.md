@@ -2,9 +2,28 @@
 
 ## 2026-10-03
 
+- **Update**: [support-database-restore-on-macos](backlog/archive/support-database-restore-on-macos.md)
+  is implemented on branch `feat/macos-restore-guard` for
+  [#28](https://github.com/baktiaditya/ai-usage-dashboard/issues/28), and the brief moves to
+  `archive/`.
+  - When `/proc` cannot be read, `processesHolding()` in `src/lib/db/backup.ts` asks
+    `lsof -w -t`. PIDs on stdout count as holders whether `lsof` exits 0 or 1, and exit 1 with no
+    output means none. Any other outcome refuses with
+    `cannot tell whether the database is in use`.
+  - The Linux `/proc` scan is unchanged. The refusal names the systemd units only on Linux.
+  - Both Husky hooks put `/opt/homebrew/bin` in their fallback `PATH`.
+  - The README platform note names only the scheduler, and Setup §1 says how the in-use check
+    works off Linux.
+  - One deviation from the brief: the runner uses `spawnSync`, not `execFileSync`. Exit status,
+    stdout and stderr then arrive without exception handling, and the decision table is unchanged.
+  - `pnpm run verify` (38 files, 661 tests) and the OKF validator pass. The real-`lsof` case runs
+    on Linux against `lsof` 4.95.0.
+  - Unperformed: no run on real macOS. `pnpm run db:restore` refusing and succeeding on a Mac stays
+    unproven until someone runs it there.
+
 - **Proposed**: macOS support, split into two briefs after an assessment at `c7b6c05`. That
   assessment found the application portable apart from the two couplings the README names.
-  [support-database-restore-on-macos](backlog/ready-for-agent/support-database-restore-on-macos.md)
+  [support-database-restore-on-macos](backlog/archive/support-database-restore-on-macos.md)
   goes straight to `ready-for-agent/`. It adds an `lsof` fallback, failing closed, when the restore
   guard cannot read `/proc`, and puts `/opt/homebrew/bin` in the Husky fallback `PATH`. It changes
   no canonical contract, and it can be proven on Linux; a run on real macOS stays unperformed.
