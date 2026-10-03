@@ -10,7 +10,7 @@ This is an implementation brief, not a report of delivered functionality. The
 and [log](../../log.md) remain canonical. The 2026-10-03 installation decision
 authorizes the scope below. Existing manual installations remain supported.
 
-Related issue: none yet.
+Related issue: [#37](https://github.com/baktiaditya/ai-usage-dashboard/issues/37).
 
 ## Objective
 
@@ -104,7 +104,10 @@ ai-usage-dashboard claude-statusline [existing status-line installer flags]
 ```
 
 `--help` works on bootstrap and launcher without installation. No install prompt
-or TTY is required; piped input must not be used for questions. `--enable-linger`
+or TTY is required; piped input must not be used for questions. Run every child
+process with stdin redirected from `/dev/null`: in the `curl … | bash` form the
+rest of the script is still on stdin, and a child that reads it consumes the
+script. `--enable-linger`
 is explicit because it changes logout/boot persistence. Without it, install and
 start the user units, report linger state, and explain the existing
 `loginctl enable-linger "$USER"` step when needed. A requested linger change that
@@ -132,6 +135,12 @@ numeric SemVer comparison, not lexical sorting. Never deploy a floating branch.
 Validate that the tag agrees with `package.json.version` and that the checkout
 contains the runtime manifest and lifecycle entry points before accepting it.
 
+The bootstrap only preflights, resolves and fetches the release, provisions the
+runtime, and hands off. Every lifecycle step runs from the selected checkout's
+`scripts/manage-installation.ts`, so a bootstrap downloaded from one tag can
+install another without its own copy deciding lifecycle behavior. Version the
+bootstrap-to-manager interface; an unknown interface version fails before mutation.
+
 Read-only source fetches may use an ephemeral directory. GitHub API credentials
 and `gh` are not prerequisites. Accept the tag/HTTPS trust model; a remembered
 tag resolving to a different SHA is an error, not an upgrade. User-facing output
@@ -143,8 +152,11 @@ checkout, moved-tag refusal, and no-release handling.
 
 ### 2. Preflight and provision the private runtime
 
-Check Linux x86_64, a usable glibc-based Node runtime, Bash, Git, curl, tar/xz,
-SHA-256 tooling, `flock`, systemctl/user-session access, journalctl, and `ss`.
+Check Linux x86_64, glibc 2.28 or later, Bash, Git, curl, tar/xz, SHA-256
+tooling, `flock`, systemctl/user-session access, journalctl, and `ss`. The glibc
+floor is that of Node 24's official linux-x64 binaries (Node `BUILDING.md`); check
+it before downloading, for example with `getconf GNU_LIBC_VERSION`, so a musl or
+older system fails without a wasted download.
 Reject root execution and unsupported platforms before persistent mutation.
 List missing tools with actionable guidance; leave OS package installation to the
 user. Validate writable locations, configuration, unit ownership, launcher
@@ -166,9 +178,22 @@ a completed runtime marker.
 
 Run the application with this private Node even when nvm/system Node exists.
 Do not change shell profiles, nvm aliases/defaults, or system/global Node/pnpm.
-Use Corepack from the private runtime with a private cache and locally available
-pnpm shim; verify the candidate's exact `packageManager` version and integrity.
-`pnpm install --frozen-lockfile` keeps the existing `allowBuilds` policy. Set
+Use Corepack from the private runtime with a private cache (`COREPACK_HOME`) and
+locally available pnpm shim; verify the candidate's exact `packageManager` version
+and integrity. Set `COREPACK_ENABLE_DOWNLOAD_PROMPT=0`: an implicit Corepack call
+otherwise asks for confirmation before downloading pnpm whenever stdin is a TTY,
+which the download/read/run path has. Node 25 and later no longer distribute
+Corepack. The manifest stays on the Node 24 line that `engines.node` requires; a
+later move past Node 24 must replace this pnpm provisioning step, and manifest
+validation fails rather than assuming the selected Node ships Corepack.
+
+`pnpm install --frozen-lockfile` keeps the existing `allowBuilds` policy.
+`better-sqlite3` installs through `prebuild-install || node-gyp rebuild --release`:
+it downloads a prebuilt binary from the package's GitHub releases (12.4.1 publishes
+`node-v137-linux-x64` for Node 24) and compiles only when that fails, which needs
+Python 3, `make`, and a C++ compiler. Preflight checks HTTPS reach to nodejs.org,
+the npm registry, and GitHub release downloads, and names the compiler toolchain
+as needed only for the fallback. A failed native install reports both causes. Set
 `HUSKY=0` for managed consumer checkouts; contributor setup is unchanged. Keep
 build dependencies, including `tsx`; a production-only install cannot run the
 current launcher/collector path.
@@ -312,6 +337,13 @@ Use the following sequence, recording durable phase transitions:
 6. Commit state/current only after health and integration steps pass. Retain the
    last known-good release/runtime and the backup. Report the new tag/SHA.
 
+Each release holds its own dependency tree and build, so retention is explicit.
+Keep the active release and the recorded previous release, with their runtimes.
+After a commit, prune any other release or runtime that state, an installed unit,
+and an owned bridge no longer reference. Never prune while an operation is
+unfinished. A pruning failure is reported with the retained paths and does not
+fail a committed update. Backups are application data and are never pruned here.
+
 Before the database-change boundary, recovery can restore prior units/state
 without restoring data. After that boundary, stop all candidate writers and use
 the **previous release's** restore command on the verified pre-cutover backup
@@ -338,7 +370,8 @@ a successful upgrade cannot later lose new observations through false rollback.
 
 Completion: failed download/build leaves the running installation unchanged;
 failed migration/health/bridge refresh recovers the previous code, runtime, units,
-and database; interruption at each cutover boundary is recoverable.
+and database; interruption at each cutover boundary is recoverable; after
+repeated updates only the active and previous releases/runtimes remain.
 
 ### 6. Implement status, Claude integration, and uninstall
 
@@ -438,6 +471,12 @@ necessary launcher/build-related change, as AGENTS.md requires.
       Node default, shell profiles, global packages, and unrelated units are unchanged.
 - [ ] The private runtime checksum/version and exact Corepack-managed pnpm pin
       are checked; frozen lockfile and exact build approvals remain enforced.
+- [ ] Install and update run without prompts both from a TTY and from `curl … | bash`;
+      no child process reads the bootstrap's stdin.
+- [ ] Preflight refuses glibc below 2.28 before downloading and reports the native
+      build fallback's toolchain when no `better-sqlite3` prebuilt can be fetched.
+- [ ] Only the active and previous releases/runtimes are retained after a commit;
+      nothing referenced by state, a unit, or an owned bridge is pruned.
 - [ ] Managed metadata records detached tag/SHA provenance and resolved config;
       moved tags, unsafe roots, foreign ownership, and concurrent operations are refused.
 - [ ] Builds/rehearsals leave real user data untouched; fresh activation yields
@@ -482,6 +521,18 @@ a disposable Linux VM or container with a working user systemd session. CI provi
 that environment. All rehearsal source refs, HOME/config/data, launchers, units,
 ports, and fake provider executables belong to that disposable instance.
 
+The user manager reads unit files from its own account's configuration directory
+and ignores the `HOME` of the process calling `systemctl --user`. Isolation
+therefore means a dedicated throwaway account with linger, entered through a real
+login session such as `machinectl shell` or SSH, or a VM/container with its own
+systemd. A substitute `HOME` under the developer's account is not isolation: units
+written there are never loaded. The runner refuses to start unless an explicit
+opt-in variable is set and the account has no pre-existing dashboard units, data,
+or launcher. On GitHub-hosted Ubuntu images, `/etc/environment` sets
+`XDG_RUNTIME_DIR` to the runner account's directory for every session
+([actions/runner-images#14649](https://github.com/actions/runner-images/issues/14649));
+a dedicated account's session must use its own `/run/user/<uid>`.
+
 ### Required scenarios and proof
 
 | Scenario                                   | Required evidence                                                                                                                                                     |
@@ -492,6 +543,9 @@ ports, and fake provider executables belong to that disposable instance.
 | Paths/configuration                        | Absolute XDG/custom root, spaces rejected according to renderer limits, literal `%`/`&` handling, custom loopback port/IPv6, retained installed config across shells. |
 | Ownership                                  | Manual units/launcher/root/database are untouched; symlink escape and changed installed unit ownership are refused.                                                   |
 | Dependency/runtime failures                | Offline/download/checksum/Corepack/native-build/build failures before cutover preserve the running release.                                                           |
+| Platform/native preflight                  | glibc below 2.28 or musl refused before download; unreachable `better-sqlite3` prebuilt without a toolchain fails with both causes named.                             |
+| Non-interactive execution                  | TTY and `curl … \| bash` runs complete without prompts; Corepack never asks to download; the piped script is never consumed by a child.                               |
+| Retention                                  | Three successive updates leave only active and previous releases/runtimes; a release referenced by a unit or owned bridge survives pruning.                           |
 | Activation failures                        | Port conflict, stuck collector, backup refusal, migration failure, unhealthy web, and bridge-refresh failure yield bounded recovery or stopped actionable state.      |
 | Schema rollback                            | Fixture releases with different migration sets prove the previous restore executable recovers the compatible backup; preserved failed DB is inspectable.              |
 | Crash/concurrency                          | SIGKILL at each journal boundary, contention, stale journal, repeat install/update, and state-write failure.                                                          |

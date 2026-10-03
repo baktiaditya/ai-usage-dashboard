@@ -15,7 +15,11 @@
   is ready for agent with resolved design choices, command/path/ownership contracts,
   implementation sequence, crash recovery, verified existing owners, acceptance
   criteria, and disposable-systemd/browser proof requirements. Assessment baseline:
-  `d7a6543`. This change adds documentation only; installer implementation, runtime
+  `d7a6543`. Tracked in [#37](https://github.com/baktiaditya/ai-usage-dashboard/issues/37).
+  Validation added a glibc 2.28 preflight, the `better-sqlite3` prebuilt/toolchain
+  fallback, prompt-free Corepack and child stdin, a release/runtime retention rule,
+  and rehearsal isolation through a dedicated account or VM rather than a substitute
+  `HOME`. This change adds documentation only; installer implementation, runtime
   rehearsal, tagging, publication, and deployment have not occurred.
 
 - **Update**: the [README](../README.md) Quick start becomes an Installation section. It now
