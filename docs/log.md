@@ -2,6 +2,31 @@
 
 ## 2026-10-04
 
+- **Update**: the published one-line command was run end to end from the `v0.2.0` tag,
+  closing the "installation through the published one-line command" gap that the
+  [2026-10-03 installer entry](#2026-10-03) left as not performed. It ran on a Linux x86_64
+  workstation, in a disposable account (`audtest`) with linger and its own user manager,
+  separate from the account running the production units. The script was fetched from
+  `raw.githubusercontent.com/.../v0.2.0/scripts/install.sh` and piped to
+  `bash -s -- --version v0.2.0`, with `AUD_PORT=3840`. That port was set only because
+  production (3838) and the dev server (3839) share the loopback interface.
+  - **Install:** exit `0` after 104 s. It resolved `v0.2.0` to `411c27e`, downloaded and
+    verified Node v24.19.0, and built the release. Web and timer were active and enabled,
+    and linger was on. The installer printed the loopback URL and noted that the launcher
+    directory is not on that account's `PATH`.
+  - **Health:** `ai-usage-dashboard status` exited `0` with no recovery pending, and
+    `http://127.0.0.1:3840/` answered `200`.
+  - **First collection:** the run recorded `error: 0`. Codex read `unavailable` /
+    `cli_not_found` because no `codex` was on the account's `PATH`, which confirms
+    [#33](https://github.com/baktiaditya/ai-usage-dashboard/issues/33) on a real install.
+    Claude read `no_event_yet`, and DeepSeek, OpenRouter, and OpenCode Go read
+    `not_configured`. `/api/overview` and the database agreed.
+  - **Uninstall:** exit `0`. Units and the launcher were removed, while the database, the
+    data ownership record, and linger were kept, as specified.
+  - **Still not performed:** reboot persistence; `update` from one published tag to
+    another, which needs a second release that contains the installer; and a managed install
+    with real provider credentials or a signed-in Codex CLI.
+
 - **Update**: release `v0.2.0` is prepared, the first release that contains the managed
   installer. `package.json`, the HTTP `User-Agent`, and the Codex `clientInfo` move to
   `0.2.0`, and [CHANGELOG](../CHANGELOG.md) gains the `0.2.0` entry (#31, #38, #39). The
