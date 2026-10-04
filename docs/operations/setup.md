@@ -785,15 +785,16 @@ never adopts or repoints a manual checkout, including the
 ### Command interface
 
 The published one-line command pins the release tag that also provides the script, because
-the bootstrap and the lifecycle manager it hands off to come from the same commit:
+the bootstrap and the lifecycle manager it hands off to come from the same commit. `v0.2.0` is
+the first release that contains the installer:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/baktiaditya/ai-usage-dashboard/vX.Y.Z/scripts/install.sh \
-  | bash -s -- --version vX.Y.Z
+curl -fsSL https://raw.githubusercontent.com/baktiaditya/ai-usage-dashboard/v0.2.0/scripts/install.sh \
+  | bash -s -- --version v0.2.0
 ```
 
-The first release that contains the installer is not tagged yet; that command is a
-placeholder until it is. Until then, run the same script from a checkout:
+The same script also runs from a checkout. Both routes accept the same arguments, so the
+`scripts/install.sh` arguments below can also follow `bash -s --` in the one-line command:
 
 ```bash
 bash scripts/install.sh [--version vX.Y.Z] [--install-dir ABSOLUTE_PATH]

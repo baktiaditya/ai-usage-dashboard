@@ -2,6 +2,17 @@
 
 ## 2026-10-04
 
+- **Update**: release `v0.2.0` is prepared, the first release that contains the managed
+  installer. `package.json`, the HTTP `User-Agent`, and the Codex `clientInfo` move to
+  `0.2.0`, and [CHANGELOG](../CHANGELOG.md) gains the `0.2.0` entry (#31, #38, #39). The
+  public one-line command in the [README](../README.md),
+  [setup](operations/setup.md#command-interface), and plan
+  [§4.1.1](plan/ai-usage-dashboard-implementation-plan.md#411-managed-linux-installation)
+  now pins `v0.2.0` instead of a placeholder. The disposable-systemd rehearsal sets its
+  fixture's version to `0.1.0` before tagging `v0.1.0`, because the source now carries
+  `0.2.0` and the installer refuses a tag that disagrees with `package.json`. The tag is
+  created on the merge commit after this change lands.
+
 - **Decision**: a local CLI that is not installed or not on `PATH` reads `unavailable`, not
   `error` ([#33](https://github.com/baktiaditya/ai-usage-dashboard/issues/33)). Plan
   [§4.5](plan/ai-usage-dashboard-implementation-plan.md#45-status-semantics) now lists it under

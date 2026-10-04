@@ -4,6 +4,27 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-10-04
+
+### Added
+
+- Managed Linux installer: `curl … | bash` provisions a private, checksum-verified Node and
+  Corepack runtime, detached release checkouts, and hardened user systemd units, without
+  touching your default Node, nvm, shell profiles, or a manual checkout. The
+  `ai-usage-dashboard` launcher adds `status`, `update` (staged, with database backup and
+  automatic rollback), `uninstall` (keeps data and keys), and `claude-statusline`.
+- `db:restore` on macOS: the in-use guard falls back to `lsof` where `/proc` is unavailable.
+
+### Changed
+
+- A Codex CLI that is not installed or not on `PATH` now reads `unavailable` with an install
+  hint instead of an error, and no longer makes `pnpm run collect` exit `1`.
+
+### Fixed
+
+- A CLI that exits before reading its input no longer crashes the collector with an unhandled
+  `EPIPE`; the attempt is recorded as `process_failed`.
+
 ## [0.1.0] - 2026-10-03
 
 First public release.
@@ -24,4 +45,5 @@ First public release.
 - MIT license, third-party notices for the Lobe Icons marks, contributing and security policies,
   GitHub issue templates, and CI that runs `pnpm run verify`.
 
+[0.2.0]: https://github.com/baktiaditya/ai-usage-dashboard/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/baktiaditya/ai-usage-dashboard/releases/tag/v0.1.0

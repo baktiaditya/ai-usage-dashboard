@@ -255,7 +255,7 @@ describe('composite Claude adapter', () => {
     expect(init?.headers).toEqual({
       Authorization: `Bearer ${TOKEN}`,
       Accept: 'application/json',
-      'User-Agent': 'ai-usage-dashboard/0.1.0',
+      'User-Agent': 'ai-usage-dashboard/0.2.0',
       'Content-Type': 'application/json',
       'anthropic-version': CLAUDE_PROBE_ANTHROPIC_VERSION,
       'anthropic-beta': CLAUDE_PROBE_OAUTH_BETA,
