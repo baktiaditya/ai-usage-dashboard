@@ -429,6 +429,7 @@ describe('scoped and idempotent collection', () => {
     };
     expect(run.finished_at).not.toBeNull();
   });
+
   it('counts a missing CLI as unavailable so the run does not report an error', async () => {
     const summary = await collectOnce({
       db: t.db,
