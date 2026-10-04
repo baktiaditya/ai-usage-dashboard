@@ -127,6 +127,11 @@ Authentication stays entirely inside the Codex CLI. This application never reads
 `~/.codex/auth.json`, never extracts a token, and never calls the OpenAI backend
 directly. If `codex` is logged in, the card works.
 
+If `codex` is not installed or not on the collector's `PATH`, the card reads `unavailable` with a
+hint (`cli_not_found`) and the run does not count it as an error. A `codex` that is found but fails
+to start still reads `error`. An installed service keeps the `PATH` from install time, so re-run
+the installer after installing the CLI or switching Node versions.
+
 Minimum supported version: **`codex-cli 0.154.0`**, the version the adapter is live-verified against
 ([M0 Discovery](../discovery/m0-discovery.md)). Older releases are untested. Run
 `pnpm run test:live` again after upgrading the CLI.
