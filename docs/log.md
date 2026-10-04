@@ -11,7 +11,11 @@
   Codex therefore shows no red card, and `pnpm run collect` exits `0` when nothing else failed.
   Accepted trade-off: an installed service whose baked `PATH` stops reaching `codex`, as after an
   nvm switch, reads `unavailable` with that hint instead of `error`. Keeping `error` and
-  classifying by previous success were both declined.
+  classifying by previous success were both declined. The JSON-RPC client now also ignores
+  `error` on the child's stdin. A CLI that exits before reading it, such as `/bin/false`, turned
+  the next write into an unhandled async `EPIPE` that could crash the collector; the `exit` event
+  already reports `process_failed`. The installer's missing-`codex` warning now says
+  `unavailable`.
 
 - **Update**: the bootstrap `uninstall --dry-run` preview now names only release, runtime,
   cache, and journal paths that exist, one per line, and reports a proven root with none of

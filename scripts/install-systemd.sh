@@ -101,7 +101,7 @@ if [[ -n "$CODEX_BIN" ]]; then
   CODEX_DIR="$(dirname "$CODEX_BIN")"
   [[ ":$SERVICE_PATH:" == *":$CODEX_DIR:"* ]] || SERVICE_PATH="$SERVICE_PATH:$CODEX_DIR"
 else
-  echo "warning: codex not found on PATH; the Codex card will report an error under the timer" >&2
+  echo "warning: codex not found on PATH; the Codex card will read unavailable under the timer until you install it and re-run this script" >&2
 fi
 SERVICE_PATH="$SERVICE_PATH:/usr/local/bin:/usr/bin:/bin"
 CODEX_HOME_DIR="${CODEX_HOME:-$HOME/.codex}"

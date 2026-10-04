@@ -62,6 +62,11 @@ export class JsonRpcProcessClient {
     }
     this.child = child;
 
+    // A child that exits before reading stdin turns the next write into an
+    // async EPIPE. Unhandled, that crashes the whole collector; the `exit` or
+    // `error` event below already reports the failure to every pending request.
+    child.stdin.on('error', () => {});
+
     child.stdout.setEncoding('utf8');
     child.stdout.on('data', (chunk: string) => this.onStdout(chunk));
 
