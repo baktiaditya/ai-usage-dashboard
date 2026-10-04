@@ -793,7 +793,8 @@ curl -fsSL https://raw.githubusercontent.com/baktiaditya/ai-usage-dashboard/v0.2
   | bash -s -- --version v0.2.0
 ```
 
-The same script runs from a checkout, which is also where the full flags apply:
+The same script also runs from a checkout. Both routes accept the same arguments, so the
+`scripts/install.sh` arguments below can also follow `bash -s --` in the one-line command:
 
 ```bash
 bash scripts/install.sh [--version vX.Y.Z] [--install-dir ABSOLUTE_PATH]
