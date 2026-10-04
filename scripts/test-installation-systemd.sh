@@ -265,6 +265,8 @@ printf 'Install root: %s\nData directory: %s\nPort: %s\n' "$DEFAULT_ROOT" "$DATA
 
 step "Building fixture release v0.1.0 from $SOURCE"
 copy_source
+# The source carries the current release's version; the fixture tags its own.
+set_version 0.1.0
 commit_fixture v0.1.0
 check "fixture v0.1.0 is tagged" test "$(git_fixture rev-parse 'v0.1.0^{commit}')" = "$(git_fixture rev-parse HEAD)"
 

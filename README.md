@@ -37,16 +37,17 @@ release checkouts, and hardened user systemd units. It leaves your default Node,
 configuration, shell profiles, global packages, and unrelated units untouched, and it never
 takes over a manual or maintainer checkout.
 
-The public one-line command pins the release tag that also provides the script, because the
-bootstrap and the lifecycle manager it hands off to come from the same commit. That tag does
-not exist yet — the first tagged release that contains the installer publishes it. Until
-then, run the same script from a checkout:
+The one-line command pins the release tag that also provides the script, because the
+bootstrap and the lifecycle manager it hands off to come from the same commit:
 
 ```bash
-# Published form, once the first release that contains the installer is tagged:
-#   curl -fsSL https://raw.githubusercontent.com/baktiaditya/ai-usage-dashboard/vX.Y.Z/scripts/install.sh \
-#     | bash -s -- --version vX.Y.Z
+curl -fsSL https://raw.githubusercontent.com/baktiaditya/ai-usage-dashboard/v0.2.0/scripts/install.sh \
+  | bash -s -- --version v0.2.0
+```
 
+To read the script before running it, run the same script from a checkout instead:
+
+```bash
 git clone https://github.com/baktiaditya/ai-usage-dashboard.git
 cd ai-usage-dashboard
 bash scripts/install.sh
