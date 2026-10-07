@@ -2,6 +2,23 @@
 
 ## 2026-10-08
 
+- **Decision**: amend the
+  [macOS scheduler brief](backlog/ready-for-agent/schedule-collection-with-launchd-on-macos.md)
+  after the [PR #44 re-review](https://github.com/baktiaditya/ai-usage-dashboard/pull/44#issuecomment-6043993453)
+  (verdict approve; six non-blocking nits), so the brief and the delivered tests agree. The two
+  managed-installer suites in `tests/integration/installation.test.ts` are Linux-only by owner
+  decision: they drive the real `scripts/install.sh`, which refuses non-Linux kernels and needs
+  `flock`, so the brief's "do not skip these tests" now excludes them and forbids any other
+  Darwin skip. Their portable `tar -cJf` archive fixture gains its own ungated test, so the
+  macOS job exercises it. The live harness may run `launchctl enable` on its own test labels
+  after the installer's `--disable`, only to clear the disabled overrides a unique prefix would
+  leave behind. The Files Touched table now lists `src/lib/unit-values.ts`,
+  `src/lib/installation/install-paths.ts`, `CONTRIBUTING.md`, and the new
+  `tests/unit/unit-values.test.ts`; the sidecar `chmod` row was already present. In code, both
+  renderers read the five `AUD_UNIT_*` exports through `unitInputsFromEnv()` in
+  `src/lib/unit-values.ts`, and the test-only `isProtectedLocation` wrapper is gone in favour
+  of `protectedRootFor()`.
+
 - **Update**: addressed the [code review on PR #44](https://github.com/baktiaditya/ai-usage-dashboard/pull/44#issuecomment-6041527438)
   (verdict approve; nine non-blocking nits). The protected-location guard now resolves with
   `realpathSync.native` and compares case-insensitively on Darwin, so a typed `~/documents` no
