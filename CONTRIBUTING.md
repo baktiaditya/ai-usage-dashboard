@@ -3,6 +3,28 @@
 Thanks for considering a contribution. This is a small, single-maintainer project; issues and pull
 requests are welcome.
 
+## Opening a pull request
+
+Report a bug or request a feature with the
+[issue templates](https://github.com/baktiaditya/ai-usage-dashboard/issues/new/choose), and report
+a suspected vulnerability privately as described in [SECURITY.md](SECURITY.md).
+
+1. Fork the repository and clone your fork.
+2. Create a branch, commit following [Commits](#commits) below, and push it to your fork.
+3. Open a pull request against `main`; the
+   [pull request template](.github/PULL_REQUEST_TEMPLATE.md) prompts for a summary, the
+   verification you ran, and a checklist.
+4. Push follow-up commits to the same branch — they join the open pull request automatically.
+   Merging into `main` requires an approving review and a green `pnpm run verify` check.
+
+Two first-time wrinkles are expected, not rejections:
+
+- CI workflows on a pull request from a fork wait for a maintainer to approve them before they
+  start, so checks can sit in "waiting for approval". GitHub applies this to first-time
+  contributors by default.
+- Commit with the email address linked to your GitHub account; the `main` ruleset asks for an
+  extra approval when it cannot attribute a commit to an account.
+
 ## Platform and requirements
 
 - Linux only. Scheduling uses user `systemd`, and the database restore guard reads `/proc`; macOS
