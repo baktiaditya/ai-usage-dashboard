@@ -7,7 +7,8 @@
   `realpathSync.native` and compares case-insensitively on Darwin, so a typed `~/documents` no
   longer slips past `~/Documents` on APFS (new unit coverage plus a Darwin-only integration
   test). The `--keep-fixture` checklist gains the brief's disable→logout/login→enable-again and
-  enable-twice items. `CONTRIBUTING.md` now documents macOS and the macOS CI job. The brief's
+  enable-twice items, and restores the positive check that an enabled agent is still loaded
+  after logout/login (kept after the re-review). `CONTRIBUTING.md` now documents macOS and the macOS CI job. The brief's
   Files Touched table lists the deadline CLI, the shared label and placeholder modules, and the
   sidecar `chmod` change the review flagged as unlisted. The duplicated control-character and
   placeholder-substitution logic is consolidated into `src/lib/paths.ts` and

@@ -265,32 +265,37 @@ Manual checks:
   launchctl print $DOMAIN/$COLLECTOR_LABEL
   launchctl print $DOMAIN/$WEB_LABEL
 
-  # 3. User action: put the Mac to sleep, wake it, and record when the first
+  # 3. User action: log out and back in. An enabled agent's plist is in
+  #    ~/Library/LaunchAgents, so both labels must still be loaded.
+  launchctl print $DOMAIN/$COLLECTOR_LABEL   # expected to succeed
+  launchctl print $DOMAIN/$WEB_LABEL         # expected to succeed
+
+  # 4. User action: put the Mac to sleep, wake it, and record when the first
   #    run after wake appears. launchd misses a firing that fell asleep; the
   #    next interval run is the first evidence.
   ls -l "$LOG_DIR"
   node -e 'const D=require("$WORKDIR/node_modules/better-sqlite3");const db=new D("$DATA_DIR/usage.db",{readonly:true});console.log(db.prepare("SELECT COUNT(*) AS runs FROM collector_runs").get());db.close()'
 
-  # 4. User action: check System Settings > General > Login Items (& Extensions)
+  # 5. User action: check System Settings > General > Login Items (& Extensions)
   #    > "Allow in the Background". Note the name shown ("Background Items
   #    Added" notification) and whether switching it off leaves the label
   #    unloaded; --status should say so.
   aud_install --status
 
-  # 5. Disable, then log out and back in; neither label may be loaded.
+  # 6. Disable, then log out and back in; neither label may be loaded.
   aud_install --disable --with-web
   #    ... after logging out and back in:
   launchctl print $DOMAIN/$COLLECTOR_LABEL   # expected to fail: not loaded
   launchctl print $DOMAIN/$WEB_LABEL         # expected to fail: not loaded
 
-  # 6. Install without enabling, then log out and back in; neither label may
+  # 7. Install without enabling, then log out and back in; neither label may
   #    be loaded either (the installer disabled them at install time).
   aud_install --install --with-web
   #    ... after logging out and back in:
   launchctl print $DOMAIN/$COLLECTOR_LABEL   # expected to fail: not loaded
   launchctl print $DOMAIN/$WEB_LABEL         # expected to fail: not loaded
 
-  # 7. Enable again; both labels load, and a second enable in a row leaves
+  # 8. Enable again; both labels load, and a second enable in a row leaves
   #    them loaded (the bootout race).
   aud_install --enable --with-web
   launchctl print $DOMAIN/$COLLECTOR_LABEL   # expected to succeed
@@ -299,7 +304,7 @@ Manual checks:
   launchctl print $DOMAIN/$COLLECTOR_LABEL   # expected to succeed
   launchctl print $DOMAIN/$WEB_LABEL         # expected to succeed
 
-  # 8. User action (optional): confirm a Codex reading with the default file
+  # 9. User action (optional): confirm a Codex reading with the default file
   #    credential store. Keyring storage is untested until exercised.
 
 Cleanup after the manual checks:
