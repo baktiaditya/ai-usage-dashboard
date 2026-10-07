@@ -20,7 +20,7 @@ import { chmodSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { safeErrorMessage } from '../src/lib/redact';
 import { renderUnit } from '../src/lib/systemd-unit';
-import { resolveUnitValues } from '../src/lib/unit-values';
+import { resolveUnitValues, unitInputsFromEnv } from '../src/lib/unit-values';
 
 const UNITS = [
   'ai-usage-dashboard-collector.service',
@@ -28,24 +28,13 @@ const UNITS = [
   'ai-usage-dashboard-web.service',
 ];
 
-function required(name: string): string {
-  const value = process.env[name];
-  if (!value) throw new Error(`${name} is not set; run scripts/install-systemd.sh instead`);
-  return value;
-}
-
 try {
   const outDir = process.argv[2];
   if (!outDir) throw new Error('usage: tsx scripts/render-systemd-units.ts <output-dir>');
 
-  const { envFile, config, values } = resolveUnitValues({
-    env: process.env,
-    workdir: required('AUD_UNIT_WORKDIR'),
-    path: required('AUD_UNIT_PATH'),
-    codexHome: required('AUD_UNIT_CODEXHOME'),
-    node: required('AUD_UNIT_NODE'),
-    tsx: required('AUD_UNIT_TSX'),
-  });
+  const { envFile, config, values } = resolveUnitValues(
+    unitInputsFromEnv(process.env, 'scripts/install-systemd.sh'),
+  );
 
   // Render both before writing either, so a refused value never leaves a
   // service and timer that disagree.

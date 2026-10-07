@@ -6,7 +6,6 @@ import { LAUNCHD_PLACEHOLDERS, launchdValue, renderPlist, xmlEscape } from '@/li
 import {
   assertNotProtected,
   defaultLogDir,
-  isProtectedLocation,
   parseRenderArgs,
   protectedRootFor,
   validateLabelPrefix,
@@ -149,14 +148,14 @@ describe('protected locations', () => {
       ['the log directory', join(dir, 'Documents', 'logs')],
     ];
     for (const [name, target] of cases) {
-      expect(isProtectedLocation(target, dir), target).toBe(true);
+      expect(protectedRootFor(target, dir), target).not.toBeNull();
       expect(() => assertNotProtected(name, target, dir), target).toThrow(/privacy protection/);
     }
   });
 
   it('allows paths outside the protected folders', () => {
     mkdirSync(join(dir, 'Workspace'), { recursive: true });
-    expect(isProtectedLocation(join(dir, 'Workspace', 'checkout'), dir)).toBe(false);
+    expect(protectedRootFor(join(dir, 'Workspace', 'checkout'), dir)).toBeNull();
     expect(() =>
       assertNotProtected('the checkout', join(dir, 'Workspace', 'checkout'), dir),
     ).not.toThrow();
@@ -167,7 +166,7 @@ describe('protected locations', () => {
     mkdirSync(join(dir, 'Workspace'), { recursive: true });
     symlinkSync(join(dir, 'Documents'), join(dir, 'Workspace', 'inward'));
     // The final component does not exist yet; the longest existing prefix resolves.
-    expect(isProtectedLocation(join(dir, 'Workspace', 'inward', 'data'), dir)).toBe(true);
+    expect(protectedRootFor(join(dir, 'Workspace', 'inward', 'data'), dir)).not.toBeNull();
     expect(() =>
       assertNotProtected('the data directory', join(dir, 'Workspace', 'inward', 'data'), dir),
     ).toThrow(/privacy protection/);
@@ -175,7 +174,7 @@ describe('protected locations', () => {
 
   it('does not refuse a folder whose name merely starts with a protected name', () => {
     mkdirSync(join(dir, 'Documents-archive'), { recursive: true });
-    expect(isProtectedLocation(join(dir, 'Documents-archive', 'data'), dir)).toBe(false);
+    expect(protectedRootFor(join(dir, 'Documents-archive', 'data'), dir)).toBeNull();
   });
 
   it('compares protected roots case-insensitively when asked, as APFS requires', () => {
@@ -183,8 +182,8 @@ describe('protected locations', () => {
     // paths, so only the flag decides; the native-casing resolution is covered
     // by the Darwin-only integration test.
     const lower = join(dir, 'documents', 'checkout');
-    expect(isProtectedLocation(lower, dir, false)).toBe(false);
-    expect(isProtectedLocation(lower, dir, true)).toBe(true);
+    expect(protectedRootFor(lower, dir, false)).toBeNull();
+    expect(protectedRootFor(lower, dir, true)).not.toBeNull();
     const match = protectedRootFor(lower, dir, true);
     expect(match?.display).toBe('~/Documents');
     expect(match?.root.endsWith('/Documents')).toBe(true);

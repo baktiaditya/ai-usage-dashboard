@@ -29,6 +29,27 @@ export interface ResolvedUnitValues {
   readonly config: AppConfig;
 }
 
+/**
+ * Read the interpreter paths an installer resolved from its `AUD_UNIT_*`
+ * exports. A missing value means the renderer was run by hand, so the error
+ * names the `installer` that sets them.
+ */
+export function unitInputsFromEnv(env: EnvLike, installer: string): UnitValueInputs {
+  const required = (name: string): string => {
+    const value = env[name];
+    if (!value) throw new Error(`${name} is not set; run ${installer} instead`);
+    return value;
+  };
+  return {
+    env,
+    workdir: required('AUD_UNIT_WORKDIR'),
+    path: required('AUD_UNIT_PATH'),
+    codexHome: required('AUD_UNIT_CODEXHOME'),
+    node: required('AUD_UNIT_NODE'),
+    tsx: required('AUD_UNIT_TSX'),
+  };
+}
+
 export function resolveUnitValues(inputs: UnitValueInputs): ResolvedUnitValues {
   const envFile = collectorEnvFilePath(inputs.env);
   const config = getConfig();

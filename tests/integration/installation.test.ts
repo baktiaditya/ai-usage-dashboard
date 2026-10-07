@@ -776,6 +776,25 @@ afterEach(async () => {
 // Tests
 // ---------------------------------------------------------------------------
 
+// The archive fixture runs on every platform, so the BSD tar spelling the
+// gated suites depend on is still exercised by the macOS verification job.
+describe('managed installer runtime archive fixture', () => {
+  it('creates an xz tarball that tar lists back with the runtime tree', () => {
+    const build = mkdtempSync(join(tmpdir(), 'aud-node-archive-'));
+    cleanups.push(build);
+    const tree = join(build, `node-v${NODE_VERSION}-linux-x64`);
+    mkdirSync(join(tree, 'bin'), { recursive: true });
+    writeFile(join(tree, 'bin', 'node'), nodeWrapper(process.execPath, NODE_VERSION), 0o755);
+    const archivePath = join(build, `node-v${NODE_VERSION}-linux-x64.tar.xz`);
+    createNodeArchive(build, archivePath);
+
+    const listing = execFileSync('tar', ['-tJf', archivePath], { encoding: 'utf8' })
+      .split('\n')
+      .map((entry) => entry.replace(/\/$/, ''));
+    expect(listing).toContain(`node-v${NODE_VERSION}-linux-x64/bin/node`);
+  });
+});
+
 describe.skipIf(!MANAGED_INSTALLER_RUNS_HERE)('managed installer bootstrap', () => {
   let archivePath: string;
   let manifestSha: string;

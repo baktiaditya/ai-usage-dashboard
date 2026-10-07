@@ -41,7 +41,7 @@ import type { LaunchdValues } from '../src/lib/launchd-plist';
 import { hasControlChar } from '../src/lib/paths';
 import { safeErrorMessage } from '../src/lib/redact';
 import { UnitValueError } from '../src/lib/unit-template';
-import { resolveUnitValues } from '../src/lib/unit-values';
+import { resolveUnitValues, unitInputsFromEnv } from '../src/lib/unit-values';
 
 /** The default log directory, resolved under the injected home directory. */
 export function defaultLogDir(home: string): string {
@@ -160,15 +160,6 @@ export function protectedRootFor(
   return null;
 }
 
-/** True when `target` physically equals or lives under one protected root. */
-export function isProtectedLocation(
-  target: string,
-  home: string,
-  caseInsensitive?: boolean,
-): boolean {
-  return protectedRootFor(target, home, caseInsensitive) !== null;
-}
-
 export function assertNotProtected(
   name: string,
   target: string,
@@ -182,12 +173,6 @@ export function assertNotProtected(
   );
 }
 
-function required(env: NodeJS.ProcessEnv, name: string): string {
-  const value = env[name];
-  if (!value) throw new Error(`${name} is not set; run scripts/install-launchd.sh instead`);
-  return value;
-}
-
 interface AgentSpec {
   readonly label: string;
   readonly file: string;
@@ -198,14 +183,9 @@ export function main(argv: readonly string[], env: NodeJS.ProcessEnv = process.e
     const home = env['HOME']?.trim() ? env['HOME'] : homedir();
     const args = parseRenderArgs(argv, home);
 
-    const { envFile, config, values } = resolveUnitValues({
-      env,
-      workdir: required(env, 'AUD_UNIT_WORKDIR'),
-      path: required(env, 'AUD_UNIT_PATH'),
-      codexHome: required(env, 'AUD_UNIT_CODEXHOME'),
-      node: required(env, 'AUD_UNIT_NODE'),
-      tsx: required(env, 'AUD_UNIT_TSX'),
-    });
+    const { envFile, config, values } = resolveUnitValues(
+      unitInputsFromEnv(env, 'scripts/install-launchd.sh'),
+    );
 
     for (const [name, target] of [
       ['the checkout', values.WORKDIR],
