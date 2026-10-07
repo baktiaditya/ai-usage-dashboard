@@ -1,5 +1,17 @@
 # Bundle Update Log
 
+## 2026-10-07
+
+- **Update**: the public contribution surface gains a pull request path for outside
+  contributors. [CONTRIBUTING](../CONTRIBUTING.md) adds an "Opening a pull request" section
+  covering the fork workflow, the first-time-contributor CI approval hold, and the ruleset's
+  extra approval for unattributed commits, and
+  [`.github/PULL_REQUEST_TEMPLATE.md`](../.github/PULL_REQUEST_TEMPLATE.md) prompts for a
+  summary, the verification run, and a checklist that keeps secrets and raw payloads out.
+  This extends the contributor surface added by the
+  [open-source release brief](backlog/archive/prepare-open-source-release.md). The repository
+  was already public with forking enabled, so no GitHub settings changed.
+
 ## 2026-10-04
 
 - **Update**: the published one-line command was run end to end from the `v0.2.0` tag,
