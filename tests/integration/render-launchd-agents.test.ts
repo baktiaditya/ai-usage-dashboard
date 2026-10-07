@@ -253,6 +253,17 @@ describe('render-launchd-agents refusals', () => {
     expect(existsSync(r.out)).toBe(false);
   });
 
+  it.skipIf(process.platform !== 'darwin')(
+    'refuses a protected folder spelled with different casing on a case-insensitive filesystem',
+    () => {
+      mkdirSync(join(dir, 'Documents'), { recursive: true });
+      const r = render([], { AUD_UNIT_WORKDIR: join(dir, 'documents', 'checkout') });
+      expect(r.status).toBe(2);
+      expect(r.stderr).toMatch(/privacy protection/);
+      expect(existsSync(r.out)).toBe(false);
+    },
+  );
+
   it.each([
     ['an invalid prefix', ['--label-prefix', 'bad/prefix']],
     ['an empty prefix', ['--label-prefix', '']],

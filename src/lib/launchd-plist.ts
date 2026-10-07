@@ -13,7 +13,8 @@
  * treatment so a bad `--label-prefix` or `--log-dir` fails before anything is
  * written.
  */
-import { UnitValueError } from './systemd-unit';
+import { hasControlChar } from './paths';
+import { UnitValueError, isRelativePath, renderTemplate } from './unit-template';
 
 export const LAUNCHD_PLACEHOLDERS = [
   'LABEL',
@@ -33,30 +34,6 @@ export const LAUNCHD_PLACEHOLDERS = [
 
 export type LaunchdPlaceholder = (typeof LAUNCHD_PLACEHOLDERS)[number];
 export type LaunchdValues = Readonly<Partial<Record<LaunchdPlaceholder, string>>>;
-
-/** Placeholders naming a file or directory; `PATH` is checked entry by entry. */
-const PATH_PLACEHOLDERS: ReadonlySet<string> = new Set([
-  'WORKDIR',
-  'NODE',
-  'TSX',
-  'CODEXHOME',
-  'DATADIR',
-  'ENVFILE',
-  'LOGDIR',
-]);
-
-function hasControlChar(raw: string): boolean {
-  for (const char of raw) {
-    const code = char.charCodeAt(0);
-    if (code < 0x20 || code === 0x7f) return true;
-  }
-  return false;
-}
-
-function isRelativePath(name: string, raw: string): boolean {
-  if (name === 'PATH') return raw.split(':').some((entry) => !entry.startsWith('/'));
-  return PATH_PLACEHOLDERS.has(name) && !raw.startsWith('/');
-}
 
 /** Escape a value for an XML text node; `&` first so escapes are not double-escaped. */
 export function xmlEscape(raw: string): string {
@@ -86,20 +63,11 @@ export function launchdValue(name: string, raw: string): string {
   return xmlEscape(raw);
 }
 
-function isPlaceholder(name: string): name is LaunchdPlaceholder {
-  return (LAUNCHD_PLACEHOLDERS as readonly string[]).includes(name);
-}
-
 /** Substitute every `__NAME__` placeholder in one literal pass. */
 export function renderPlist(template: string, values: LaunchdValues): string {
-  return template.replace(/__([A-Z]+)__/g, (match, name: string) => {
-    if (!isPlaceholder(name)) {
-      throw new UnitValueError(`unknown placeholder ${match} in launchd template`);
-    }
-    const raw = values[name];
-    if (raw === undefined) {
-      throw new UnitValueError(`placeholder ${match} has no value in launchd template`);
-    }
-    return launchdValue(name, raw);
+  return renderTemplate(template, values, {
+    placeholders: LAUNCHD_PLACEHOLDERS,
+    context: 'launchd',
+    escape: launchdValue,
   });
 }

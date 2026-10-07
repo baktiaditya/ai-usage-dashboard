@@ -249,11 +249,17 @@ if [ "$KEEP_FIXTURE" -eq 1 ]; then
 Fixture retained. The user-assisted session checklist follows; do not run the
 cleanup at the end until every check you intend to perform is done.
 
-Manual checks (exact commands for this fixture):
+Every installer step below carries the same isolation settings. Define it once:
 
-  # 1. Install and enable both agents (step 1 of the manual checklist).
-  AUD_DATA_DIR="$DATA_DIR" AUD_ENV_FILE="$ENV_FILE" AUD_PORT="$PORT" \\
-    bash scripts/install-launchd.sh --label-prefix "$PREFIX" --log-dir "$LOG_DIR" --install --enable --with-web
+  aud_install() {
+    AUD_DATA_DIR="$DATA_DIR" AUD_ENV_FILE="$ENV_FILE" AUD_PORT="$PORT" \\
+      bash scripts/install-launchd.sh --label-prefix "$PREFIX" --log-dir "$LOG_DIR" "\$@"
+  }
+
+Manual checks:
+
+  # 1. Install and enable both agents.
+  aud_install --install --enable --with-web
 
   # 2. Inspect the loaded jobs.
   launchctl print $DOMAIN/$COLLECTOR_LABEL
@@ -265,27 +271,36 @@ Manual checks (exact commands for this fixture):
   ls -l "$LOG_DIR"
   node -e 'const D=require("$WORKDIR/node_modules/better-sqlite3");const db=new D("$DATA_DIR/usage.db",{readonly:true});console.log(db.prepare("SELECT COUNT(*) AS runs FROM collector_runs").get());db.close()'
 
-  # 4. User action: log out and back in, then confirm both labels are loaded.
-  launchctl print $DOMAIN/$COLLECTOR_LABEL
-  launchctl print $DOMAIN/$WEB_LABEL
-
-  # 5. User action: check System Settings > General > Login Items (& Extensions)
+  # 4. User action: check System Settings > General > Login Items (& Extensions)
   #    > "Allow in the Background". Note the name shown ("Background Items
   #    Added" notification) and whether switching it off leaves the label
-  #    unloaded and --status saying so.
-  AUD_DATA_DIR="$DATA_DIR" AUD_ENV_FILE="$ENV_FILE" AUD_PORT="$PORT" \\
-    bash scripts/install-launchd.sh --label-prefix "$PREFIX" --log-dir "$LOG_DIR" --status
+  #    unloaded; --status should say so.
+  aud_install --status
 
-  # 6. User action (optional): confirm a Codex reading with the default file
-  #    credential store. Keyring storage is untested until exercised.
-
-  # 7. Check install-without-enable across a login cycle: logout, login, then
-  #    assert neither label is loaded (the installer disabled them at install).
-  AUD_DATA_DIR="$DATA_DIR" AUD_ENV_FILE="$ENV_FILE" AUD_PORT="$PORT" \\
-    bash scripts/install-launchd.sh --label-prefix "$PREFIX" --log-dir "$LOG_DIR" --install --with-web
-  #    ... then log out and in, then:
+  # 5. Disable, then log out and back in; neither label may be loaded.
+  aud_install --disable --with-web
+  #    ... after logging out and back in:
   launchctl print $DOMAIN/$COLLECTOR_LABEL   # expected to fail: not loaded
   launchctl print $DOMAIN/$WEB_LABEL         # expected to fail: not loaded
+
+  # 6. Install without enabling, then log out and back in; neither label may
+  #    be loaded either (the installer disabled them at install time).
+  aud_install --install --with-web
+  #    ... after logging out and back in:
+  launchctl print $DOMAIN/$COLLECTOR_LABEL   # expected to fail: not loaded
+  launchctl print $DOMAIN/$WEB_LABEL         # expected to fail: not loaded
+
+  # 7. Enable again; both labels load, and a second enable in a row leaves
+  #    them loaded (the bootout race).
+  aud_install --enable --with-web
+  launchctl print $DOMAIN/$COLLECTOR_LABEL   # expected to succeed
+  launchctl print $DOMAIN/$WEB_LABEL         # expected to succeed
+  aud_install --enable --with-web
+  launchctl print $DOMAIN/$COLLECTOR_LABEL   # expected to succeed
+  launchctl print $DOMAIN/$WEB_LABEL         # expected to succeed
+
+  # 8. User action (optional): confirm a Codex reading with the default file
+  #    credential store. Keyring storage is untested until exercised.
 
 Cleanup after the manual checks:
 

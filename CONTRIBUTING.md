@@ -27,8 +27,11 @@ Two first-time wrinkles are expected, not rejections:
 
 ## Platform and requirements
 
-- Linux only. Scheduling uses user `systemd`, and the database restore guard reads `/proc`; macOS
-  and Windows are not supported.
+- Linux and macOS. Linux is the managed platform: scheduling uses user `systemd`, and the
+  one-command installer provisions it. On macOS, manual installations get per-user `launchd`
+  LaunchAgents ([Setup §5](docs/operations/setup.md#5-scheduled-collection)); the managed
+  installer stays Linux-only, and sleep/wake, logout/login, and Login Items checks are still
+  user-assisted. Windows is not supported.
 - Node.js 24.15 or a later Node 24 release (`.nvmrc` names Node 24). Node 25 is not supported: it
   no longer bundles corepack.
 - pnpm, enabled through corepack. `package.json` pins the exact version and its sha512 hash, so
@@ -64,7 +67,8 @@ pnpm run format
 
 `pnpm run test:e2e` runs the Playwright browser smoke tests against a seeded production build in
 `.playwright/data`, never your real collection history. It is a local check; CI runs `pnpm run verify`
-plus the disposable-systemd `installation-systemd` rehearsal (`pnpm run test:installation:systemd`). `pnpm run test:live` is an opt-in live probe that skips any provider whose
+on Linux and macOS 15 ARM64, plus the disposable-systemd `installation-systemd` rehearsal
+(`pnpm run test:installation:systemd`). `pnpm run test:live` is an opt-in live probe that skips any provider whose
 key is not saved and talks to real endpoints, so use it deliberately. Never point either command at
 the production checkout or the production database.
 

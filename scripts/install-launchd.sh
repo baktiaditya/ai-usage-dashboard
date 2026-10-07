@@ -26,6 +26,7 @@ export LC_ALL=C
 WORKDIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 AGENT_DIR="$HOME/Library/LaunchAgents"
 GEN_DIR="$WORKDIR/launchd/generated"
+# Keep in step with src/lib/launchd-labels.ts; the shell cannot import TypeScript.
 DEFAULT_LABEL_PREFIX="io.github.baktiaditya.ai-usage-dashboard"
 
 LABEL_PREFIX=""

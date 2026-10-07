@@ -2,6 +2,20 @@
 
 ## 2026-10-07
 
+- **Update**: addressed the [code review on PR #44](https://github.com/baktiaditya/ai-usage-dashboard/pull/44#issuecomment-6041527438)
+  (verdict approve; nine non-blocking nits). The protected-location guard now resolves with
+  `realpathSync.native` and compares case-insensitively on Darwin, so a typed `~/documents` no
+  longer slips past `~/Documents` on APFS (new unit coverage plus a Darwin-only integration
+  test). The `--keep-fixture` checklist gains the brief's disable→logout/login→enable-again and
+  enable-twice items. `CONTRIBUTING.md` now documents macOS and the macOS CI job. The brief's
+  Files Touched table lists the deadline CLI, the shared label and placeholder modules, and the
+  sidecar `chmod` change the review flagged as unlisted. The duplicated control-character and
+  placeholder-substitution logic is consolidated into `src/lib/paths.ts` and
+  `src/lib/unit-template.ts`, production label names into `src/lib/launchd-labels.ts`, and the
+  launchd renderer no longer re-implements the protected-root predicate or repeats its
+  collection/web rendering. The managed-installer suites stay Linux-gated, as the owner accepted.
+  Validation: `pnpm run verify` passes (764 tests, 66 skipped) and the OKF bundle is valid.
+
 - **Update**: per-user launchd scheduling is implemented for macOS on `feat/macos-launchd`
   (delivered through [PR #44](https://github.com/baktiaditya/ai-usage-dashboard/pull/44)), following the
   [macOS scheduler brief](backlog/ready-for-agent/schedule-collection-with-launchd-on-macos.md).

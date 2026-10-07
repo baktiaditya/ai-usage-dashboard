@@ -21,21 +21,27 @@
  * denies launchd-started processes access to Desktop, Documents, Downloads,
  * and iCloud Drive even though Terminal can read them; a job whose working
  * directory sits there fails with `Operation not permitted` while every
- * manual check passes. Paths are compared physically, so a symlink into a
- * protected folder is refused too.
+ * manual check passes. Paths are compared physically and, on macOS,
+ * case-insensitively: APFS is case-insensitive, so a user's typed
+ * `~/documents` reaches the same protected folder as `~/Documents`.
  */
-import { chmodSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { basename, isAbsolute, join, sep } from 'node:path';
+import { isAbsolute, join, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { physicalPath } from '../src/lib/installation/install-paths';
+import {
+  DEFAULT_LABEL_PREFIX,
+  collectorLabel,
+  plistName,
+  webLabel,
+} from '../src/lib/launchd-labels';
 import { renderPlist } from '../src/lib/launchd-plist';
 import type { LaunchdValues } from '../src/lib/launchd-plist';
+import { hasControlChar } from '../src/lib/paths';
 import { safeErrorMessage } from '../src/lib/redact';
-import { UnitValueError } from '../src/lib/systemd-unit';
+import { UnitValueError } from '../src/lib/unit-template';
 import { resolveUnitValues } from '../src/lib/unit-values';
-
-export const DEFAULT_LABEL_PREFIX = 'io.github.baktiaditya.ai-usage-dashboard';
 
 /** The default log directory, resolved under the injected home directory. */
 export function defaultLogDir(home: string): string {
@@ -52,18 +58,20 @@ const PROTECTED_DIRNAMES = [
   join('Library', 'Mobile Documents'),
 ];
 
+/** APFS is case-insensitive, so the comparison must be too. */
+const CASE_INSENSITIVE_FS = process.platform === 'darwin';
+
 export interface RenderArgs {
   readonly outDir: string;
   readonly labelPrefix: string;
   readonly logDir: string;
 }
 
-function hasControlChar(raw: string): boolean {
-  for (const char of raw) {
-    const code = char.charCodeAt(0);
-    if (code < 0x20 || code === 0x7f) return true;
-  }
-  return false;
+export interface ProtectedMatch {
+  /** The physical protected root the target lives under. */
+  readonly root: string;
+  /** The root as a person should read it: `~/Documents`. */
+  readonly display: string;
 }
 
 export function validateLabelPrefix(raw: string): void {
@@ -124,34 +132,53 @@ export function parseRenderArgs(argv: readonly string[], home: string): RenderAr
   return { outDir, labelPrefix, logDir: log };
 }
 
-/** The protected roots under `home`, physical so a symlinked home is handled too. */
-export function protectedRoots(home: string): string[] {
-  const base = physicalPath(home);
-  return PROTECTED_DIRNAMES.map((name) => join(base, name));
+/** `realpathSync.native` reports on-disk casing, which `realpathSync` does not. */
+function canonical(path: string): string {
+  return physicalPath(path, realpathSync.native);
+}
+
+/**
+ * The protected root `target` resolves under after following symlinks, or
+ * `null`. `home` is resolved the same way, so a symlinked home still works.
+ */
+export function protectedRootFor(
+  target: string,
+  home: string,
+  caseInsensitive: boolean = CASE_INSENSITIVE_FS,
+): ProtectedMatch | null {
+  const resolved = canonical(target);
+  const base = canonical(home);
+  const normalise = (value: string): string => (caseInsensitive ? value.toLowerCase() : value);
+  const candidate = normalise(resolved);
+  for (const name of PROTECTED_DIRNAMES) {
+    const root = join(base, name);
+    const rootNormalised = normalise(root);
+    if (candidate === rootNormalised || candidate.startsWith(`${rootNormalised}${sep}`)) {
+      return { root, display: `~${root.slice(base.length)}` };
+    }
+  }
+  return null;
 }
 
 /** True when `target` physically equals or lives under one protected root. */
-export function isProtectedLocation(target: string, home: string): boolean {
-  const resolved = physicalPath(target);
-  return protectedRoots(home).some(
-    (root) => resolved === root || resolved.startsWith(root.endsWith(sep) ? root : `${root}${sep}`),
-  );
+export function isProtectedLocation(
+  target: string,
+  home: string,
+  caseInsensitive?: boolean,
+): boolean {
+  return protectedRootFor(target, home, caseInsensitive) !== null;
 }
 
-function displayProtected(target: string, home: string): string {
-  const root = protectedRoots(home).find(
-    (candidate) =>
-      physicalPath(target) === candidate || physicalPath(target).startsWith(`${candidate}${sep}`),
-  );
-  const base = physicalPath(home);
-  if (root === undefined) return target;
-  return `~${root.slice(base.length)}`;
-}
-
-export function assertNotProtected(name: string, target: string, home: string): void {
-  if (!isProtectedLocation(target, home)) return;
+export function assertNotProtected(
+  name: string,
+  target: string,
+  home: string,
+  caseInsensitive?: boolean,
+): void {
+  const match = protectedRootFor(target, home, caseInsensitive);
+  if (match === null) return;
   throw new UnitValueError(
-    `${name} resolves under ${displayProtected(target, home)}, which macOS privacy protection denies to launchd-started processes. Move the checkout, data directory, environment file, CODEX_HOME or log directory somewhere else, for example under ~/Workspace. Do not grant Full Disk Access to node: it would cover every script that binary runs`,
+    `${name} resolves under ${match.display}, which macOS privacy protection denies to launchd-started processes. Move the checkout, data directory, environment file, CODEX_HOME or log directory somewhere else, for example under ~/Workspace. Do not grant Full Disk Access to node: it would cover every script that binary runs`,
   );
 }
 
@@ -161,6 +188,11 @@ function required(env: NodeJS.ProcessEnv, name: string): string {
   return value;
 }
 
+interface AgentSpec {
+  readonly label: string;
+  readonly file: string;
+  readonly template: string;
+}
 export function main(argv: readonly string[], env: NodeJS.ProcessEnv = process.env): number {
   try {
     const home = env['HOME']?.trim() ? env['HOME'] : homedir();
@@ -185,10 +217,20 @@ export function main(argv: readonly string[], env: NodeJS.ProcessEnv = process.e
       assertNotProtected(name, target, home);
     }
 
-    const collectorLabel = `${args.labelPrefix}.collector`;
-    const webLabel = `${args.labelPrefix}.web`;
-    const collectorFile = `${collectorLabel}.plist`;
-    const webFile = `${webLabel}.plist`;
+    const collector = collectorLabel(args.labelPrefix);
+    const web = webLabel(args.labelPrefix);
+    const agents: AgentSpec[] = [
+      {
+        label: collector,
+        file: plistName(collector),
+        template: `${DEFAULT_LABEL_PREFIX}.collector.plist.template`,
+      },
+      {
+        label: web,
+        file: plistName(web),
+        template: `${DEFAULT_LABEL_PREFIX}.web.plist.template`,
+      },
+    ];
     const common: LaunchdValues = {
       ...values,
       STARTINTERVAL: String(config.collectIntervalMinutes * 60),
@@ -198,25 +240,13 @@ export function main(argv: readonly string[], env: NodeJS.ProcessEnv = process.e
     // Render both before writing either, so a refused value never leaves a
     // collector and web plist that disagree.
     const launchdDir = join(values.WORKDIR, 'launchd');
-    const rendered = [
-      {
-        dest: join(args.outDir, collectorFile),
-        text: renderPlist(
-          readFileSync(
-            join(launchdDir, `${DEFAULT_LABEL_PREFIX}.collector.plist.template`),
-            'utf8',
-          ),
-          { ...common, LABEL: collectorLabel },
-        ),
-      },
-      {
-        dest: join(args.outDir, webFile),
-        text: renderPlist(
-          readFileSync(join(launchdDir, `${DEFAULT_LABEL_PREFIX}.web.plist.template`), 'utf8'),
-          { ...common, LABEL: webLabel },
-        ),
-      },
-    ];
+    const rendered = agents.map((agent) => ({
+      dest: join(args.outDir, agent.file),
+      text: renderPlist(readFileSync(join(launchdDir, agent.template), 'utf8'), {
+        ...common,
+        LABEL: agent.label,
+      }),
+    }));
 
     mkdirSync(args.outDir, { recursive: true, mode: 0o700 });
     for (const { dest, text } of rendered) {
@@ -231,10 +261,10 @@ export function main(argv: readonly string[], env: NodeJS.ProcessEnv = process.e
         config.collectIntervalMinutes,
         config.host,
         config.port,
-        collectorLabel,
-        basename(collectorFile),
-        webLabel,
-        basename(webFile),
+        collector,
+        plistName(collector),
+        web,
+        plistName(web),
       ].join('\n') + '\n',
     );
     return 0;

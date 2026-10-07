@@ -8,6 +8,7 @@ import {
   defaultLogDir,
   isProtectedLocation,
   parseRenderArgs,
+  protectedRootFor,
   validateLabelPrefix,
 } from '../../scripts/render-launchd-agents';
 
@@ -175,6 +176,18 @@ describe('protected locations', () => {
   it('does not refuse a folder whose name merely starts with a protected name', () => {
     mkdirSync(join(dir, 'Documents-archive'), { recursive: true });
     expect(isProtectedLocation(join(dir, 'Documents-archive', 'data'), dir)).toBe(false);
+  });
+
+  it('compares protected roots case-insensitively when asked, as APFS requires', () => {
+    // Without an existing Documents folder the two spellings stay distinct
+    // paths, so only the flag decides; the native-casing resolution is covered
+    // by the Darwin-only integration test.
+    const lower = join(dir, 'documents', 'checkout');
+    expect(isProtectedLocation(lower, dir, false)).toBe(false);
+    expect(isProtectedLocation(lower, dir, true)).toBe(true);
+    const match = protectedRootFor(lower, dir, true);
+    expect(match?.display).toBe('~/Documents');
+    expect(match?.root.endsWith('/Documents')).toBe(true);
   });
 
   it('builds the default log directory under an injected home', () => {

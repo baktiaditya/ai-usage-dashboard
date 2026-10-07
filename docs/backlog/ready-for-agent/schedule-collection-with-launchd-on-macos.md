@@ -301,12 +301,17 @@ Expected implementation surfaces.
 | ----------------------------------------------------- | --------------------------------------------------------- |
 | `launchd/*.plist.template`                            | New: collector and web LaunchAgents                       |
 | `src/lib/launchd-plist.ts`                            | New: plist renderer with XML escaping and refusals        |
+| `src/lib/launchd-labels.ts`                           | New: one source for the production label names            |
+| `src/lib/unit-template.ts`                            | New: placeholder substitution shared by both renderers    |
 | `src/lib/systemd-unit.ts` or a new shared module      | `resolveUnitValues()` shared by both renderers            |
 | `scripts/render-launchd-agents.ts`                    | New: label-prefix/log-directory validation and rendering  |
 | `scripts/render-systemd-units.ts`                     | Uses the shared value resolution                          |
 | `scripts/install-launchd.sh`                          | New: all lifecycle actions use the selected label prefix  |
 | `scripts/test-launchd.sh`                             | New: isolated real-Mac harness invoking the installer     |
 | `scripts/collect.ts`                                  | Whole-run deadline                                        |
+| `src/lib/collector/cli.ts`                            | New: collector CLI carrying the whole-run deadline        |
+| `src/lib/paths.ts`                                    | Shared control-character check                            |
+| `src/lib/db/client.ts`                                | Sidecar chmod tolerant of a vanished file (macOS race)    |
 | `src/lib/db/backup.ts`                                | macOS stop hint names the launchd labels                  |
 | `package.json`                                        | `launchd:install` script                                  |
 | `.gitignore`                                          | `launchd/generated/`, as for `systemd/generated/`         |
@@ -317,7 +322,7 @@ Expected implementation surfaces.
 | `tests/fixtures/launchctl-stub.sh`                    | New: recording launchctl stub with controllable states    |
 | `tests/integration/installation.test.ts`              | Portable archive fixture setup for Darwin verification    |
 | `tests/unit/installation.test.ts`                     | Canonical expected physical path on macOS                 |
-| `tests/integration/codex-process.test.ts`             | Portable executable for the non-zero-exit fixture         |
+| `tests/integration/codex-process.test.ts`             | Portable non-zero-exit fixture and process count          |
 | `docs/operations/setup.md`                            | §5 macOS subsection; restore commands                     |
 | `docs/plan/ai-usage-dashboard-implementation-plan.md` | Accepted scope; implementation status at delivery         |
 | `README.md`                                           | Platform note                                             |
