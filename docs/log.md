@@ -3,7 +3,7 @@
 ## 2026-10-07
 
 - **Update**: per-user launchd scheduling is implemented for macOS on `feat/macos-launchd`
-  (uncommitted at the time of this entry), following the
+  (delivered through [PR #44](https://github.com/baktiaditya/ai-usage-dashboard/pull/44)), following the
   [macOS scheduler brief](backlog/ready-for-agent/schedule-collection-with-launchd-on-macos.md).
   `launchd/io.github.baktiaditya.ai-usage-dashboard.{collector,web}.plist.template` and
   `src/lib/launchd-plist.ts` render both LaunchAgents with XML escaping;
@@ -33,8 +33,9 @@
     "Background Items Added" notification and its switched-off behavior, keyring credential
     storage, and any live Codex reading under the agents. The managed-installer integration
     suite (66 tests) is reported skipped on Darwin because `scripts/install.sh` refuses
-    non-Linux by product contract; Linux CI and the remote macOS job have not been run from
-    this host.
+    non-Linux by product contract. Remote CI is green on the delivery commit:
+    `pnpm run verify` (Linux), `pnpm run verify (macOS 15 ARM64)`, and the disposable-systemd
+    installation rehearsal all passed.
   - **Deviation:** the brief's "do not skip these tests" assumed that suite could run on macOS
     once the fixture portability was fixed. It cannot: the bootstrap preflight refuses any
     non-Linux kernel and requires `flock`, so the suite is gated to Linux rather than faking a
