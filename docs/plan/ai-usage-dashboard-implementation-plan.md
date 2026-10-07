@@ -151,8 +151,8 @@ Added 2026-09-30 (see the [log](../log.md)), delivered from the now archived bri
 ### 3.3 Collector and storage
 
 - Provide a one-shot command, e.g. `pnpm run collect`, as the single orchestration path for scheduled and manual collection.
-- Run that command every 5 minutes via a user-level `systemd` service + timer. Do not rely on in-process Next.js intervals as the primary scheduler.
-- Optionally serve the dashboard itself at boot as a user-level web unit, installed with `--with-web`. See the 2026-09-14 decision in the [log](../log.md).
+- Run that command every 5 minutes by default via a user-level `systemd` service + timer on Linux, or a per-user launchd LaunchAgent on macOS. Do not rely on in-process Next.js intervals as the primary scheduler. The launchd scope was accepted on 2026-10-07; implementation and lifecycle verification are pending in the [macOS scheduler brief](../backlog/ready-for-agent/schedule-collection-with-launchd-on-macos.md).
+- Optionally serve the dashboard itself with `--with-web`: a user-level web unit at boot on Linux, or a LaunchAgent at login on macOS. macOS agents run only during the user's login session; collection while logged out is outside scope. See the 2026-09-14 and 2026-10-07 decisions in the [log](../log.md).
 - Pull Codex, DeepSeek, and OpenRouter in parallel with independent timeouts; ingest the Claude
   spool in the same run. When the optional Claude quota probe of §3.1 is configured, the spool is
   read first; a fresh spool reading answers the run and no probe is sent. Otherwise the probe joins
@@ -360,6 +360,8 @@ Attempt status and snapshot freshness are separate concepts and are not stored a
 - The web server binds to `127.0.0.1`. Refresh endpoints accept `POST`, verify same-origin/CSRF, enforce a local rate limit, and never trust `Host`/`X-Forwarded-For` as the sole control.
 - Database, spool, environment, log, and sensitive config files live outside public assets, go into `.gitignore` when inside the tree, and use minimal permissions.
 - Systemd units use an absolute `WorkingDirectory`, a bounded restart policy, timeouts, and umask `0077`. When catch-up after reboot is desired, a monotonic timer gets it from `OnBootSec=`, which elapses immediately when already past at activation. `Persistent=` affects only `OnCalendar=` timers.
+- macOS LaunchAgents run as the logged-in user without the systemd filesystem or syscall sandbox. This weaker posture is accepted for the loopback-only dashboard (2026-10-07). Use absolute runtime paths and an explicit `PATH`, umask `0077`, owner-only plists/logs, and a 120-second collector deadline. Refuse paths resolving under Desktop, Documents, Downloads, or iCloud Drive. Do not promise catch-up after sleep or a bounded web restart count. Re-run the installer after relocating or replacing the Node/Codex runtime. The managed installer and production-checkout runbook remain Linux/systemd-only.
+- Add macOS 15 ARM64 CI running `pnpm run verify` alongside Linux CI. Real launchd lifecycle proof belongs to the Mac verification checklist, with isolated data, port, logs, and labels. Human sleep/wake, logout/login, and Login Items checks occur after implementation; record unperformed checks explicitly and qualify macOS support claims by the evidence actually obtained.
 - If accessed from a phone later, add authentication, TLS, origin policy, and a private network before opening a non-loopback listener.
 
 ## 6. Implementation milestones

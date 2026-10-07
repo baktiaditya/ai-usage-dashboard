@@ -2,7 +2,7 @@
 
 ## Status
 
-Ready for human
+Ready for agent
 
 The status above must match the directory that contains this brief. Move the file with
 `git mv` when its readiness changes.
@@ -25,7 +25,8 @@ loopback dashboard running. They have the same data directory, environment file,
 A macOS-support assessment on 2026-10-03, against `c7b6c05`, found the application portable apart
 from two couplings. The restore guard's `/proc` dependency is handled by
 [support-database-restore-on-macos](../archive/support-database-restore-on-macos.md). This
-brief covers the other coupling, the scheduler. It is the larger of the two and needs user decisions.
+brief covers the other coupling, the scheduler. The user accepted its scope and verification plan
+on 2026-10-07.
 
 What exists today:
 
@@ -37,15 +38,17 @@ What exists today:
 - `scripts/install-systemd.sh`: resolves absolute `node`, `tsx`, and `codex` paths into a baked
   `PATH`, then drives `systemctl --user` and `journalctl --user`.
 
-The [plan](../../plan/ai-usage-dashboard-implementation-plan.md) fixes the scheduler as user
-systemd. §3.3 says "Run that command every 5 minutes via a user-level `systemd` service + timer",
-and §5 sets the unit hardening rules. The archived
+The [plan](../../plan/ai-usage-dashboard-implementation-plan.md) §3.3 and §5 now allow user systemd
+on Linux and per-user launchd on macOS, following the
+[2026-10-07 decision](../../log.md#2026-10-07). The archived
 [prepare-open-source-release](../archive/prepare-open-source-release.md) brief listed "macOS,
 Windows, or any scheduler other than user systemd" as out of scope for that release. Adding launchd
-is therefore a scope change. It must land in the plan through a `docs/log.md` decision before this
-brief can move to `ready-for-agent/`.
+is an accepted scope change for manual macOS installation. The managed installer and
+production-checkout runbook remain Linux/systemd-only. Implementation and real-Mac lifecycle
+verification are still pending.
 
-Everything else already runs on macOS without change:
+The assessment identified these components as portable; this is not evidence of a completed
+end-to-end Mac run:
 
 - Next.js and SQLite, with `better-sqlite3` prebuilds for darwin arm64 and x64.
 - Every HTTP adapter, using keys stored in the database.
@@ -69,12 +72,40 @@ Sources checked on 2026-10-03 for the launchd details below:
 
 ## Dependencies and Gates
 
-1. **Scope decision (user).** Amend plan §3.3 and §5 so the scheduler reads "user systemd on Linux,
-   a per-user launchd LaunchAgent on macOS", and record a `Decision` in `docs/log.md`.
-2. **Accepted security posture (user).** See Open Questions.
-3. **Verification on a real Mac (user).** `launchctl` behavior cannot be proven on Linux. Someone
-   with a Mac must run the installer end to end, or the delivery must ship with that verification
-   explicitly marked as unperformed. See Open Questions.
+1. **Scope resolved.** Plan §3.3 and §5 and the 2026-10-07 log decision authorize per-user launchd
+   for macOS alongside unchanged Linux systemd behavior. Keep the default five-minute interval,
+   a 120-second collector deadline, and an optional web agent.
+2. **Security posture accepted.** Run as the user without systemd's filesystem/syscall sandbox.
+   Retain loopback binding, private file modes, credential handling, and the protected-location
+   refusals. Do not introduce `sandbox-exec` or a root LaunchDaemon.
+3. **Verification ownership resolved.** The implementation agent performs technical lifecycle
+   checks on the available Mac; the user assists with sleep/wake, logout/login, and Login Items
+   after implementation. Use separate test labels, data, logs, and a free loopback port. These are
+   delivery verification steps, not prerequisites for starting implementation. Mark every
+   unperformed step explicitly; partial evidence cannot justify an unqualified macOS support claim.
+4. **CI and labels resolved.** Add `macos-15` ARM64 CI running `pnpm run verify` alongside Linux.
+   Use `io.github.baktiaditya.ai-usage-dashboard.collector` and
+   `io.github.baktiaditya.ai-usage-dashboard.web` as production labels.
+
+## Target Machine and Verification Isolation
+
+Read-only probes on 2026-10-07 found a MacBook Pro with Apple M1 Pro (10 CPU cores), 32 GB RAM,
+macOS 15.7.3 ARM64, Node 24.16.0, pnpm 12.4.2, and available `launchctl`/`plutil`. The two production
+labels were not loaded. Node and Codex resolve under `~/.nvm/versions/node/v24.16.0/bin/`.
+This is a dated test-host observation, not a hardcoded runtime path or a claim of scheduler proof.
+
+- Resolve the active absolute Node/tsx/Codex paths at installation and bake an explicit `PATH`.
+  LaunchAgents must not depend on `.zshrc`, nvm shell initialization, or the pnpm shell plugin.
+  Document reinstalling after moving/removing the baked runtime. Merely selecting another nvm
+  version does not rewrite an installed agent's paths.
+- Give the renderer injectable label values, with the production labels above as defaults, so
+  technical lifecycle tests can render disposable labels ending in `.test.<run-id>` without
+  installing or disabling production labels. Validate labels and use the same test labels for all
+  lifecycle operations; an internal test harness may drive `launchctl` directly on these plists.
+- Put test data, environment files, and logs in an isolated, non-protected temporary directory and
+  select a free loopback port outside the production/development defaults. Restore checks use only
+  that disposable database. Clean up only test agents and their owned files after verification;
+  preserve an isolated fixture across login cycles until the user's manual checks finish.
 
 ## Scope
 
@@ -86,10 +117,12 @@ Sources checked on 2026-10-03 for the launchd details below:
 - A whole-run deadline in the collector, because launchd has no `TimeoutStartSec`.
 - The macOS stop hint in the restore refusal, naming the launchd labels.
 - Setup, README, plan, and log updates.
+- macOS 15 ARM64 verification CI alongside existing Linux checks.
 
 ### Out of scope
 
 - Windows, or any other scheduler (cron, `pm2`).
+- Extending the managed Linux installer or production-checkout runbook to macOS.
 - Moving default data or config paths to `~/Library/Application Support`.
 - Running collection while the user is logged out. LaunchAgents in the `gui/<uid>` domain run only
   during a login session. A LaunchDaemon would need root and a different trust model.
@@ -97,11 +130,12 @@ Sources checked on 2026-10-03 for the launchd details below:
 
 ## Approach
 
-Provisional until the gates close.
+Accepted approach; implement only this brief's scope.
 
 1. **Templates.** Add `launchd/<label>.collector.plist.template` and
-   `launchd/<label>.web.plist.template`, with proposed labels
-   `io.github.baktiaditya.ai-usage-dashboard.collector` and `….web`. They reuse the systemd
+   `launchd/<label>.web.plist.template`, with default labels
+   `io.github.baktiaditya.ai-usage-dashboard.collector` and
+   `io.github.baktiaditya.ai-usage-dashboard.web`. They reuse the systemd
    placeholder names (`__WORKDIR__`, `__NODE__`, `__TSX__`, `__PATH__`, `__CODEXHOME__`,
    `__ENVFILE__`, `__DATADIR__`, `__INTERVAL__`, `__HOST__`, `__PORT__`), plus a new
    `__LOGDIR__`.
@@ -204,14 +238,30 @@ Provisional until the gates close.
      or `auto` the token lives in the login Keychain. The real-Mac run must confirm an agent in
      `gui/<uid>` can read it, and Setup marks keyring storage untested until then.
    - README's platform note names both schedulers.
-   - Plan §3.3 and §5, per gate 1.
+   - Preserve the accepted scheduler scope in plan §3.3 and §5; update implementation status only
+     when delivered and verification claims only when supported by evidence.
    - The `docs/log.md` decision and delivery entries.
-   - [production-checkout](../../operations/production-checkout.md) stays systemd-only unless the
-     user decides otherwise.
+   - [production-checkout](../../operations/production-checkout.md) stays systemd-only.
+7. **CI.** Extend `.github/workflows/ci.yml` with a `macos-15` ARM64 job using the same pinned Node
+   and Corepack/pnpm setup, frozen-lockfile installation, and `pnpm run verify` gate as Linux.
+   Keep the disposable-systemd rehearsal Linux-only. CI proves Darwin code/test behavior, not GUI
+   login-session launchd lifecycle behavior.
+   - The 2026-10-07 Mac baseline passed format, lint, and typecheck, but tests reported 39 passing
+     files and 3 failing files (696 passing tests, 2 failing tests, and 66 skipped after two suite
+     setup failures). The source and test files were unchanged by the promotion. Resolve these
+     existing fixture portability assumptions as part of enabling the Darwin verification gate:
+     `tests/integration/installation.test.ts` invokes GNU `tar -I 'xz -T0 -0'`, which BSD tar cannot
+     run; `tests/unit/installation.test.ts` compares a physical path against an uncanonicalized
+     `/var` path, which macOS resolves through `/private/var`; and
+     `tests/integration/codex-process.test.ts` uses `/bin/false`, absent on this Mac.
+   - Keep the same assertions and Linux coverage. Use portable archive fixture creation, a
+     canonical expected path for the symlink test, and a real available child executable that
+     deliberately exits non-zero. Do not skip these tests or change managed-installer product
+     behavior just to obtain a green Mac job.
 
 ## Files Touched
 
-Provisional.
+Expected implementation surfaces.
 
 | Path                                                  | Change                                                    |
 | ----------------------------------------------------- | --------------------------------------------------------- |
@@ -225,10 +275,14 @@ Provisional.
 | `src/lib/db/backup.ts`                                | macOS stop hint names the launchd labels                  |
 | `package.json`                                        | `launchd:install` script                                  |
 | `.gitignore`                                          | `launchd/generated/`, as for `systemd/generated/`         |
+| `.github/workflows/ci.yml`                            | macOS 15 ARM64 verification job alongside Linux           |
 | `tests/unit/launchd-plist.test.ts`                    | New: escaping, refusals, placeholder coverage             |
 | `tests/integration/render-launchd-agents.test.ts`     | New: rendered files parse as plist XML with expected keys |
+| `tests/integration/installation.test.ts`              | Portable archive fixture setup for Darwin verification    |
+| `tests/unit/installation.test.ts`                     | Canonical expected physical path on macOS                 |
+| `tests/integration/codex-process.test.ts`             | Portable executable for the non-zero-exit fixture         |
 | `docs/operations/setup.md`                            | §5 macOS subsection; restore commands                     |
-| `docs/plan/ai-usage-dashboard-implementation-plan.md` | §3.3 and §5 scheduler wording (gate 1)                    |
+| `docs/plan/ai-usage-dashboard-implementation-plan.md` | Accepted scope; implementation status at delivery         |
 | `README.md`                                           | Platform note                                             |
 | `docs/log.md`                                         | Decision and delivery entries                             |
 
@@ -255,8 +309,14 @@ Provisional.
       checklist records the observed delay to the first run after wake. `--with-web` serves
       `127.0.0.1:<port>`. After `--disable` and a logout and login, neither agent is loaded. After
       `--install` without `--enable` and a logout and login, neither agent is loaded either.
-      `--enable` loads them again. If no real-Mac run happens, the delivery entry marks this
-      criterion unperformed, per Open Questions.
+      `--enable` loads them again. The agent owns the technical checks and the user assists with
+      session/UI checks. Record each result separately; if any step is unperformed, leave that
+      part of this criterion unfulfilled and qualify the delivery entry and README/Setup claims.
+- [ ] Test lifecycle operations use disposable labels, data, logs, and a free port; production
+      agents and data remain untouched. Default labels and installer operations are covered by
+      automated tests, and the isolated harness exercises the real launchd lifecycle.
+- [ ] The `macos-15` ARM64 `pnpm run verify` job passes alongside Linux verification; the systemd
+      rehearsal remains Linux-only.
 - [ ] `pnpm run verify` and the OKF validator pass.
 
 ## Testing
@@ -270,7 +330,11 @@ bash -n scripts/install-launchd.sh
 
 Then `pnpm run verify` and `python3 .agents/skills/okf-sync/scripts/validate_okf_bundle.py`.
 
-Real-Mac checklist (manual):
+Real-Mac checklist (after implementation): the agent performs technical steps with the isolated
+fixture described above. The user assists with sleep/wake, logout/login, and System Settings.
+This promotion does not authorize the agent to log the user out or put the Mac to sleep itself.
+Record the tested OS/architecture, sanitized outputs, and passed/failed/unperformed status for each
+step. Keep keyring verification explicitly unperformed if that credential mode is unavailable.
 
 - `plutil -lint` on both rendered plists;
 - `--install --enable --with-web`;
@@ -290,16 +354,3 @@ Real-Mac checklist (manual):
   record it, and decide on a fallback then rather than guessing now.
 
 ## Open Questions
-
-1. **Scope:** should plan §3.3 and §5 adopt launchd as the macOS scheduler? (Owner: user; closes
-   gate 1.)
-2. **Sandboxing:** do you accept that macOS agents run without the systemd hardening (no
-   `ProtectSystem`, `ProtectHome`, `ReadWritePaths`, or syscall filter), documented as a weaker
-   posture? The alternative is wrapping the job in the deprecated `sandbox-exec`, which is not
-   recommended. (Owner: user.)
-3. **Verification:** who runs the real-Mac checklist? If nobody can, should the work ship with that
-   criterion marked unperformed and macOS labelled "untested" in the README? (Owner: user.)
-4. **CI:** add a `macos-latest` job running `pnpm run verify`? It would prove the test suite and the
-   `lsof` restore path on darwin, but it cannot prove `launchctl` behavior. (Owner: user.)
-5. **Labels:** are `io.github.baktiaditya.ai-usage-dashboard.{collector,web}` acceptable? (Owner:
-   user; default to these if there is no preference.)
