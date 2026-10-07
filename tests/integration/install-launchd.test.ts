@@ -60,6 +60,9 @@ beforeEach(() => {
   mkdirSync(stubDir, { recursive: true });
   mkdirSync(stubBin, { recursive: true });
   symlinkSync(STUB, join(stubBin, 'launchctl'));
+  // A resolved codex keeps the installer's baked PATH deterministic and the
+  // render-only stderr empty on runners that have no Codex CLI installed.
+  writeFileSync(join(stubBin, 'codex'), '#!/bin/sh\nexit 1\n', { mode: 0o755 });
   generatedBefore = new Set(existsSync(GEN_DIR) ? readdirSync(GEN_DIR) : []);
 });
 
