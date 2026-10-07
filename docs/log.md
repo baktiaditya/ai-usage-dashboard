@@ -2,6 +2,17 @@
 
 ## 2026-10-07
 
+- **Update**: clarify installer verification in the
+  [macOS scheduler brief](backlog/ready-for-agent/schedule-collection-with-launchd-on-macos.md)
+  after [PR #42 review](https://github.com/baktiaditya/ai-usage-dashboard/pull/42#issuecomment-6038835162).
+  Specify `--label-prefix` and `--log-dir` propagation from installer to renderer, a `__LABEL__`
+  placeholder, and consistent label-derived plist filenames and lifecycle targets. Name the
+  installer integration tests, recording launchctl stub, and real-Mac harness in Approach, Files
+  Touched, and Testing. The live harness must invoke the actual installer for all lifecycle actions;
+  direct launchctl commands only inspect evidence. Machine/test observations now live only in this
+  log, linked from the brief; the root index retains its backlog-level navigation. These changes
+  clarify the accepted verification scope and do not claim implementation or native launchd proof.
+
 - **Decision**: accept per-user launchd LaunchAgents for manual macOS installations and promote
   [schedule-collection-with-launchd-on-macos](backlog/ready-for-agent/schedule-collection-with-launchd-on-macos.md)
   to `ready-for-agent/` ([#29](https://github.com/baktiaditya/ai-usage-dashboard/issues/29)).
@@ -22,7 +33,8 @@
   - **Machine discovery:** read-only probes on 2026-10-07 found a MacBook Pro with Apple M1 Pro,
     10 CPU cores, 32 GB RAM, macOS 15.7.3 ARM64, Node 24.16.0 and pnpm 12.4.2. `launchctl` and
     `plutil` are available, and the two default dashboard labels are not loaded. These observations
-    establish a test host, not completed scheduler verification.
+    establish a test host, not completed scheduler verification. Node and Codex resolve under
+    `~/.nvm/versions/node/v24.16.0/bin/`; this is a dated observation, not a fixed installer path.
   - **Validation:** the OKF validator and documentation formatting pass. `pnpm run verify` passes
     format, lint, and typecheck on this Mac, but tests fail in unchanged fixtures: GNU tar options
     under BSD tar, `/var` versus canonical `/private/var`, and absent `/bin/false`. The brief assigns
@@ -30,7 +42,7 @@
     3 failing files; 696 passing tests, 2 failing tests, and 66 skipped after two suite setup
     failures. No implementation or test source was changed during promotion.
   - **Tracker sync pending:** GitHub rejected updating #29's body and label because the active
-    account `baktiputra` lacks `AddLabelsToLabelable` permission. A subsequent read confirmed the
+    account lacks `AddLabelsToLabelable` permission. A subsequent read confirmed the
     remote issue still has its original body and `ready-for-human` label. Complete tracker sync
     with a repository-authorized account when publishing this local promotion.
 

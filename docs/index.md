@@ -35,4 +35,3 @@ provider is worth switching away from right now. This bundle follows
 - [Backlog](backlog/index.md) - Triaged work briefs. Working context, not source of
   truth — it never overrides the canonical documents above.
 - [Brief Template](backlog/template.md) - Skeleton for new backlog briefs.
-- [macOS Scheduler](backlog/ready-for-agent/schedule-collection-with-launchd-on-macos.md) - Accepted launchd implementation brief; lifecycle verification is pending.

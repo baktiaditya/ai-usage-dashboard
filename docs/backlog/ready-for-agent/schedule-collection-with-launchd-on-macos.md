@@ -89,19 +89,24 @@ Sources checked on 2026-10-03 for the launchd details below:
 
 ## Target Machine and Verification Isolation
 
-Read-only probes on 2026-10-07 found a MacBook Pro with Apple M1 Pro (10 CPU cores), 32 GB RAM,
-macOS 15.7.3 ARM64, Node 24.16.0, pnpm 12.4.2, and available `launchctl`/`plutil`. The two production
-labels were not loaded. Node and Codex resolve under `~/.nvm/versions/node/v24.16.0/bin/`.
-This is a dated test-host observation, not a hardcoded runtime path or a claim of scheduler proof.
+The dated test-host probe is recorded in the
+[2026-10-07 log entry](../../log.md#2026-10-07), under **Machine discovery**. Resolve the active
+runtime paths at implementation time; that observation does not establish scheduler proof.
 
 - Resolve the active absolute Node/tsx/Codex paths at installation and bake an explicit `PATH`.
   LaunchAgents must not depend on `.zshrc`, nvm shell initialization, or the pnpm shell plugin.
   Document reinstalling after moving/removing the baked runtime. Merely selecting another nvm
   version does not rewrite an installed agent's paths.
-- Give the renderer injectable label values, with the production labels above as defaults, so
-  technical lifecycle tests can render disposable labels ending in `.test.<run-id>` without
-  installing or disabling production labels. Validate labels and use the same test labels for all
-  lifecycle operations; an internal test harness may drive `launchctl` directly on these plists.
+- Expose `--label-prefix <prefix>` in both the installer and renderer. Default to
+  `io.github.baktiaditya.ai-usage-dashboard`; derive `<prefix>.collector` and `<prefix>.web` once,
+  and use them for plist labels, generated/installed filenames, and every lifecycle operation.
+  The live harness uses `io.github.baktiaditya.ai-usage-dashboard.test.<run-id>` and always invokes
+  the installer for installation, enable, status, and disable. Direct `launchctl print` calls may
+  inspect evidence but must not substitute for testing installer operations.
+- Expose `--log-dir <absolute-path>` in both the installer and renderer, retaining
+  `~/Library/Logs/ai-usage-dashboard` (resolved to an absolute path) as the default. The harness
+  passes its own log directory, `AUD_DATA_DIR`, `AUD_ENV_FILE`, and a free `AUD_PORT` on every
+  installer invocation; the same prefix and paths are retained through manual session checks.
 - Put test data, environment files, and logs in an isolated, non-protected temporary directory and
   select a free loopback port outside the production/development defaults. Restore checks use only
   that disposable database. Clean up only test agents and their owned files after verification;
@@ -114,6 +119,8 @@ This is a dated test-host observation, not a hardcoded runtime path or a claim o
 - LaunchAgent templates and a renderer for them, with plist-safe escaping.
 - A macOS installer with the same flags as `scripts/install-systemd.sh`: render only (default),
   `--install`, `--enable`, `--with-web`, `--status`, and `--disable [--with-web]`.
+- `--label-prefix` and `--log-dir` options shared by the macOS installer and renderer, installer
+  integration tests using a stubbed `launchctl`, and an isolated real-Mac installer harness.
 - A whole-run deadline in the collector, because launchd has no `TimeoutStartSec`.
 - The macOS stop hint in the restore refusal, naming the launchd labels.
 - Setup, README, plan, and log updates.
@@ -138,7 +145,8 @@ Accepted approach; implement only this brief's scope.
    `io.github.baktiaditya.ai-usage-dashboard.web`. They reuse the systemd
    placeholder names (`__WORKDIR__`, `__NODE__`, `__TSX__`, `__PATH__`, `__CODEXHOME__`,
    `__ENVFILE__`, `__DATADIR__`, `__INTERVAL__`, `__HOST__`, `__PORT__`), plus a new
-   `__LOGDIR__`.
+   `__LOGDIR__` and a per-template `__LABEL__`. The renderer fills `__LABEL__` with the derived
+   collector or web label; labels must not be hardcoded into either template.
    - Both templates set: `ProgramArguments` (node, tsx, script), `WorkingDirectory`, and
      `EnvironmentVariables` matching the systemd `Environment=` lines. They also set `Umask` to
      the integer `63`. `launchd.plist(5)` reads an integer `Umask` as decimal, because plists
@@ -173,8 +181,22 @@ Accepted approach; implement only this brief's scope.
 
    Share the value set with `scripts/render-systemd-units.ts`. Extract a common `resolveUnitValues()`
    rather than duplicating the `getConfig()` reads. Add `scripts/render-launchd-agents.ts`.
+   Accept `<output-dir> [--label-prefix <prefix>] [--log-dir <absolute-path>]`. Validate the prefix
+   against `^[A-Za-z0-9][A-Za-z0-9._-]*$`, rejecting an empty value, missing option argument,
+   control character, or path separator before writing anything. Apply the existing absolute-path,
+   control-character, and protected-location refusals to the selected log directory too. Render
+   `<prefix>.collector.plist` and `<prefix>.web.plist`, and report their labels and paths to the
+   installer so both layers use the same values.
 
 3. **Installer.** Add `scripts/install-launchd.sh`, kept compatible with macOS's bash 3.2.
+   - Parse `--label-prefix` and `--log-dir` before selecting any action, validate them with the
+     same contract as the renderer, and forward them on rendering. Retain the selected labels and
+     filenames for render, install, enable, status, kickstart, disable, polling, and cleanup; never
+     fall back to production labels when an override was supplied. Reject invalid or incomplete
+     options before creating files or invoking `launchctl`.
+   - Resolve the `launchctl` executable once from the invoking shell's `PATH` and use that absolute
+     command for installer operations. This lets the integration tests put a recording stub on
+     `PATH`; keep that lookup separate from the baked application `PATH`.
    - Resolve `node`, `tsx`, and `codex` exactly as `install-systemd.sh` does, with
      `/opt/homebrew/bin` in the baked `PATH` before `/usr/local/bin`.
    - Refuse, installing nothing, when the checkout, data directory, env file, `CODEX_HOME`, or log
@@ -219,7 +241,7 @@ Accepted approach; implement only this brief's scope.
    previous run is still alive, so one hung run would otherwise stop every later collection. Under
    systemd this is redundant with the unit timeout and harmless.
 5. **Restore hint.** On `darwin`, the `assertNotInUse()` refusal names the two launchd labels and
-   the `install-launchd.sh --disable` command.
+   the `install-launchd.sh --disable --with-web` command to stop both writers.
 6. **Docs.**
    - Setup gains a macOS subsection under §5, with the restore stop/start commands for macOS. It
      also names the differences from systemd: no sandboxing, no linger, logs in
@@ -246,18 +268,30 @@ Accepted approach; implement only this brief's scope.
    and Corepack/pnpm setup, frozen-lockfile installation, and `pnpm run verify` gate as Linux.
    Keep the disposable-systemd rehearsal Linux-only. CI proves Darwin code/test behavior, not GUI
    login-session launchd lifecycle behavior.
-   - The 2026-10-07 Mac baseline passed format, lint, and typecheck, but tests reported 39 passing
-     files and 3 failing files (696 passing tests, 2 failing tests, and 66 skipped after two suite
-     setup failures). The source and test files were unchanged by the promotion. Resolve these
-     existing fixture portability assumptions as part of enabling the Darwin verification gate:
-     `tests/integration/installation.test.ts` invokes GNU `tar -I 'xz -T0 -0'`, which BSD tar cannot
-     run; `tests/unit/installation.test.ts` compares a physical path against an uncanonicalized
-     `/var` path, which macOS resolves through `/private/var`; and
-     `tests/integration/codex-process.test.ts` uses `/bin/false`, absent on this Mac.
+   - The dated Mac test baseline and its fixture portability failures are recorded in the
+     [2026-10-07 log entry](../../log.md#2026-10-07), under **Validation**. Resolve those failures as
+     part of enabling the Darwin verification gate; the exact implementation surfaces are listed
+     below.
    - Keep the same assertions and Linux coverage. Use portable archive fixture creation, a
      canonical expected path for the symlink test, and a real available child executable that
      deliberately exits non-zero. Do not skip these tests or change managed-installer product
      behavior just to obtain a green Mac job.
+8. **Installer proof.** Add `tests/integration/install-launchd.test.ts` and
+   `tests/fixtures/launchctl-stub.sh`. Use a disposable home, log/data directories, and recording
+   stub to prove default/overridden label propagation through the real installer, render-only
+   behavior, `--install` without `--enable`, enable-before-bootstrap ordering, bounded bootout
+   polling/retries, status, kickstart, and disable. Assert that overridden runs issue no command
+   against production labels or write production-named plists. Simulate bootstrap failure and a
+   label that never unloads to prove bounded non-zero failure without an unsupervised fallback.
+   Mocked tests may run on Linux and macOS; they do not claim native launchd proof.
+   Add `scripts/test-launchd.sh`, compatible with Bash 3.2, as the macOS-only live harness. It
+   requires a production build for `--with-web`, creates a unique test prefix and private fixture,
+   and calls `scripts/install-launchd.sh` with the isolation options/environment for every action.
+   Exercise install-only, enable, repeated enable, status, web health, and disable against real
+   launchd. Use `launchctl print` only to inspect the resulting state. A cleanup trap disables only
+   the test labels through the installer and removes only harness-owned plists/generated files
+   and fixture data. `--keep-fixture` retains the fixture for user-assisted session checks and
+   prints exact installer/inspection/cleanup commands carrying the same isolation settings.
 
 ## Files Touched
 
@@ -268,9 +302,10 @@ Expected implementation surfaces.
 | `launchd/*.plist.template`                            | New: collector and web LaunchAgents                       |
 | `src/lib/launchd-plist.ts`                            | New: plist renderer with XML escaping and refusals        |
 | `src/lib/systemd-unit.ts` or a new shared module      | `resolveUnitValues()` shared by both renderers            |
-| `scripts/render-launchd-agents.ts`                    | New                                                       |
+| `scripts/render-launchd-agents.ts`                    | New: label-prefix/log-directory validation and rendering  |
 | `scripts/render-systemd-units.ts`                     | Uses the shared value resolution                          |
-| `scripts/install-launchd.sh`                          | New macOS installer                                       |
+| `scripts/install-launchd.sh`                          | New: all lifecycle actions use the selected label prefix  |
+| `scripts/test-launchd.sh`                             | New: isolated real-Mac harness invoking the installer     |
 | `scripts/collect.ts`                                  | Whole-run deadline                                        |
 | `src/lib/db/backup.ts`                                | macOS stop hint names the launchd labels                  |
 | `package.json`                                        | `launchd:install` script                                  |
@@ -278,6 +313,8 @@ Expected implementation surfaces.
 | `.github/workflows/ci.yml`                            | macOS 15 ARM64 verification job alongside Linux           |
 | `tests/unit/launchd-plist.test.ts`                    | New: escaping, refusals, placeholder coverage             |
 | `tests/integration/render-launchd-agents.test.ts`     | New: rendered files parse as plist XML with expected keys |
+| `tests/integration/install-launchd.test.ts`           | New: installer ordering, isolation, and failure behavior  |
+| `tests/fixtures/launchctl-stub.sh`                    | New: recording launchctl stub with controllable states    |
 | `tests/integration/installation.test.ts`              | Portable archive fixture setup for Darwin verification    |
 | `tests/unit/installation.test.ts`                     | Canonical expected physical path on macOS                 |
 | `tests/integration/codex-process.test.ts`             | Portable executable for the non-zero-exit fixture         |
@@ -307,14 +344,18 @@ Expected implementation surfaces.
 - [ ] On a real Mac: `--install --enable` loads the collector. A run appears in the dashboard
       within one interval. After sleep and wake, runs resume without a reinstall, and the
       checklist records the observed delay to the first run after wake. `--with-web` serves
-      `127.0.0.1:<port>`. After `--disable` and a logout and login, neither agent is loaded. After
-      `--install` without `--enable` and a logout and login, neither agent is loaded either.
-      `--enable` loads them again. The agent owns the technical checks and the user assists with
+      `127.0.0.1:<port>`. After `--disable --with-web` and a logout and login, neither agent is
+      loaded. After `--install --with-web` without `--enable` and a logout and login, neither
+      agent is loaded either. `--enable --with-web` loads them again. The agent owns the technical
+      checks and the user assists with
       session/UI checks. Record each result separately; if any step is unperformed, leave that
       part of this criterion unfulfilled and qualify the delivery entry and README/Setup claims.
 - [ ] Test lifecycle operations use disposable labels, data, logs, and a free port; production
       agents and data remain untouched. Default labels and installer operations are covered by
-      automated tests, and the isolated harness exercises the real launchd lifecycle.
+      automated tests, and the isolated harness exercises every installer lifecycle action on real
+      launchd with the same prefix. Rendered Label keys, plist filenames, and enable/bootstrap/
+      bootout/kickstart/disable/status targets agree. An invalid prefix or missing option argument
+      is refused without filesystem or launchctl side effects.
 - [ ] The `macos-15` ARM64 `pnpm run verify` job passes alongside Linux verification; the systemd
       rehearsal remains Linux-only.
 - [ ] `pnpm run verify` and the OKF validator pass.
@@ -325,27 +366,43 @@ Focused:
 
 ```bash
 pnpm exec vitest run tests/unit/launchd-plist.test.ts tests/integration/render-launchd-agents.test.ts
-bash -n scripts/install-launchd.sh
+pnpm exec vitest run tests/integration/install-launchd.test.ts
+bash -n scripts/install-launchd.sh scripts/test-launchd.sh tests/fixtures/launchctl-stub.sh
 ```
 
 Then `pnpm run verify` and `python3 .agents/skills/okf-sync/scripts/validate_okf_bundle.py`.
+
+Native installer lifecycle proof (macOS only, after implementation):
+
+```bash
+pnpm run build
+bash scripts/test-launchd.sh
+bash scripts/test-launchd.sh --keep-fixture
+```
+
+The first harness run performs technical checks and cleans up. The retained run prints commands
+for the manual session checklist below; complete it using that same prefix and fixture, then run
+the printed cleanup commands. Neither invocation installs or disables the production labels.
 
 Real-Mac checklist (after implementation): the agent performs technical steps with the isolated
 fixture described above. The user assists with sleep/wake, logout/login, and System Settings.
 This promotion does not authorize the agent to log the user out or put the Mac to sleep itself.
 Record the tested OS/architecture, sanitized outputs, and passed/failed/unperformed status for each
 step. Keep keyring verification explicitly unperformed if that credential mode is unavailable.
+Every installer invocation below includes the retained `--label-prefix` and `--log-dir`, plus its
+`AUD_DATA_DIR`, `AUD_ENV_FILE`, and `AUD_PORT`. Every `launchctl print` targets the derived test
+labels, and restore commands use only the fixture database. Do not run the checklist with defaults.
 
 - `plutil -lint` on both rendered plists;
 - `--install --enable --with-web`;
 - `launchctl print`;
 - one collection visible in the dashboard;
 - a sleep and wake cycle, recording when the first run after wake happens;
-- `pnpm run db:restore` refusing while the agents run and succeeding after `--disable`;
-- `--disable`, then logout and login, then `launchctl print` showing neither label loaded;
-- `--install` without `--enable`, then logout and login, then neither label loaded;
-- `--enable` loading both again;
-- `--enable` run twice in a row, leaving both labels loaded (the bootout race);
+- `pnpm run db:restore` refusing while the agents run and succeeding after `--disable --with-web`;
+- `--disable --with-web`, then logout and login, then `launchctl print` showing neither label loaded;
+- `--install --with-web` without `--enable`, then logout and login, then neither label loaded;
+- `--enable --with-web` loading both again;
+- `--enable --with-web` run twice in a row, leaving both labels loaded (the bootout race);
 - the "Background Items Added" notification and the name shown under Login Items, and that
   switching it off leaves the label unloaded and `--status` saying so;
 - a Codex reading with the default `file` credential store, and, if available, with `keyring`;
