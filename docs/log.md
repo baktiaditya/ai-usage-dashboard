@@ -2,6 +2,50 @@
 
 ## 2026-10-07
 
+- **Update**: clarify installer verification in the
+  [macOS scheduler brief](backlog/ready-for-agent/schedule-collection-with-launchd-on-macos.md)
+  after [PR #42 review](https://github.com/baktiaditya/ai-usage-dashboard/pull/42#issuecomment-6038835162).
+  Specify `--label-prefix` and `--log-dir` propagation from installer to renderer, a `__LABEL__`
+  placeholder, and consistent label-derived plist filenames and lifecycle targets. Name the
+  installer integration tests, recording launchctl stub, and real-Mac harness in Approach, Files
+  Touched, and Testing. The live harness must invoke the actual installer for all lifecycle actions;
+  direct launchctl commands only inspect evidence. Machine/test observations now live only in this
+  log, linked from the brief; the root index retains its backlog-level navigation. These changes
+  clarify the accepted verification scope and do not claim implementation or native launchd proof.
+
+- **Decision**: accept per-user launchd LaunchAgents for manual macOS installations and promote
+  [schedule-collection-with-launchd-on-macos](backlog/ready-for-agent/schedule-collection-with-launchd-on-macos.md)
+  to `ready-for-agent/` ([#29](https://github.com/baktiaditya/ai-usage-dashboard/issues/29)).
+  Plan §3.3 and §5 now allow user systemd on Linux and launchd during a macOS login session.
+  Keep the default five-minute interval, add a 120-second collector deadline, and make the web
+  agent opt-in with `--with-web`. Accept the absence of systemd sandbox hardening while retaining
+  user ownership, private file modes, loopback binding, and protected-location refusals.
+  Use labels `io.github.baktiaditya.ai-usage-dashboard.{collector,web}`, absolute Node/Codex
+  paths, and an explicit `PATH`; rerun installation after runtime paths change. Add a
+  `macos-15` ARM64 verification job alongside Linux CI. The managed installer and production
+  checkout remain Linux/systemd-only.
+  - **Verification plan:** the implementation agent runs the technical lifecycle checks on the
+    available Mac with separate database, port, logs, and test labels. The user assists with
+    sleep/wake, logout/login, and Login Items checks after implementation. These are delivery
+    verification steps, not unanswered promotion decisions. Unperformed checks remain explicit,
+    and README/Setup support claims must match the evidence; keyring access is untested until
+    exercised. No launchd implementation or lifecycle check is claimed by this promotion.
+  - **Machine discovery:** read-only probes on 2026-10-07 found a MacBook Pro with Apple M1 Pro,
+    10 CPU cores, 32 GB RAM, macOS 15.7.3 ARM64, Node 24.16.0 and pnpm 12.4.2. `launchctl` and
+    `plutil` are available, and the two default dashboard labels are not loaded. These observations
+    establish a test host, not completed scheduler verification. Node and Codex resolve under
+    `~/.nvm/versions/node/v24.16.0/bin/`; this is a dated observation, not a fixed installer path.
+  - **Validation:** the OKF validator and documentation formatting pass. `pnpm run verify` passes
+    format, lint, and typecheck on this Mac, but tests fail in unchanged fixtures: GNU tar options
+    under BSD tar, `/var` versus canonical `/private/var`, and absent `/bin/false`. The brief assigns
+    these fixture portability corrections to the accepted macOS CI work. Results: 39 passing and
+    3 failing files; 696 passing tests, 2 failing tests, and 66 skipped after two suite setup
+    failures. No implementation or test source was changed during promotion.
+  - **Tracker sync pending:** GitHub rejected updating #29's body and label because the active
+    account lacks `AddLabelsToLabelable` permission. A subsequent read confirmed the
+    remote issue still has its original body and `ready-for-human` label. Complete tracker sync
+    with a repository-authorized account when publishing this local promotion.
+
 - **Update**: the public contribution surface gains a pull request path for outside
   contributors. [CONTRIBUTING](../CONTRIBUTING.md) adds an "Opening a pull request" section
   covering the fork workflow, the first-time-contributor CI approval hold, and the ruleset's
@@ -333,9 +377,9 @@
   goes straight to `ready-for-agent/`. It adds an `lsof` fallback, failing closed, when the restore
   guard cannot read `/proc`, and puts `/opt/homebrew/bin` in the Husky fallback `PATH`. It changes
   no canonical contract, and it can be proven on Linux; a run on real macOS stays unperformed.
-  [schedule-collection-with-launchd-on-macos](backlog/ready-for-human/schedule-collection-with-launchd-on-macos.md)
-  waits in `ready-for-human/`. Plan §3.3 and §5 fix the scheduler as user systemd, so adding
-  LaunchAgents is a scope decision for the user. The brief also needs the user's acceptance of
+  [schedule-collection-with-launchd-on-macos](backlog/ready-for-agent/schedule-collection-with-launchd-on-macos.md)
+  initially waited in `ready-for-human/`. At this assessment, plan §3.3 and §5 fixed the scheduler
+  as user systemd, so adding LaunchAgents required a scope decision. The brief also needed acceptance of
   unsandboxed agents, a decision on who verifies on a real Mac, and a decision on a macOS CI job.
   The briefs are tracked by [#28](https://github.com/baktiaditya/ai-usage-dashboard/issues/28)
   (`ready-for-agent`) and [#29](https://github.com/baktiaditya/ai-usage-dashboard/issues/29)

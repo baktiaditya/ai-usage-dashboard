@@ -28,7 +28,7 @@ hooks find a Homebrew-installed Node and pnpm on Apple Silicon. Linux behavior i
 A macOS-support assessment on 2026-10-03, against `c7b6c05`, found two Linux-only couplings. The
 README states both: scheduling uses user `systemd`, and the restore guard reads `/proc`. This brief
 removes the second, which is small and needs no scope decision. The scheduler is filed separately in
-[schedule-collection-with-launchd-on-macos](../ready-for-human/schedule-collection-with-launchd-on-macos.md).
+[schedule-collection-with-launchd-on-macos](../ready-for-agent/schedule-collection-with-launchd-on-macos.md).
 
 `processesHolding()` in `src/lib/db/backup.ts` lists `/proc`, then reads `/proc/<pid>/fd/*` links to
 find holders of the database, its `-wal`, and its `-shm`. macOS has no `/proc`, so the function

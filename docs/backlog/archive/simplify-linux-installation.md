@@ -82,8 +82,8 @@ the dashboard's own runtime, storage, and lifecycle requirements.
 
 - Prebuilt application bundles, Next.js standalone packaging, npm publication,
   Docker, an updater running in the background, or additional schedulers.
-- macOS/Windows installers. The separate [macOS scheduler brief](../ready-for-human/schedule-collection-with-launchd-on-macos.md)
-  keeps its existing gates.
+- macOS/Windows installers. The separate [macOS scheduler brief](../ready-for-agent/schedule-collection-with-launchd-on-macos.md)
+  covers manual macOS scheduling; managed platform bootstraps remain outside this delivery.
 - Automatic adoption of an existing manual or maintainer production checkout.
 - Installing/signing in to provider CLIs, importing authentication files, entering
   API keys in the terminal, or enabling the Claude quota probe.
