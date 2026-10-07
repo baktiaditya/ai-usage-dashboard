@@ -297,8 +297,9 @@ Accepted approach; implement only this brief's scope.
    the test labels through the installer and removes only harness-owned plists/generated files
    and fixture data. After the installer's `--disable`, the trap may run `launchctl enable` on the
    test labels alone, to clear the disabled overrides each unique prefix would otherwise leave in
-   the user's launchd database; it never loads or starts an agent. `--keep-fixture` retains the fixture for user-assisted session checks and
-   prints exact installer/inspection/cleanup commands carrying the same isolation settings.
+   the user's launchd database; it never loads or starts an agent. `--keep-fixture` retains the
+   fixture for user-assisted session checks and prints exact installer/inspection/cleanup commands
+   carrying the same isolation settings.
 
 ## Files Touched
 
