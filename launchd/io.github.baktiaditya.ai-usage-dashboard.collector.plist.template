@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  User-level LaunchAgent for the AI Usage Dashboard collector, rendered by
+  scripts/render-launchd-agents.ts and installed by scripts/install-launchd.sh.
+
+  Placeholders are substituted with absolute paths in one literal pass and
+  XML-escaped by src/lib/launchd-plist.ts. This agent is NEVER installed or
+  loaded automatically; installation is an explicit installer flag.
+
+  launchd.plist(5) reads an integer Umask as decimal, so 63 is 0077.
+  There is deliberately no AbandonProcessGroup: with its default, launchd
+  reaps a stray `codex app-server` child when the job exits.
+-->
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>__LABEL__</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>__NODE__</string>
+		<string>__TSX__</string>
+		<string>__WORKDIR__/scripts/collect.ts</string>
+	</array>
+	<key>WorkingDirectory</key>
+	<string>__WORKDIR__</string>
+	<!--
+	  A user LaunchAgent inherits no shell PATH. The Codex adapter spawns
+	  `codex` by name, and an nvm-installed codex is itself a
+	  `#!/usr/bin/env node` script, so node must be named absolutely *and* a
+	  PATH covering both directories must be baked in.
+	-->
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>PATH</key>
+		<string>__PATH__</string>
+		<key>CODEX_HOME</key>
+		<string>__CODEXHOME__</string>
+		<key>AUD_ENV_FILE</key>
+		<string>__ENVFILE__</string>
+		<key>AUD_DATA_DIR</key>
+		<string>__DATADIR__</string>
+		<key>AUD_COLLECT_INTERVAL_MINUTES</key>
+		<string>__INTERVAL__</string>
+	</dict>
+	<!--
+	  StartInterval is seconds, while the configuration is minutes; the
+	  renderer substitutes __STARTINTERVAL__ = __INTERVAL__ * 60. A firing
+	  that falls while the Mac is asleep is missed, not coalesced: collection
+	  resumes at a later interval after wake, with no catch-up run.
+	-->
+	<key>StartInterval</key>
+	<integer>__STARTINTERVAL__</integer>
+	<key>RunAtLoad</key>
+	<true/>
+	<!--
+	  RunAtLoad may fire before the network is up and record one transport
+	  error. The next interval run recovers, so this is documented rather
+	  than worked around: launchd has no network-online.target equivalent.
+	-->
+	<key>ProcessType</key>
+	<string>Background</string>
+	<key>LowPriorityIO</key>
+	<true/>
+	<key>Umask</key>
+	<integer>63</integer>
+	<key>StandardOutPath</key>
+	<string>__LOGDIR__/__LABEL__.out.log</string>
+	<key>StandardErrorPath</key>
+	<string>__LOGDIR__/__LABEL__.err.log</string>
+</dict>
+</plist>

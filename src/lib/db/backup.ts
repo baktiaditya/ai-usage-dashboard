@@ -407,9 +407,13 @@ export function processesHoldingViaLsof(
 
 /** What to stop before retrying a restore, named for what this platform runs. */
 export function inUseStopHint(platform: NodeJS.Platform = process.platform): string {
-  return platform === 'linux'
-    ? 'Stop ai-usage-dashboard-web.service, ai-usage-dashboard-collector.timer, and any pnpm run dev or pnpm run start, then retry'
-    : 'Stop the scheduled collector, the dashboard server, and any pnpm run dev or pnpm run start, then retry';
+  if (platform === 'linux') {
+    return 'Stop ai-usage-dashboard-web.service, ai-usage-dashboard-collector.timer, and any pnpm run dev or pnpm run start, then retry';
+  }
+  if (platform === 'darwin') {
+    return 'Stop the launchd agents io.github.baktiaditya.ai-usage-dashboard.collector and io.github.baktiaditya.ai-usage-dashboard.web with scripts/install-launchd.sh --disable --with-web, and any pnpm run dev or pnpm run start, then retry';
+  }
+  return 'Stop the scheduled collector, the dashboard server, and any pnpm run dev or pnpm run start, then retry';
 }
 
 function assertNotInUse(database: string): void {

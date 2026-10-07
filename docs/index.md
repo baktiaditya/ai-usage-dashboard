@@ -22,8 +22,9 @@ provider is worth switching away from right now. This bundle follows
 
 # Operations
 
-- [Operations](operations/index.md) - Install, per-provider setup, systemd timer,
-  config reference, troubleshooting, and the maintainer production-checkout runbook.
+- [Operations](operations/index.md) - Install, per-provider setup, scheduler (user
+  systemd on Linux, launchd on macOS), config reference, troubleshooting, and the
+  maintainer production-checkout runbook.
 
 # Agents
 

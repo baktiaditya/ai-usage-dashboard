@@ -45,6 +45,16 @@ const MANAGER = join(repoRoot, 'scripts', 'manage-installation.ts');
 const BOOTSTRAP = join(repoRoot, 'scripts', 'install.sh');
 const NODE_VERSION = '24.19.0';
 
+/**
+ * The managed installer is Linux-only by product contract: `scripts/install.sh`
+ * refuses any other kernel, requires `flock`/`sha256sum`/a glibc userland, and
+ * installs user systemd units. This suite drives that real bootstrap, so it
+ * runs on Linux CI and is reported skipped elsewhere; faking a Linux userland
+ * on macOS would test the fake, not the installer. The macOS verification job
+ * still runs every other suite through `pnpm run verify`.
+ */
+const MANAGED_INSTALLER_RUNS_HERE = process.platform === 'linux';
+
 // ---------------------------------------------------------------------------
 // Fixture text
 // ---------------------------------------------------------------------------
@@ -749,6 +759,15 @@ function registerArchive(archivePath: string): void {
   );
 }
 
+/**
+ * Create the runtime tarball with tar's `-J` xz filter, which both GNU tar and
+ * BSD tar/libarchive support. GNU tar's `-I 'xz -T0 -0'` spelling relies on
+ * spawning `xz` and on GNU option handling, so BSD tar rejects it.
+ */
+function createNodeArchive(build: string, archivePath: string): void {
+  execFileSync('tar', ['-cJf', archivePath, '-C', build, `node-v${NODE_VERSION}-linux-x64`]);
+}
+
 afterEach(async () => {
   await Promise.all(suiteServer.splice(0).map((server) => server.close()));
 });
@@ -757,7 +776,7 @@ afterEach(async () => {
 // Tests
 // ---------------------------------------------------------------------------
 
-describe('managed installer bootstrap', () => {
+describe.skipIf(!MANAGED_INSTALLER_RUNS_HERE)('managed installer bootstrap', () => {
   let archivePath: string;
   let manifestSha: string;
 
@@ -769,15 +788,7 @@ describe('managed installer bootstrap', () => {
     writeFile(join(tree, 'bin', 'node'), nodeWrapper(process.execPath, NODE_VERSION), 0o755);
     writeFile(join(tree, 'bin', 'corepack'), COREPACK_STUB, 0o755);
     archivePath = join(build, `node-v${NODE_VERSION}-linux-x64.tar.xz`);
-    execFileSync('tar', [
-      '-I',
-      'xz -T0 -0',
-      '-cf',
-      archivePath,
-      '-C',
-      build,
-      `node-v${NODE_VERSION}-linux-x64`,
-    ]);
+    createNodeArchive(build, archivePath);
     manifestSha = createHash('sha256').update(readFileSync(archivePath)).digest('hex');
   }, 60_000);
 
@@ -961,7 +972,7 @@ describe('managed installer bootstrap', () => {
   });
 });
 
-describe('managed installation lifecycle', () => {
+describe.skipIf(!MANAGED_INSTALLER_RUNS_HERE)('managed installation lifecycle', () => {
   let archivePath = '';
   let manifestSha = 'a'.repeat(64);
 
@@ -973,15 +984,7 @@ describe('managed installation lifecycle', () => {
     writeFile(join(tree, 'bin', 'node'), nodeWrapper(process.execPath, NODE_VERSION), 0o755);
     writeFile(join(tree, 'bin', 'corepack'), COREPACK_STUB, 0o755);
     archivePath = join(build, `node-v${NODE_VERSION}-linux-x64.tar.xz`);
-    execFileSync('tar', [
-      '-I',
-      'xz -T0 -0',
-      '-cf',
-      archivePath,
-      '-C',
-      build,
-      `node-v${NODE_VERSION}-linux-x64`,
-    ]);
+    createNodeArchive(build, archivePath);
     manifestSha = createHash('sha256').update(readFileSync(archivePath)).digest('hex');
   }, 60_000);
 

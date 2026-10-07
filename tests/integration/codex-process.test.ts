@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { createCodexAdapter } from '@/lib/adapters/codex';
@@ -7,6 +8,11 @@ import { runAdapter } from '@/lib/collector/index';
 
 const FAKE = join(process.cwd(), 'tests', 'helpers', 'fake-app-server', 'server.mjs');
 const FIXTURE = join(process.cwd(), 'tests', 'fixtures', 'codex', 'valid-0.154.0.json');
+
+// macOS keeps `false` in /usr/bin; GNU/Linux has it in both. A real executable
+// that exits non-zero before reading stdin, unlike a missing path.
+const FALSE_BIN =
+  ['/usr/bin/false', '/bin/false'].find((path) => existsSync(path)) ?? '/usr/bin/false';
 
 function adapter(mode: string, timeoutMs = 3000, payload = FIXTURE) {
   // The fake server reads its behaviour from the environment of the spawned
@@ -18,7 +24,9 @@ function adapter(mode: string, timeoutMs = 3000, payload = FIXTURE) {
 
 function countFakeProcesses(): number {
   try {
-    const out = execFileSync('/bin/sh', ['-c', `pgrep -fc "${FAKE}" || true`], {
+    // `pgrep -fc` is GNU-only; `-f` plus `wc -l` counts the same processes on
+    // both GNU/Linux and macOS, and the pipeline always exits 0.
+    const out = execFileSync('/bin/sh', ['-c', `pgrep -f "${FAKE}" | wc -l`], {
       encoding: 'utf8',
     });
     return Number(out.trim()) || 0;
@@ -91,7 +99,7 @@ describe('codex app-server over a real child process', () => {
   it('keeps a CLI that is found but cannot run as process_failed', async () => {
     // A found executable whose own startup fails is a fault, not a setup state.
     const record = await runAdapter(
-      createCodexAdapter({ command: '/bin/false', args: [], timeoutMs: 1000 }),
+      createCodexAdapter({ command: FALSE_BIN, args: [], timeoutMs: 1000 }),
     );
     expect(record.result.outcome).toBe('error');
     if (record.result.outcome === 'error') {

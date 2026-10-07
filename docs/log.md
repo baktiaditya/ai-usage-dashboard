@@ -2,6 +2,52 @@
 
 ## 2026-10-07
 
+- **Update**: per-user launchd scheduling is implemented for macOS on `feat/macos-launchd`
+  (uncommitted at the time of this entry), following the
+  [macOS scheduler brief](backlog/ready-for-agent/schedule-collection-with-launchd-on-macos.md).
+  `launchd/io.github.baktiaditya.ai-usage-dashboard.{collector,web}.plist.template` and
+  `src/lib/launchd-plist.ts` render both LaunchAgents with XML escaping;
+  `scripts/render-launchd-agents.ts` shares `resolveUnitValues()` with the systemd renderer and
+  refuses relative paths, control characters, and locations under Desktop, Documents,
+  Downloads, and iCloud Drive after symlink resolution. `scripts/install-launchd.sh` drives
+  render, install, enable, status, kickstart, and disable with labels derived once from
+  `--label-prefix`, a `--log-dir` default of `~/Library/Logs/ai-usage-dashboard`, `launchctl`
+  resolved from the invoking PATH, the log directory created `0700` before bootstrap, and
+  bounded bootout polling and bootstrap retries that never fall back to an unsupervised
+  process. `scripts/collect.ts` now runs under a 120-second whole-run deadline through
+  `src/lib/collector/cli.ts`; the Darwin restore refusal names both launchd labels and
+  `scripts/install-launchd.sh --disable --with-web`. Mocked integration tests drive the real
+  installer with a recording `launchctl` stub, the macOS-only `scripts/test-launchd.sh` harness
+  exercises real launchd with a disposable fixture, and a `macos-15` ARM64 `pnpm run verify`
+  job joins CI.
+  - **Verification:** on the 2026-10-07 probe host (macOS 15.7.3 ARM64), `pnpm run verify`
+    passed (762 tests passed, 66 skipped), `pnpm run build` succeeded, and the native harness
+    passed using only test labels, a disposable database, logs, environment file, and a free
+    loopback port: `plutil -lint` on both rendered plists; install-only left both labels
+    unloaded with plists `0600` and the log directory `0700`; enable loaded both; the
+    dashboard answered `200` on loopback; one collector run was recorded; a second enable left
+    both loaded; `--status` printed both labels; `db:restore` refused while the web agent held
+    the database and succeeded after `--disable --with-web`. Production labels and databases
+    were never touched.
+  - **Not performed:** sleep/wake timing, logout/login persistence, the Login Items list, the
+    "Background Items Added" notification and its switched-off behavior, keyring credential
+    storage, and any live Codex reading under the agents. The managed-installer integration
+    suite (66 tests) is reported skipped on Darwin because `scripts/install.sh` refuses
+    non-Linux by product contract; Linux CI and the remote macOS job have not been run from
+    this host.
+  - **Deviation:** the brief's "do not skip these tests" assumed that suite could run on macOS
+    once the fixture portability was fixed. It cannot: the bootstrap preflight refuses any
+    non-Linux kernel and requires `flock`, so the suite is gated to Linux rather than faking a
+    Linux userland. The named fixture fixes are in (portable `tar -cJf` archive creation, a
+    canonical expected physical path on macOS, `/usr/bin/false`), along with portable `pgrep`
+    counting in the Codex process test and an `ENOENT`-tolerant sidecar `chmod` that removed a
+    full-suite race in `src/lib/db/client.ts`.
+  - **Fixture retained for user-assisted checks:** prefix
+    `io.github.baktiaditya.ai-usage-dashboard.test.20261007211758-72932` with a private
+    temporary fixture; `bash scripts/test-launchd.sh --keep-fixture` prints the exact manual
+    and cleanup commands carrying the same isolation settings. Pending checks stay unperformed
+    and the brief stays in `ready-for-agent/`.
+
 - **Update**: clarify installer verification in the
   [macOS scheduler brief](backlog/ready-for-agent/schedule-collection-with-launchd-on-macos.md)
   after [PR #42 review](https://github.com/baktiaditya/ai-usage-dashboard/pull/42#issuecomment-6038835162).

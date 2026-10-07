@@ -98,6 +98,16 @@ pnpm run db:restore ~/usage-copy.db
 systemctl --user start ai-usage-dashboard-collector.timer ai-usage-dashboard-web.service
 ```
 
+On macOS (launchd), use the installer for the same stop and load steps:
+
+```bash
+scripts/install-launchd.sh --disable --with-web
+pnpm run db:restore ~/usage-copy.db
+scripts/install-launchd.sh --enable --with-web
+
+# Keep the same --label-prefix and --log-dir you installed with, if you changed them.
+```
+
 The restore refuses, and changes nothing, in any of these cases:
 
 - a process still holds the database open, including a collector run already in progress or a
@@ -109,8 +119,13 @@ The restore refuses, and changes nothing, in any of these cases:
 - it is a live database copied with a non-empty WAL beside it.
 
 The in-use check reads `/proc` on Linux and asks `lsof` elsewhere, such as macOS, and refuses when
-neither can answer. Without the systemd units (§5), stop whatever runs the collector and the
-dashboard yourself before restoring.
+neither can answer. Without the scheduler units (§5), stop whatever runs the collector and the
+dashboard yourself before restoring. On macOS the refusal names
+`io.github.baktiaditya.ai-usage-dashboard.collector` and
+`io.github.baktiaditya.ai-usage-dashboard.web` and points at
+`scripts/install-launchd.sh --disable --with-web`. The web agent keeps one long-lived database
+connection, but it opens it on the first request, so hit the dashboard (or run a collection) after
+enabling the agents before expecting the refusal.
 
 A backup from an older build is migrated forward. The database it replaces moves aside, together
 with its WAL, to `usage.db.pre-restore-<UTC timestamp>`. Delete that once the restored dashboard
@@ -426,9 +441,13 @@ change shows up as `schema_mismatch` rather than as a wrong number.
 
 ---
 
-## 5. Scheduled collection (systemd)
+## 5. Scheduled collection
 
-Nothing is installed or enabled without an explicit flag.
+Nothing is installed or enabled without an explicit flag. Linux uses per-user systemd
+units ([below](#linux-systemd)); macOS uses per-user launchd LaunchAgents
+([below](#macos-launchd)).
+
+### Linux (systemd)
 
 The units run from whichever checkout the installer runs in. For the production
 timer and web unit, run every `scripts/install-systemd.sh --install` below from
@@ -503,6 +522,83 @@ without them.
 provider errored (the run still persisted everything else); `2` the run could
 not start. A provider being unavailable is a normal steady state and never makes
 the unit look broken.
+
+### macOS (launchd)
+
+The same collector and web server run as per-user LaunchAgents during your login session.
+The managed one-command installer and the [production checkout](production-checkout.md)
+runbook stay Linux/systemd-only; on macOS use the checkout directly.
+
+```bash
+pnpm run build                       # once, required before --with-web
+
+# Render the LaunchAgents so you can read them first (this is the default).
+pnpm run launchd:install
+# or: scripts/install-launchd.sh
+
+# Copy them into ~/Library/LaunchAgents (0600), not enabled.
+scripts/install-launchd.sh --install
+
+# Copy, enable and load the collector; add --with-web for the dashboard.
+scripts/install-launchd.sh --install --enable --with-web
+```
+
+Manage it:
+
+```bash
+scripts/install-launchd.sh --status              # launchctl state, disabled override, recent logs
+scripts/install-launchd.sh --disable --with-web  # stop and disable; the plists stay in place
+launchctl print "gui/$(id -u)/io.github.baktiaditya.ai-usage-dashboard.collector"
+```
+
+The labels are `io.github.baktiaditya.ai-usage-dashboard.collector` and
+`io.github.baktiaditya.ai-usage-dashboard.web`. `--label-prefix <prefix>` derives both from
+one prefix, and `--log-dir <absolute-path>` moves the logs (default
+`~/Library/Logs/ai-usage-dashboard`). Give `--status` and `--disable` the same values you
+installed with; an overridden run never touches the production labels. `--install` without
+`--enable` disables each installed label, because launchd loads every plist in
+`~/Library/LaunchAgents` at login unless its label is disabled.
+
+The installer resolves absolute `node`, `tsx`, and `codex` paths and bakes an explicit
+`PATH` and `CODEX_HOME` into the plists, so a LaunchAgent never depends on `.zshrc` or an
+nvm shell hook. Re-run the installer after moving or replacing the Node or Codex runtime:
+selecting another nvm version does not rewrite an installed agent's paths. The collector
+also has a hard 120-second whole-run deadline, matching systemd's `TimeoutStartSec=120`,
+because launchd never starts the next interval while a hung run is still alive.
+
+Differences from the systemd units, all accepted on 2026-10-07:
+
+- no systemd filesystem or syscall sandbox; the agents run as your user;
+- no linger: the agents run only during a login session, and collection while logged out is
+  out of scope (a LaunchDaemon would need root and a different trust model);
+- logs live in `~/Library/Logs/ai-usage-dashboard/` (mode `0700`) with no automatic
+  rotation; truncate or delete them by hand;
+- no restart cap: a web agent that crashes on every start is respawned indefinitely, at
+  most once every 10 seconds. `--status` shows the run count and last exit code;
+- no catch-up run after sleep: a `StartInterval` firing that falls while the Mac is asleep
+  is missed, not coalesced. Collection resumes at a later interval after wake; use
+  **Refresh** on a card for an immediate reading after wake;
+- at login, the `RunAtLoad` run may start before the network is up and record one transport
+  error; the next interval run recovers.
+
+macOS 13 and later raise a "Background Items Added" notification when the agents are
+installed, and list them under System Settings → General → Login Items (& Extensions) →
+"Allow in the Background", where any user can switch them off. A switched-off agent does
+not run; `--status` and [Troubleshooting](#10-troubleshooting) point there when a label is
+not loaded. The list may show the executable (`node`) rather than the label.
+
+macOS privacy protection (TCC) denies launchd-started processes access to Desktop,
+Documents, Downloads, and iCloud Drive, even though Terminal can read them. The renderer
+refuses a checkout, data directory, environment file, `CODEX_HOME`, or log directory that
+resolves (following symlinks) under those folders, and tells you to move it, for example
+to `~/Workspace`, rather than grant Full Disk Access to `node` — that grant would cover
+every script the `node` binary runs.
+
+Codex credentials follow the Codex CLI's own store. With the default
+`cli_auth_credentials_store = "file"`, the token lives in `$CODEX_HOME/auth.json`, which an
+agent reads like any file. With `keyring` or `auto`, it lives in your login Keychain;
+whether an agent in `gui/<uid>` can read that is **untested** and must be confirmed on your
+Mac before relying on it.
 
 ---
 
@@ -732,6 +828,16 @@ installer after changing it):
 systemctl --user cat ai-usage-dashboard-collector.service
 journalctl --user -u ai-usage-dashboard-collector.service -n 50
 ```
+
+**A LaunchAgent does not run, or may be switched off (macOS)** —
+`scripts/install-launchd.sh --status` prints `launchctl print` for the label, its disabled
+override, and recent logs. If the label is not loaded, check System Settings → General →
+Login Items (& Extensions) → "Allow in the Background", where macOS lists the agents
+(possibly under the executable name, `node`) and any user can switch them off. After
+switching one back on, load it again with `--enable --with-web`, using the same
+`--label-prefix` and `--log-dir` you installed with. A job whose log directory is missing
+fails to spawn with last exit code 78 (`EX_CONFIG`); the installer creates it `0700`, but
+delete it by hand at your peril.
 
 **The dashboard says "database disk image is malformed"** — check the file on
 disk first. `pnpm run db:backup` verifies the copy it writes, so a backup that

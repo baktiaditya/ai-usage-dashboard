@@ -117,8 +117,17 @@ describe('inUseStopHint', () => {
     expect(inUseStopHint('linux')).toMatch(/ai-usage-dashboard-collector\.timer/);
   });
 
-  it('names no systemd unit elsewhere', () => {
-    expect(inUseStopHint('darwin')).not.toMatch(/systemd|\.service|\.timer/);
-    expect(inUseStopHint('darwin')).toMatch(/scheduled collector.*dashboard server/);
+  it('names both launchd labels and their disable command on macOS', () => {
+    const hint = inUseStopHint('darwin');
+    expect(hint).toMatch(/io\.github\.baktiaditya\.ai-usage-dashboard\.collector/);
+    expect(hint).toMatch(/io\.github\.baktiaditya\.ai-usage-dashboard\.web/);
+    expect(hint).toMatch(/install-launchd\.sh --disable --with-web/);
+    expect(hint).not.toMatch(/systemd|\.service|\.timer/);
+  });
+
+  it('names no scheduler-specific unit elsewhere', () => {
+    const hint = inUseStopHint('win32');
+    expect(hint).toMatch(/scheduled collector.*dashboard server/);
+    expect(hint).not.toMatch(/systemd|launchd|\.service|\.timer/);
   });
 });

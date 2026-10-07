@@ -30,6 +30,9 @@ secrets/
 # generated systemd units (contain absolute machine paths)
 systemd/generated/
 
+# generated launchd agents (contain absolute machine paths)
+launchd/generated/
+
 # test + coverage output
 .vitest/
 coverage/

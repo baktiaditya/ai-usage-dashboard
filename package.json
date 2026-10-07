@@ -25,6 +25,7 @@
     "db:restore": "tsx scripts/db-restore.ts",
     "claude:install-statusline": "tsx scripts/install-claude-statusline.ts",
     "systemd:install": "bash scripts/install-systemd.sh",
+    "launchd:install": "bash scripts/install-launchd.sh",
     "lint": "eslint .",
     "prepare": "husky",
     "format": "prettier --write .",
