@@ -1,6 +1,6 @@
 # Bundle Update Log
 
-## 2026-10-07
+## 2026-10-08
 
 - **Update**: addressed the [code review on PR #44](https://github.com/baktiaditya/ai-usage-dashboard/pull/44#issuecomment-6041527438)
   (verdict approve; nine non-blocking nits). The protected-location guard now resolves with
@@ -15,6 +15,8 @@
   launchd renderer no longer re-implements the protected-root predicate or repeats its
   collection/web rendering. The managed-installer suites stay Linux-gated, as the owner accepted.
   Validation: `pnpm run verify` passes (764 tests, 66 skipped) and the OKF bundle is valid.
+
+## 2026-10-07
 
 - **Update**: per-user launchd scheduling is implemented for macOS on `feat/macos-launchd`
   (delivered through [PR #44](https://github.com/baktiaditya/ai-usage-dashboard/pull/44)), following the
