@@ -7,19 +7,22 @@ Open Knowledge Format v0.2:
     https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md
 
 Conformance (§11) requires parseable frontmatter with a non-empty `type` on every
-non-reserved markdown file, plus §8/§9 structure for `index.md` and `log.md`. The
-frontmatter families from §5 (`sources`, `generated`, `verified`, `status`,
-`stale_after`) and the `Attested Computation` contract from §10 are validated when
-present. This repo keeps two local conventions stricter than the spec: links are
-relative to the containing file (never bundle-root-absolute), and canonical concept
-pages must also carry `title` and `description`.
+non-reserved markdown file. Reserved filenames are validated at any level (§3.1):
+every `index.md` follows §8 (only the bundle-root index may carry frontmatter, and
+only `okf_version`) and every `log.md` follows §9 (no frontmatter, ISO date
+headings, newest first). The frontmatter families from §5 (`sources`, `generated`,
+`verified`, `status`, `stale_after`) and the `Attested Computation` contract from
+§10 are validated when present. This repo keeps two local conventions stricter
+than the spec: links are relative to the containing file (never
+bundle-root-absolute), and canonical concept pages must also carry `title` and
+`description`.
 """
 
 from __future__ import annotations
 
 import re
 import sys
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 
 import yaml
@@ -45,6 +48,8 @@ TIMESTAMP_RE = re.compile(
     r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$"
 )
 ACTOR_RE = re.compile(r"^(?:human:[^\s/]+|process:[^\s/]+|[A-Za-z0-9_.-]+/[^\s/]+)$")
+HEADING_RE = re.compile(r"^#{1,6}\s+\S", re.MULTILINE)
+LINK_RE = re.compile(r"\[[^\]]+\]\([^)]+\)")
 COMPUTATION_HEADING_RE = re.compile(r"^#\s+Computation\s*$", re.MULTILINE)
 NEXT_HEADING_RE = re.compile(r"^#{1,6}\s+\S", re.MULTILINE)
 
@@ -55,18 +60,19 @@ def read_text(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def split_frontmatter(text: str) -> tuple[dict | None, str]:
-    """Return (frontmatter mapping or None, body)."""
+def split_frontmatter(text: str) -> tuple[dict | None, str, str | None]:
+    """Return (frontmatter mapping or None, body, parse error)."""
     match = FRONTMATTER_RE.match(text)
     if not match:
-        return None, text
-    data = yaml.safe_load(match.group(1))
-    frontmatter = data if isinstance(data, dict) else None
-    return frontmatter, text[match.end() :]
-
-
-def parse_frontmatter(path: Path) -> dict | None:
-    return split_frontmatter(read_text(path))[0]
+        return None, text, None
+    body = text[match.end() :]
+    try:
+        data = yaml.safe_load(match.group(1))
+    except (yaml.YAMLError, ValueError) as exc:
+        return None, body, f"invalid YAML frontmatter: {exc}"
+    if not isinstance(data, dict):
+        return None, body, "frontmatter must be a YAML mapping"
+    return data, body, None
 
 
 def bundle_markdown_files() -> list[Path]:
@@ -78,10 +84,21 @@ def is_backlog(path: Path) -> bool:
 
 
 def is_timestamp(value: object) -> bool:
-    """Every OKF timestamp is ISO 8601 with an explicit UTC offset (§5)."""
+    """Every OKF timestamp is a real ISO 8601 datetime with an explicit UTC offset (§5)."""
     if isinstance(value, datetime):
         return value.tzinfo is not None
-    return isinstance(value, str) and bool(TIMESTAMP_RE.fullmatch(value))
+    if not isinstance(value, str) or not TIMESTAMP_RE.fullmatch(value):
+        return False
+    try:
+        datetime.strptime(value[:19], "%Y-%m-%dT%H:%M:%S")
+    except ValueError:
+        return False
+    remainder = re.sub(r"^\.\d+", "", value[19:])
+    if remainder == "Z":
+        return True
+    if re.fullmatch(r"[+-]\d{2}:\d{2}", remainder):
+        return int(remainder[1:3]) <= 23 and int(remainder[4:6]) <= 59
+    return False
 
 
 def is_actor(value: object) -> bool:
@@ -154,7 +171,7 @@ def has_computation_body(body: str) -> bool:
     next_heading = NEXT_HEADING_RE.search(section)
     if next_heading:
         section = section[: next_heading.start()]
-    return "```" in section or re.search(r"^ {4}\S", section, re.MULTILINE) is not None
+    return "```" in section or re.search(r"^(?: {4}|\t)\S", section, re.MULTILINE) is not None
 
 
 def computation_errors(rel: Path, frontmatter: dict, body: str) -> list[str]:
@@ -264,7 +281,9 @@ def family_errors(rel: Path, frontmatter: dict, body: str) -> list[str]:
 
 def concept_errors(path: Path) -> list[str]:
     rel = path.relative_to(ROOT)
-    frontmatter, body = split_frontmatter(read_text(path))
+    frontmatter, body, error = split_frontmatter(read_text(path))
+    if error:
+        return [f"{rel}: {error}"]
     if frontmatter is None:
         return [f"{rel}: missing YAML frontmatter"]
 
@@ -288,6 +307,59 @@ def concept_errors(path: Path) -> list[str]:
     return errors
 
 
+def index_errors(path: Path) -> list[str]:
+    """Reserved §8 files at any level: enumeration bodies; only the root may declare a version."""
+    rel = path.relative_to(ROOT)
+    frontmatter, body, error = split_frontmatter(read_text(path))
+    errors: list[str] = []
+
+    if path == ROOT_INDEX:
+        if error:
+            errors.append(f"{rel}: {error}")
+        elif frontmatter is None:
+            errors.append(f"{rel}: missing YAML frontmatter")
+        else:
+            if set(frontmatter) != {"okf_version"}:
+                errors.append(f"{rel}: root index frontmatter may carry only `okf_version` (§8)")
+            if str(frontmatter.get("okf_version")) != OKF_VERSION:
+                errors.append(f"{rel}: okf_version must be '{OKF_VERSION}'")
+    elif frontmatter is not None or error:
+        errors.append(f"{rel}: index files carry no frontmatter (§8)")
+
+    if not HEADING_RE.search(body):
+        errors.append(f"{rel}: index needs at least one section heading (§8)")
+    if not LINK_RE.search(body):
+        errors.append(f"{rel}: index needs at least one link entry (§8)")
+
+    return errors
+
+
+def log_errors(path: Path) -> list[str]:
+    """Reserved §9 files at any level: no frontmatter, ISO date headings, newest first."""
+    rel = path.relative_to(ROOT)
+    text = read_text(path)
+    errors: list[str] = []
+    if FRONTMATTER_RE.match(text):
+        errors.append(f"{rel}: log files carry no frontmatter (§9)")
+
+    headings = re.findall(r"^##\s+(.+?)\s*$", text, re.MULTILINE)
+    dates: list[str] = []
+    for heading in headings:
+        if not DATE_RE.fullmatch(heading):
+            errors.append(f"{rel}: date heading `{heading}` must be ISO 8601 YYYY-MM-DD (§9)")
+            continue
+        try:
+            date.fromisoformat(heading)
+        except ValueError:
+            errors.append(f"{rel}: date heading `{heading}` is not a real calendar date")
+            continue
+        dates.append(heading)
+    if len(dates) == len(headings) and dates != sorted(dates, reverse=True):
+        errors.append(f"{rel}: date headings must be newest first")
+
+    return errors
+
+
 def errors_for_file(path: Path) -> list[str]:
     errors: list[str] = []
     rel = path.relative_to(ROOT)
@@ -299,39 +371,12 @@ def errors_for_file(path: Path) -> list[str]:
         if not (path.parent / link_target).exists():
             errors.append(f"{rel}: broken link {link_target}")
 
-    # Reserved filenames are validated centrally in validate().
-    if path.name == "index.md" or path == LOG_FILE:
-        return errors
-
-    errors.extend(concept_errors(path))
-    return errors
-
-
-def root_index_errors() -> list[str]:
-    rel = ROOT_INDEX.relative_to(ROOT)
-    frontmatter = parse_frontmatter(ROOT_INDEX)
-    if frontmatter is None:
-        return [f"{rel}: missing YAML frontmatter"]
-    errors: list[str] = []
-    if set(frontmatter) != {"okf_version"}:
-        errors.append(f"{rel}: root index frontmatter may carry only `okf_version` (§8)")
-    if str(frontmatter.get("okf_version")) != OKF_VERSION:
-        errors.append(f"{rel}: okf_version must be '{OKF_VERSION}'")
-    return errors
-
-
-def log_errors() -> list[str]:
-    rel = LOG_FILE.relative_to(ROOT)
-    text = read_text(LOG_FILE)
-    errors: list[str] = []
-    if FRONTMATTER_RE.match(text):
-        errors.append(f"{rel}: log files carry no frontmatter")
-    dates = re.findall(r"^##\s+(\S+)\s*$", text, re.MULTILINE)
-    for date in dates:
-        if not DATE_RE.fullmatch(date):
-            errors.append(f"{rel}: date heading `{date}` must be ISO 8601 YYYY-MM-DD")
-    if dates != sorted(dates, reverse=True):
-        errors.append(f"{rel}: date headings must be newest first")
+    if path.name == "index.md":
+        errors.extend(index_errors(path))
+    elif path.name == "log.md":
+        errors.extend(log_errors(path))
+    else:
+        errors.extend(concept_errors(path))
     return errors
 
 
@@ -416,11 +461,6 @@ def validate() -> list[str]:
     for required in (ROOT_INDEX, LOG_FILE):
         if not required.exists():
             errors.append(f"{required.relative_to(ROOT)}: missing required file")
-
-    if ROOT_INDEX.exists():
-        errors.extend(root_index_errors())
-    if LOG_FILE.exists():
-        errors.extend(log_errors())
 
     for path in bundle_markdown_files():
         errors.extend(errors_for_file(path))

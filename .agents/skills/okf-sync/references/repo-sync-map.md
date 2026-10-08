@@ -83,7 +83,7 @@ Keep this hierarchy intact:
 
 - Add or remove the line in `docs/index.md`.
 - Add a `Creation` entry to `docs/log.md`.
-- Check whether `AGENTS.md` task branches should list it.
+- Check whether `AGENTS.md` entry guidance should reference it.
 
 ### When backlog placement changes
 

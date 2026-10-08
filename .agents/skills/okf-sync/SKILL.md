@@ -167,10 +167,11 @@ rg -n "TODO|\[TODO" docs
 git diff -- docs AGENTS.md CLAUDE.md README.md
 ```
 
-The validator checks reserved files (`docs/index.md` with `okf_version: 0.2`, `docs/log.md`
-date structure), concept frontmatter (required `type`; canonical pages also `title` and
-`description`; the v0.2 families `sources`, `generated`, `verified`, `status`, and
-`stale_after`, plus Attested Computation contracts, when present), relative in-bundle
+The validator checks every `index.md` and `log.md` at any level (§8/§9: the root index
+carries only `okf_version`; other indexes and all logs carry no frontmatter; logs use ISO
+date headings, newest first), concept frontmatter (required `type`; canonical pages also
+`title` and `description`; the v0.2 families `sources`, `generated`, `verified`, `status`,
+and `stale_after`, plus Attested Computation contracts, when present), relative in-bundle
 links, and the backlog rules — status directories, kebab-case brief names, backlog brief
 frontmatter, and no open questions left in `ready-for-agent/`. Fix what it reports before
 polishing prose.
