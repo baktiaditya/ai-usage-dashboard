@@ -1,1 +1,0 @@
-../../../.agents/skills/refactor-safely/SKILL.md

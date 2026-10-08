@@ -1,1 +1,0 @@
-../../../.agents/skills/okf-sync/SKILL.md
