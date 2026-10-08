@@ -1,3 +1,8 @@
+---
+type: Backlog Brief
+title: 'Isolate `npm run dev` from the production dashboard'
+---
+
 # Isolate `npm run dev` from the production dashboard
 
 ## Status

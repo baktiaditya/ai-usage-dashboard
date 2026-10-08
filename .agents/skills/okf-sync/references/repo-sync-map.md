@@ -14,7 +14,7 @@ Keep this hierarchy intact:
 
 ### Root
 
-- `docs/index.md` — root navigation; holds `okf_version`
+- `docs/index.md` — root navigation; holds `okf_version: 0.2`
 - `docs/log.md` — dated change log
 
 ### plan/
@@ -37,7 +37,8 @@ Keep this hierarchy intact:
 ### backlog/
 
 - `docs/backlog/index.md` — status rules, authority boundary, writing rules
-- `docs/backlog/template.md` — brief skeleton
+- `docs/backlog/template.md` — brief skeleton carrying the minimal backlog frontmatter
+- Briefs carry minimal OKF v0.2 frontmatter (`type: Backlog Brief`, `title`); they stay working context
 - `docs/backlog/ready-for-agent/`
 - `docs/backlog/needs-triage/`
 - `docs/backlog/ready-for-human/`
@@ -63,6 +64,7 @@ Keep this hierarchy intact:
 | Scope or contract decision                           | `plan/ai-usage-dashboard-implementation-plan.md` first, then `discovery/m0-discovery.md` if a fixed decision or deviation is affected, plus `log.md` |
 | Setup, credentials, timer, or troubleshooting change | `operations/setup.md`, plus `log.md` when existing installs are affected                                                                             |
 | New durable knowledge with no home                   | new concept page with frontmatter, linked from `docs/index.md`, plus `log.md`                                                                        |
+| Bundle format or OKF version change                  | `docs/index.md` (`okf_version`), the validator in `.agents/skills/okf-sync/scripts/`, `SKILL.md`, this map, plus `log.md`                            |
 | Review output or idea that is not yet a decision     | a brief under `backlog/needs-triage/` — not a canonical document                                                                                     |
 | Brief becomes an accepted contract                   | fold into the canonical document that owns it, `git mv` the file to `backlog/archive/`, plus `log.md`                                                |
 | Agent skill configuration change                     | `agents/` pages, plus the `## Agent skills` block in `AGENTS.md` and `log.md`                                                                        |
@@ -73,7 +75,7 @@ Keep this hierarchy intact:
 ### When bundle content changes
 
 - Read the target document before editing.
-- Keep frontmatter intact.
+- Keep frontmatter intact, and adopt a v0.2 family (`sources`, `generated`, `verified`, `status`, `stale_after`) only when it is true.
 - Append an entry to `docs/log.md` under the right date heading with the right label.
 - Check whether the `docs/index.md` summary line is still accurate.
 
@@ -81,7 +83,7 @@ Keep this hierarchy intact:
 
 - Add or remove the line in `docs/index.md`.
 - Add a `Creation` entry to `docs/log.md`.
-- Check whether `AGENTS.md` task branches should list it.
+- Check whether `AGENTS.md` entry guidance should reference it.
 
 ### When backlog placement changes
 

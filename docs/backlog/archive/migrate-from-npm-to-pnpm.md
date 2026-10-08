@@ -1,3 +1,8 @@
+---
+type: Backlog Brief
+title: Migrate the package manager from npm to pnpm
+---
+
 # Migrate the package manager from npm to pnpm
 
 ## Status

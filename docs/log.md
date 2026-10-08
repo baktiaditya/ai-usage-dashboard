@@ -2,6 +2,20 @@
 
 ## 2026-10-08
 
+- **Restructure**: upgraded the bundle from OKF v0.1 to
+  [OKF v0.2](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md).
+  [`docs/index.md`](index.md) now declares `okf_version: '0.2'`, and the `okf-sync` skill,
+  its [sync map](../.agents/skills/okf-sync/references/repo-sync-map.md), and
+  [`validate_okf_bundle.py`](../.agents/skills/okf-sync/scripts/validate_okf_bundle.py)
+  now implement the v0.2 rules: the frontmatter families `sources`, `generated`,
+  `verified`, `status`, and `stale_after`, the actor convention, `index.md`/`log.md`
+  structure, and the Attested Computation contract. Backlog briefs and the
+  [brief template](backlog/template.md) gained the minimal frontmatter v0.2 conformance
+  requires (`type: Backlog Brief`, `title`); they remain working context, never
+  authority. No existing document adopted a trust, provenance, or lifecycle family in
+  this change — absence means unverified or stable, a valid v0.2 state. Validation: the
+  OKF v0.2 validator passes.
+
 - **Decision**: amend the
   [macOS scheduler brief](backlog/ready-for-agent/schedule-collection-with-launchd-on-macos.md)
   after the [PR #44 re-review](https://github.com/baktiaditya/ai-usage-dashboard/pull/44#issuecomment-6043993453)

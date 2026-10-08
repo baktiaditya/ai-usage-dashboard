@@ -1,3 +1,8 @@
+---
+type: Backlog Brief
+title: <Title>
+---
+
 # <Title>
 
 ## Status

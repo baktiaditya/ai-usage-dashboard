@@ -1,3 +1,8 @@
+---
+type: Backlog Brief
+title: Close the DeepSeek and OpenRouter live gates
+---
+
 # Close the DeepSeek and OpenRouter live gates
 
 ## Status

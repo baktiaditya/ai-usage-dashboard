@@ -1,13 +1,13 @@
 ---
 name: okf-sync
-description: Maintain and synchronize the AI Usage Dashboard Open Knowledge Format bundle rooted at `docs/`. Use when an agent needs to add, update, repair, or audit bundle documents after changes to `docs/plan/**`, `docs/discovery/**`, `docs/operations/**`, `docs/backlog/**`, `README.md`, `AGENTS.md`, or `CLAUDE.md`; when a decision needs to be recorded in `docs/log.md`; when a backlog brief is filed, promoted, or archived; or when drift is suspected between the bundle and the repo's instruction files.
+description: Maintain and synchronize the AI Usage Dashboard Open Knowledge Format (OKF v0.2) bundle rooted at `docs/`. Use when an agent needs to add, update, repair, or audit bundle documents after changes to `docs/plan/**`, `docs/discovery/**`, `docs/operations/**`, `docs/backlog/**`, `README.md`, `AGENTS.md`, or `CLAUDE.md`; when a decision needs to be recorded in `docs/log.md`; when a backlog brief is filed, promoted, or archived; or when drift is suspected between the bundle and the repo's instruction files.
 ---
 
 # OKF Sync
 
 ## Overview
 
-Keep `docs/` coherent as an OKF v0.1 bundle. Unlike a derived navigation layer, this
+Keep `docs/` coherent as an [OKF v0.2](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md) bundle. Unlike a derived navigation layer, this
 bundle **is** the source of truth for product decisions, and the code under `src/` is
 the source of truth for what has actually been built. Sync work means keeping those
 two consistent with each other, and keeping `docs/index.md` and `docs/log.md` honest.
@@ -18,12 +18,12 @@ The bundle root is `docs/` itself. There is no nested `docs/okf/`.
 
 ```
 docs/
-  index.md                         — root navigation, holds okf_version frontmatter
+  index.md                         — root navigation, holds okf_version: 0.2
   log.md                           — dated Creation/Decision/Discovery/Risk/Design/Update entries
   plan/                            — implementation plan (scope, contracts, milestones) + original prompt
   discovery/                       — re-probed baseline, gate evidence, fixed decisions
   operations/                      — install, credentials, timer, troubleshooting
-  backlog/                         — triaged work briefs; non-canonical
+  backlog/                         — triaged work briefs; minimal frontmatter, non-canonical
   agents/                          — per-repo configuration read by agent skills
   assets/                          — images referenced by the bundle and the README; not concept pages
 ```
@@ -31,6 +31,26 @@ docs/
 Each folder has a plain `index.md` navigation list with no frontmatter. Concept pages carry YAML frontmatter with at
 least `type`, `title`, and `description`. Links between documents are relative to the
 file that contains them — never root-relative.
+
+## Concept Frontmatter (v0.2)
+
+Every non-reserved `.md` file carries YAML frontmatter with a non-empty `type`
+(conformance, spec §11). Canonical pages also carry `title` and `description`;
+backlog briefs carry `title` with `type: Backlog Brief`. The recommended
+optional keys are `resource` and `tags`.
+
+Adopt the families from spec §5 only when they are true: `sources` (with the
+`usage_window` sibling and the per-source signals `author`, `usage_count`,
+`last_modified`), `generated: { by, at }`, `verified` (a `{ by, at }` mapping or
+a list of them), `status` (`draft` | `stable` | `deprecated`), and `stale_after`.
+Actors follow `human:<id>`, `process:<id>`, or `<producer>/<version>`; every
+timestamp is ISO 8601 with an explicit UTC offset. Absent means unverified or
+stable — a valid, meaningful state.
+
+A sanctioned computation is a standalone `type: Attested Computation` concept
+carrying `runtime` plus optional `parameters`, `computation`, `executor`, and
+`attester`, with the computation under a `# Computation` body heading or at the
+`computation` path (spec §10).
 
 ## Language Rule
 
@@ -50,6 +70,8 @@ Read only what applies to the request:
   - `docs/operations/setup.md` when install, credentials, or operations change
   - `docs/backlog/index.md` before filing or moving a brief
   - `AGENTS.md` and `README.md` when the change affects how agents enter the repo
+  - the [OKF v0.2 spec](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md)
+    when the change touches the frontmatter families or adds an Attested Computation
 - Read the existing document before editing it.
 
 ## Workflow
@@ -61,6 +83,8 @@ Read only what applies to the request:
    - Edit an existing document when the topology is unchanged.
    - Add a new document only when a durable knowledge node exists that has no home.
    - Link a new document from `docs/index.md`.
+   - Write new concept pages with `type`, `title`, `description`, and the v0.2
+     families that are true.
 4. Record the decision in `docs/log.md`.
    - Every scope decision, discovery, risk, or structural change gets a dated entry under
      the correct date heading, newest date first.
@@ -95,16 +119,24 @@ Read only what applies to the request:
 - Update `docs/operations/setup.md` — it owns install, credentials, and the timer.
 - Add an `Update` entry to `docs/log.md` when the change affects existing installs.
 
+### Verification, provenance, or freshness changes
+
+- Update the frontmatter family that owns the fact — `sources` for provenance,
+  `verified` for a new check, `generated` for a rewrite, `stale_after` for a
+  horizon — instead of restating it in prose.
+- Add an `Update` entry to `docs/log.md`.
+
 ### A new document joins the bundle
 
-- Write it with full frontmatter (`type`, `title`, `description`).
+- Write it with `type`, `title`, and `description`, plus any v0.2 families that
+  are true (`sources`, `generated`, `verified`, `status`, `stale_after`).
 - Link it from `docs/index.md`.
 - Add a `Creation` entry to `docs/log.md`.
 
 ### A backlog brief is filed or moved
 
-- New briefs start from `docs/backlog/template.md`, English body, no frontmatter,
-  `lowercase-kebab-case.md` name.
+- New briefs start from `docs/backlog/template.md`, English body, minimal
+  frontmatter (`type: Backlog Brief`, `title`), `lowercase-kebab-case.md` name.
 - File it in the folder matching its readiness. A brief only belongs in `ready-for-agent/`
   when its Open Questions section is empty.
 - Promote or archive with `git mv` so history survives.
@@ -113,6 +145,7 @@ Read only what applies to the request:
 
 ### Drift audit
 
+- Confirm `docs/index.md` still declares the version the validator enforces.
 - Compare `AGENTS.md` and `README.md` against the actual bundle shape and `src/`.
 - Run the validator and fix missing frontmatter, broken links, and backlog placement first.
 - Prefer small corrective edits over reorganizing the bundle.
@@ -134,10 +167,14 @@ rg -n "TODO|\[TODO" docs
 git diff -- docs AGENTS.md CLAUDE.md README.md
 ```
 
-The validator checks reserved files (`docs/index.md` with `okf_version`, `docs/log.md`),
-concept frontmatter, relative in-bundle links, and the backlog rules — status directories,
-kebab-case brief names, no frontmatter on briefs, and no open questions left in
-`ready-for-agent/`. Fix what it reports before polishing prose.
+The validator checks every `index.md` and `log.md` at any level (§8/§9: the root index
+carries only `okf_version`; other indexes and all logs carry no frontmatter; logs use ISO
+date headings, newest first), concept frontmatter (required `type`; canonical pages also
+`title` and `description`; the v0.2 families `sources`, `generated`, `verified`, `status`,
+and `stale_after`, plus Attested Computation contracts, when present), relative in-bundle
+links, and the backlog rules — status directories, kebab-case brief names, backlog brief
+frontmatter, and no open questions left in `ready-for-agent/`. Fix what it reports before
+polishing prose.
 
 ## Resources
 
@@ -154,6 +191,8 @@ file to keep in sync.
 ## Guardrails
 
 - The bundle stays in English.
+- Never fabricate `sources`, `generated`, or `verified`. Absent provenance is an
+  honest, valid v0.2 state; a made-up entry is worse than none.
 - `docs/backlog/` never overrides a canonical document. Resolve conflicts in the canonical
   document, logged in `docs/log.md`, before working the brief.
 - Do not create speculative documents for decisions that have not been made. If something

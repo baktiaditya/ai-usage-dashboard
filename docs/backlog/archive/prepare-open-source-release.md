@@ -1,3 +1,8 @@
+---
+type: Backlog Brief
+title: Prepare the repository for an open-source release
+---
+
 # Prepare the repository for an open-source release
 
 ## Status

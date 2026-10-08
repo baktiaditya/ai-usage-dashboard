@@ -37,7 +37,9 @@ canonical document that owns it, then move the file to `archive/`.
 ## Writing Rules
 
 - File name `lowercase-kebab-case.md`, matching the rest of `docs/`.
-- Briefs are working documents, not OKF concept pages — they carry no frontmatter.
+- Briefs are working documents, never canonical. OKF v0.2 conformance requires
+  minimal frontmatter: `type: Backlog Brief` and `title` (a one-line `description`
+  is optional).
 - Start from [`template.md`](template.md).
 - After copying the template into a status folder, resolve every relative link from
   the brief's location; canonical documents are usually reached via `../../`.

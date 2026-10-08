@@ -1,3 +1,8 @@
+---
+type: Backlog Brief
+title: Simplify Linux installation and lifecycle management
+---
+
 # Simplify Linux installation and lifecycle management
 
 ## Status
