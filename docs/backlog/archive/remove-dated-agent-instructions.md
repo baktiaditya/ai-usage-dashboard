@@ -8,7 +8,7 @@ description: Prompt-audit findings for the Claude Code configuration this repo l
 
 ## Status
 
-Needs triage
+Archived
 
 The status above must match the directory that contains this brief. Move the file with
 `git mv` when its readiness changes.

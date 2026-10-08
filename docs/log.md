@@ -2,6 +2,16 @@
 
 ## 2026-10-08
 
+- **Decision**: accept the
+  [agent-instruction prompt-audit brief](backlog/archive/remove-dated-agent-instructions.md)
+  ([#46](https://github.com/baktiaditya/ai-usage-dashboard/issues/46)) and archive it. The
+  code-review-graph block in [`AGENTS.md`](../AGENTS.md) no longer tells agents to use graph
+  tools first or instead of Grep: it now names structural questions (callers, dependents,
+  impact, test coverage, architecture) as the graph's job, sends literal-string, config-key, and
+  known-file lookups to direct search or reads, and keeps the verify-in-source rules. The four
+  code-review-graph skills stay as they are, because they follow the upstream skill set. The
+  brief's low-confidence flags were not acted on.
+
 - **Restructure**: upgraded the bundle from OKF v0.1 to
   [OKF v0.2](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md).
   [`docs/index.md`](index.md) now declares `okf_version: '0.2'`, and the `okf-sync` skill,

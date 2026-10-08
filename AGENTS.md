@@ -8,13 +8,14 @@ implementation lives in `src/`.
 
 ## MCP Tools: code-review-graph
 
-**This project has a knowledge graph. Start with the code-review-graph
-MCP tools to narrow scope, then read the source.** The graph is cheaper than scanning files and
-gives you structural context (callers, dependents, test coverage) that file search cannot.
+This project has a code-review-graph knowledge graph. Use it to narrow scope when the question is
+structural — callers, dependents, impact, test coverage, architecture — then read the source. There
+the graph is cheaper than scanning files and gives context file search cannot. For a literal string,
+a config key, or a file you already know, search or read directly.
 
-### When to use graph tools FIRST
+### Which graph tool
 
-- **Exploring code**: `semantic_search_nodes_tool` or `query_graph_tool` instead of Grep
+- **Exploring code**: `semantic_search_nodes_tool` or `query_graph_tool`
 - **Understanding impact**: `get_impact_radius_tool` instead of manually tracing imports
 - **Code review**: `detect_changes_tool` + `get_review_context_tool` instead of reading entire files
 - **Finding relationships**: `query_graph_tool` with callers_of/callees_of/imports_of/tests_for
