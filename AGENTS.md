@@ -6,39 +6,50 @@ implementation lives in `src/`.
 
 <!-- code-review-graph MCP tools -->
 
-## Start Every Task
+## MCP Tools: code-review-graph
 
-1. Use code-review-graph before Grep/Glob/Read-style codebase exploration. Start with
-   `get_minimal_context_tool`, then use semantic/relationship queries for exploration, impact/flow
-   tools for blast radius, `detect_changes_tool` for review, and `tests_for` before concluding
-   coverage is missing. Confirm graph freshness when the exact head matters: each tool result
-   carries `_graph.head_matches_build`, and when it is `false`, run `code-review-graph build`.
-   After a branch switch, `code-review-graph update` can report no changed files and leave the
-   graph on the old branch. If the tools are unavailable, `get_minimal_context_tool` returns
-   `not_ready`, or the graph does not cover the target, state that limitation and continue with
-   filesystem search. Semantic search degrades silently: `code-review-graph update` never
-   refreshes embeddings, so nodes added since the last `embed` are absent from vector results
-   while `search_mode` still reports `semantic`. Re-run `code-review-graph embed --provider local`
-   before relying on it, or treat a semantic miss as inconclusive. A `search_mode` of `fts` means
-   the running server has no embeddings at all. Local embedding needs the
-   `code-review-graph[embeddings]` install, which the `uvx` entry in `.mcp.json` lacks. Read `fts`
-   results as keyword matches and state that limitation.
-2. Inspect `git status --short` and the relevant diff before editing. Preserve unrelated worktree
-   changes.
-3. Load only the task branches that apply:
-   - **Setup, commands, or tooling:** read `README.md`, `package.json`, and the owning config.
-     Package scripts are the command source of truth and run from the repository root.
-   - **Product or scope:** read `docs/index.md`, search `docs/log.md` for the subject and
-     read the current relevant entries, then read `docs/plan/ai-usage-dashboard-implementation-plan.md`
-     and `docs/discovery/m0-discovery.md` for what is live-verified vs fixture-tested.
-   - **Setup or operations:** read `docs/operations/setup.md`.
-   - **Backlog:** read `docs/backlog/index.md`. Implement only briefs in
-     `docs/backlog/ready-for-agent/`.
-   - **Bundle or repo-entrypoint documentation:** use the `okf-sync` skill. If it is not registered,
-     read `.agents/skills/okf-sync/SKILL.md` and follow its workflow directly. Update the smallest
-     owning surface, record structural decisions in `docs/log.md`, and run the validator.
-4. For code review, pin the exact base and head, then corroborate every finding against the direct
-   diff and relevant runtime behavior. Graph output is navigation, not defect evidence by itself.
+**This project has a knowledge graph. Start with the code-review-graph
+MCP tools to narrow scope, then read the source.** The graph is cheaper than scanning files and
+gives you structural context (callers, dependents, test coverage) that file search cannot.
+
+### When to use graph tools FIRST
+
+- **Exploring code**: `semantic_search_nodes_tool` or `query_graph_tool` instead of Grep
+- **Understanding impact**: `get_impact_radius_tool` instead of manually tracing imports
+- **Code review**: `detect_changes_tool` + `get_review_context_tool` instead of reading entire files
+- **Finding relationships**: `query_graph_tool` with callers_of/callees_of/imports_of/tests_for
+- **Architecture questions**: `get_architecture_overview_tool` + `list_communities_tool`
+
+### Verify in the source
+
+- Narrow scope with the graph, then read the source. Do not change code from graph output alone.
+- For any non-trivial change, read the implementation and the relevant tests before concluding.
+- Verify the exact source when touching behavior, database logic, migrations, retries, fallbacks,
+  recovery, or compatibility code.
+- When the graph and the source disagree, the source wins. The graph may be stale or may not
+  model that relationship.
+- An empty graph result can mean "not indexed" or "not statically visible", not "does not exist".
+
+### Key Tools
+
+| Tool                             | Use when                                               |
+| -------------------------------- | ------------------------------------------------------ |
+| `detect_changes_tool`            | Reviewing code changes — gives risk-scored analysis    |
+| `get_review_context_tool`        | Need source snippets for review — token-efficient      |
+| `get_impact_radius_tool`         | Understanding blast radius of a change                 |
+| `get_affected_flows_tool`        | Finding which execution paths are impacted             |
+| `query_graph_tool`               | Tracing callers, callees, imports, tests, dependencies |
+| `semantic_search_nodes_tool`     | Finding functions/classes by name or keyword           |
+| `get_architecture_overview_tool` | Understanding high-level codebase structure            |
+| `refactor_tool`                  | Planning renames, finding dead code                    |
+
+### Workflow
+
+1. The graph auto-updates on file changes (via hooks).
+2. Use `detect_changes_tool` for code review.
+3. Use `get_affected_flows_tool` to understand impact.
+4. Use `query_graph_tool` pattern="tests_for" to check coverage.
+<!-- /code-review-graph MCP tools -->
 
 ## Browser Automation
 
@@ -87,6 +98,13 @@ The five default roles (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-
 ### Domain docs
 
 Single-context. See `docs/agents/domain.md`.
+
+### OKF bundle
+
+The `docs/` tree is an Open Knowledge Format (OKF v0.2) bundle maintained by the `okf-sync` skill
+(`.agents/skills/okf-sync/SKILL.md`). Use it when editing anything under `docs/`, `README.md`,
+`AGENTS.md`, or `CLAUDE.md`, when a decision needs recording in `docs/log.md`, or when a backlog
+brief is filed, promoted, or archived; update the smallest owning surface and run the validator.
 
 <!-- BEGIN:nextjs-agent-rules -->
 
