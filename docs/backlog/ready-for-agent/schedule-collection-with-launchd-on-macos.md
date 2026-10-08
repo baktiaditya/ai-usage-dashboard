@@ -274,8 +274,13 @@ Accepted approach; implement only this brief's scope.
      below.
    - Keep the same assertions and Linux coverage. Use portable archive fixture creation, a
      canonical expected path for the symlink test, and a real available child executable that
-     deliberately exits non-zero. Do not skip these tests or change managed-installer product
-     behavior just to obtain a green Mac job.
+     deliberately exits non-zero. Do not change managed-installer product behavior just to
+     obtain a green Mac job.
+   - The two managed-installer suites in `tests/integration/installation.test.ts` run only on
+     Linux and are reported skipped on Darwin. They drive the real `scripts/install.sh`, which
+     refuses any non-Linux kernel and needs `flock` by product contract, so running them on macOS
+     would test a faked Linux userland. The archive fixture they use is exercised on every
+     platform by its own test. No other suite may be skipped on Darwin.
 8. **Installer proof.** Add `tests/integration/install-launchd.test.ts` and
    `tests/fixtures/launchctl-stub.sh`. Use a disposable home, log/data directories, and recording
    stub to prove default/overridden label propagation through the real installer, render-only
@@ -290,8 +295,11 @@ Accepted approach; implement only this brief's scope.
    Exercise install-only, enable, repeated enable, status, web health, and disable against real
    launchd. Use `launchctl print` only to inspect the resulting state. A cleanup trap disables only
    the test labels through the installer and removes only harness-owned plists/generated files
-   and fixture data. `--keep-fixture` retains the fixture for user-assisted session checks and
-   prints exact installer/inspection/cleanup commands carrying the same isolation settings.
+   and fixture data. After the installer's `--disable`, the trap may run `launchctl enable` on the
+   test labels alone, to clear the disabled overrides each unique prefix would otherwise leave in
+   the user's launchd database; it never loads or starts an agent. `--keep-fixture` retains the
+   fixture for user-assisted session checks and prints exact installer/inspection/cleanup commands
+   carrying the same isolation settings.
 
 ## Files Touched
 
@@ -301,26 +309,34 @@ Expected implementation surfaces.
 | ----------------------------------------------------- | --------------------------------------------------------- |
 | `launchd/*.plist.template`                            | New: collector and web LaunchAgents                       |
 | `src/lib/launchd-plist.ts`                            | New: plist renderer with XML escaping and refusals        |
-| `src/lib/systemd-unit.ts` or a new shared module      | `resolveUnitValues()` shared by both renderers            |
+| `src/lib/launchd-labels.ts`                           | New: one source for the production label names            |
+| `src/lib/unit-template.ts`                            | New: placeholder substitution shared by both renderers    |
+| `src/lib/unit-values.ts`                              | `resolveUnitValues()` and `AUD_UNIT_*` reads, shared      |
 | `scripts/render-launchd-agents.ts`                    | New: label-prefix/log-directory validation and rendering  |
 | `scripts/render-systemd-units.ts`                     | Uses the shared value resolution                          |
 | `scripts/install-launchd.sh`                          | New: all lifecycle actions use the selected label prefix  |
 | `scripts/test-launchd.sh`                             | New: isolated real-Mac harness invoking the installer     |
 | `scripts/collect.ts`                                  | Whole-run deadline                                        |
+| `src/lib/collector/cli.ts`                            | New: collector CLI carrying the whole-run deadline        |
+| `src/lib/paths.ts`                                    | Shared control-character check                            |
+| `src/lib/installation/install-paths.ts`               | `physicalPath()` accepts an injectable `realpath`         |
+| `src/lib/db/client.ts`                                | Sidecar chmod tolerant of a vanished file (macOS race)    |
 | `src/lib/db/backup.ts`                                | macOS stop hint names the launchd labels                  |
 | `package.json`                                        | `launchd:install` script                                  |
 | `.gitignore`                                          | `launchd/generated/`, as for `systemd/generated/`         |
 | `.github/workflows/ci.yml`                            | macOS 15 ARM64 verification job alongside Linux           |
 | `tests/unit/launchd-plist.test.ts`                    | New: escaping, refusals, placeholder coverage             |
+| `tests/unit/unit-values.test.ts`                      | New: `AUD_UNIT_*` reads and the missing-value error       |
 | `tests/integration/render-launchd-agents.test.ts`     | New: rendered files parse as plist XML with expected keys |
 | `tests/integration/install-launchd.test.ts`           | New: installer ordering, isolation, and failure behavior  |
 | `tests/fixtures/launchctl-stub.sh`                    | New: recording launchctl stub with controllable states    |
 | `tests/integration/installation.test.ts`              | Portable archive fixture setup for Darwin verification    |
 | `tests/unit/installation.test.ts`                     | Canonical expected physical path on macOS                 |
-| `tests/integration/codex-process.test.ts`             | Portable executable for the non-zero-exit fixture         |
+| `tests/integration/codex-process.test.ts`             | Portable non-zero-exit fixture and process count          |
 | `docs/operations/setup.md`                            | §5 macOS subsection; restore commands                     |
 | `docs/plan/ai-usage-dashboard-implementation-plan.md` | Accepted scope; implementation status at delivery         |
 | `README.md`                                           | Platform note                                             |
+| `CONTRIBUTING.md`                                     | macOS development and the macOS CI job                    |
 | `docs/log.md`                                         | Decision and delivery entries                             |
 
 ## Acceptance Criteria

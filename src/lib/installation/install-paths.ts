@@ -11,6 +11,7 @@
 import { readdirSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path';
+import { hasControlChar } from '../paths.ts';
 import { exists, isAtomicTempName, isDirectory, errorText } from './atomic.ts';
 import { JOURNAL_FILE, LOCK_FILE, OWNERSHIP_FILE, STATE_FILE } from './state.ts';
 
@@ -40,11 +41,8 @@ export function assertSafePathValue(name: string, value: string): void {
       `${name} contains whitespace, a quote, or a backslash, which a systemd unit cannot carry safely: ${JSON.stringify(value)}`,
     );
   }
-  for (const char of value) {
-    const code = char.charCodeAt(0);
-    if (code < 0x20 || code === 0x7f) {
-      fail(`${name} contains a control character: ${JSON.stringify(value)}`);
-    }
+  if (hasControlChar(value)) {
+    fail(`${name} contains a control character: ${JSON.stringify(value)}`);
   }
 }
 
@@ -115,13 +113,20 @@ export function isInside(child: string, parent: string): boolean {
  * existing prefix; the missing tail is appended unresolved. A path whose last
  * component (or any ancestor) symlinks elsewhere therefore reports where it
  * really lives, not where it is named.
+ *
+ * `realpath` is injectable so a caller that needs on-disk casing on a
+ * case-insensitive filesystem can pass `realpathSync.native`; the default keeps
+ * the platform-independent Node resolution.
  */
-export function physicalPath(path: string): string {
+export function physicalPath(
+  path: string,
+  realpath: (path: string) => string = realpathSync,
+): string {
   let current = resolve(path);
   const suffix: string[] = [];
   for (;;) {
     try {
-      const real = realpathSync(current);
+      const real = realpath(current);
       return suffix.length === 0 ? real : join(real, ...suffix);
     } catch {
       const parent = dirname(current);

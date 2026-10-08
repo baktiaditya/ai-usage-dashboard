@@ -34,6 +34,30 @@ jobs:
       - name: Format, lint, typecheck, unit and integration tests
         run: pnpm run verify
 
+  verify-macos:
+    name: pnpm run verify (macOS 15 ARM64)
+    runs-on: macos-15
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v7
+
+      - name: Use the Node version from .nvmrc
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+
+      - name: Enable pnpm through corepack
+        run: corepack enable pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Proves Darwin code and test behavior, including the launchd renderer and
+      # installer integration tests. GUI login-session launchd lifecycle proof
+      # stays on the real-Mac harness (scripts/test-launchd.sh).
+      - name: Format, lint, typecheck, unit and integration tests
+        run: pnpm run verify
+
   installation-systemd:
     name: disposable-systemd installation rehearsal
     runs-on: ubuntu-latest

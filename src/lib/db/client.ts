@@ -7,7 +7,7 @@
  * readers never block the writer, and a writer that arrives mid-transaction
  * waits instead of failing with SQLITE_BUSY.
  */
-import { chmodSync, closeSync, existsSync, mkdirSync, openSync } from 'node:fs';
+import { chmodSync, closeSync, mkdirSync, openSync } from 'node:fs';
 import { dirname } from 'node:path';
 import Database from 'better-sqlite3';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
@@ -166,7 +166,15 @@ function ensureOwnerOnly(path: string): void {
     if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
   }
   for (const file of [path, `${path}-wal`, `${path}-shm`]) {
-    if (existsSync(file)) chmodSync(file, 0o600);
+    try {
+      chmodSync(file, 0o600);
+    } catch (err) {
+      // Another process opening the same fresh database can close it and have
+      // SQLite remove a sidecar between our check and the chmod. ENOENT means
+      // there is nothing to tighten; whoever recreates the sidecar inherits
+      // the owner-only main file's permissions.
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+    }
   }
 }
 

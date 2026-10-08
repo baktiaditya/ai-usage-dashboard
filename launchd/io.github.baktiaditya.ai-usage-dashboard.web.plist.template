@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  User-level LaunchAgent for the AI Usage Dashboard web server, rendered by
+  scripts/render-launchd-agents.ts and installed by the installer's with-web
+  flag.
+
+  Placeholders are substituted with absolute paths in one literal pass and
+  XML-escaped by src/lib/launchd-plist.ts. This agent is NEVER installed or
+  loaded automatically; installation is an explicit installer flag.
+
+  launchd.plist(5) reads an integer Umask as decimal, so 63 is 0077.
+  ThrottleInterval is left at its default: launchd reschedules at most once
+  every 10 seconds, and has no StartLimitBurst equivalent. A server that
+  crashes on every start is respawned indefinitely instead of being given up.
+-->
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>__LABEL__</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>__NODE__</string>
+		<string>__TSX__</string>
+		<string>__WORKDIR__/scripts/next.ts</string>
+		<string>start</string>
+	</array>
+	<key>WorkingDirectory</key>
+	<string>__WORKDIR__</string>
+	<!--
+	  Same PATH and CODEX_HOME as the collector: manual refresh runs the
+	  collector in-process, and the Codex adapter spawns `codex` by name.
+	  The build is never run here; run `pnpm run build` before (re)installing.
+	-->
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>PATH</key>
+		<string>__PATH__</string>
+		<key>CODEX_HOME</key>
+		<string>__CODEXHOME__</string>
+		<key>AUD_ENV_FILE</key>
+		<string>__ENVFILE__</string>
+		<key>AUD_DATA_DIR</key>
+		<string>__DATADIR__</string>
+		<key>AUD_COLLECT_INTERVAL_MINUTES</key>
+		<string>__INTERVAL__</string>
+		<key>AUD_HOST</key>
+		<string>__HOST__</string>
+		<key>AUD_PORT</key>
+		<string>__PORT__</string>
+		<key>NODE_ENV</key>
+		<string>production</string>
+		<key>NEXT_TELEMETRY_DISABLED</key>
+		<string>1</string>
+	</dict>
+	<key>RunAtLoad</key>
+	<true/>
+	<!-- Respawn only after an unsuccessful exit, and never after a clean one. -->
+	<key>KeepAlive</key>
+	<dict>
+		<key>SuccessfulExit</key>
+		<false/>
+	</dict>
+	<key>Umask</key>
+	<integer>63</integer>
+	<key>StandardOutPath</key>
+	<string>__LOGDIR__/__LABEL__.out.log</string>
+	<key>StandardErrorPath</key>
+	<string>__LOGDIR__/__LABEL__.err.log</string>
+</dict>
+</plist>

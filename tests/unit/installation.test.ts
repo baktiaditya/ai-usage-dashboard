@@ -316,8 +316,10 @@ describe('install paths', () => {
     symlinkSync(outside, outward);
     expect(isPhysicallyInside(outward, root)).toBe(false);
 
-    // A missing tail resolves through the longest existing ancestor.
-    expect(physicalPath(join(inward, 'usage.db'))).toBe(join(inside, 'usage.db'));
+    // A missing tail resolves through the longest existing ancestor. The
+    // expected path is canonical: on macOS `/var` really is `/private/var`,
+    // which is what a real filesystem walk reports.
+    expect(physicalPath(join(inward, 'usage.db'))).toBe(join(physicalPath(inside), 'usage.db'));
     expect(isPhysicallyInside(join(inward, 'usage.db'), root)).toBe(true);
   });
 

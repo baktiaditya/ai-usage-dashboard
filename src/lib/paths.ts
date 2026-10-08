@@ -15,6 +15,15 @@ export class PathError extends Error {
   override readonly name = 'PathError';
 }
 
+/** True when `raw` contains an ASCII control character, DEL included. */
+export function hasControlChar(raw: string): boolean {
+  for (const char of raw) {
+    const code = char.charCodeAt(0);
+    if (code < 0x20 || code === 0x7f) return true;
+  }
+  return false;
+}
+
 /** `~/x` becomes `<home>/x`; an absolute path is normalised; anything else throws. */
 export function userPath(name: string, raw: string, home: string = homedir()): string {
   const value = raw.trim();

@@ -24,10 +24,16 @@ Source contracts and provider requirements live in the
 
 ## Installation
 
-**Linux** is the supported platform. Automatic collection and start-on-boot use a user
-`systemd` session. macOS should run the dashboard and manual collection, but it is untested
-there and has no scheduler yet (tracked in
-[#29](https://github.com/baktiaditya/ai-usage-dashboard/issues/29)). Windows is not supported.
+**Linux** is the supported platform with a managed, one-command installation: automatic
+collection and start-on-boot use a user `systemd` session. On **macOS**, manual
+installations get per-user `launchd` LaunchAgents that run the collector every five minutes
+and, with `--with-web`, the loopback dashboard during the login session
+([Setup §5](docs/operations/setup.md#5-scheduled-collection)). Native technical lifecycle
+checks passed on macOS 15 ARM64 on 2026-10-07; sleep/wake, logout/login, Login Items, and
+keyring-credential checks remain user-assisted and unperformed, so macOS support is not yet
+fully validated (tracked in
+[#29](https://github.com/baktiaditya/ai-usage-dashboard/issues/29)). Windows is not
+supported.
 
 ### Managed installation (Linux, one command)
 
@@ -161,6 +167,21 @@ installing anything. Interval, port, data directory, and other overrides are in 
 installer after changing the interval, port, or data directory, because the units keep the
 values they were installed with.
 
+#### Keep it running (macOS)
+
+On macOS, the same checkout installs per-user LaunchAgents; `--with-web` needs
+`pnpm run build` first:
+
+```bash
+scripts/install-launchd.sh --install --enable --with-web
+scripts/install-launchd.sh --status
+```
+
+The agents run only while you are logged in, have no systemd sandbox, and log to
+`~/Library/Logs/ai-usage-dashboard/`. `scripts/install-launchd.sh --disable --with-web`
+stops and disables both. Differences from systemd, including sleep and restart behavior,
+are in [Setup §5](docs/operations/setup.md#5-scheduled-collection).
+
 #### Update
 
 ```bash
@@ -174,12 +195,17 @@ scripts/install-systemd.sh --install --enable --with-web
 Re-running the installer also restarts the web unit on the new build. Database migrations apply
 automatically when the collector or the server next opens the database. To keep a separate
 checkout with rollback, follow [Production checkout](docs/operations/production-checkout.md).
+On macOS, re-run `scripts/install-launchd.sh --install --enable --with-web` after `pnpm run
+build` instead.
 
 #### Uninstall
 
 `scripts/install-systemd.sh --disable --with-web` stops and disables both units. Data lives
 outside the repository, by default under `~/.local/share/ai-usage-dashboard/`. The Claude
 status-line bridge has its own removal step ([Setup §3](docs/operations/setup.md#remove)).
+On macOS, `scripts/install-launchd.sh --disable --with-web` stops and disables both agents;
+delete the two `io.github.baktiaditya.ai-usage-dashboard.*.plist` files from
+`~/Library/LaunchAgents` to remove them completely.
 
 ### Developing
 
@@ -188,7 +214,7 @@ with demo data. See [Development server](docs/operations/setup.md#development-se
 [CONTRIBUTING.md](CONTRIBUTING.md).
 
 Full instructions, including the Claude status-line bridge, credentials, backup and restore,
-and the systemd units: **[docs/operations/setup.md](docs/operations/setup.md)**.
+and the scheduler units: **[docs/operations/setup.md](docs/operations/setup.md)**.
 
 ## The three ideas this is built around
 

@@ -18,11 +18,9 @@
  */
 import { chmodSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { getConfig } from '../src/lib/config';
-import { collectorEnvFilePath } from '../src/lib/env-file';
 import { safeErrorMessage } from '../src/lib/redact';
 import { renderUnit } from '../src/lib/systemd-unit';
-import type { UnitValues } from '../src/lib/systemd-unit';
+import { resolveUnitValues, unitInputsFromEnv } from '../src/lib/unit-values';
 
 const UNITS = [
   'ai-usage-dashboard-collector.service',
@@ -30,30 +28,13 @@ const UNITS = [
   'ai-usage-dashboard-web.service',
 ];
 
-function required(name: string): string {
-  const value = process.env[name];
-  if (!value) throw new Error(`${name} is not set; run scripts/install-systemd.sh instead`);
-  return value;
-}
-
 try {
   const outDir = process.argv[2];
   if (!outDir) throw new Error('usage: tsx scripts/render-systemd-units.ts <output-dir>');
 
-  const envFile = collectorEnvFilePath(process.env);
-  const config = getConfig();
-  const values: UnitValues = {
-    WORKDIR: required('AUD_UNIT_WORKDIR'),
-    PATH: required('AUD_UNIT_PATH'),
-    CODEXHOME: required('AUD_UNIT_CODEXHOME'),
-    NODE: required('AUD_UNIT_NODE'),
-    TSX: required('AUD_UNIT_TSX'),
-    DATADIR: config.dataDir,
-    ENVFILE: envFile,
-    INTERVAL: String(config.collectIntervalMinutes),
-    HOST: config.host,
-    PORT: String(config.port),
-  };
+  const { envFile, config, values } = resolveUnitValues(
+    unitInputsFromEnv(process.env, 'scripts/install-systemd.sh'),
+  );
 
   // Render both before writing either, so a refused value never leaves a
   // service and timer that disagree.
