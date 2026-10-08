@@ -1,3 +1,8 @@
+---
+type: Backlog Brief
+title: Add OpenCode Go subscription quota
+---
+
 # Add OpenCode Go subscription quota
 
 ## Status

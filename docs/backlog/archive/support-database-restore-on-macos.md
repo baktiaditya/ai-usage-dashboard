@@ -1,3 +1,8 @@
+---
+type: Backlog Brief
+title: Support database restore on macOS
+---
+
 # Support database restore on macOS
 
 ## Status

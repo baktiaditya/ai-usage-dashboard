@@ -41,6 +41,10 @@ playwright-report/
 blob-report/
 .playwright/
 
+# python
+__pycache__/
+*.pyc
+
 # os / editor
 .DS_Store
 *.swp

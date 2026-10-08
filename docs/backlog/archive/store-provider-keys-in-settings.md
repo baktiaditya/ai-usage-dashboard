@@ -1,3 +1,8 @@
+---
+type: Backlog Brief
+title: Store provider keys from a Settings dialog
+---
+
 # Store provider keys from a Settings dialog
 
 ## Status

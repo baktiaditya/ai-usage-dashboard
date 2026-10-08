@@ -1,5 +1,5 @@
 ---
-okf_version: '0.1'
+okf_version: '0.2'
 ---
 
 # AI Usage Dashboard — Knowledge Bundle
@@ -7,7 +7,7 @@ okf_version: '0.1'
 A localhost-first dashboard answering three questions on one screen: how much
 subscription quota is left, how much prepaid credit is left, and whether any
 provider is worth switching away from right now. This bundle follows
-[Open Knowledge Format (OKF) v0.1](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md).
+[Open Knowledge Format (OKF) v0.2](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md).
 
 # Plan
 

@@ -1,3 +1,8 @@
+---
+type: Backlog Brief
+title: Reach the dashboard from a phone over Tailscale
+---
+
 # Reach the dashboard from a phone over Tailscale
 
 ## Status

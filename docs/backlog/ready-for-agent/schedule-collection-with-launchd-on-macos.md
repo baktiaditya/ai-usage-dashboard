@@ -1,3 +1,8 @@
+---
+type: Backlog Brief
+title: Schedule collection with launchd on macOS
+---
+
 # Schedule collection with launchd on macOS
 
 ## Status

@@ -1,3 +1,8 @@
+---
+type: Backlog Brief
+title: 'Serve production from its own checkout of `main`'
+---
+
 # Serve production from its own checkout of `main`
 
 ## Status
