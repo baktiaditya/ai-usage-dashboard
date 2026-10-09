@@ -7,7 +7,7 @@ title: Reach the dashboard from a phone over Tailscale
 
 ## Status
 
-Ready for human
+Ready for agent
 
 The status above must match the directory that contains this brief. Move the file with
 `git mv` when its readiness changes.
@@ -30,8 +30,8 @@ The dashboard runs as `ai-usage-dashboard-web.service` on `127.0.0.1:3838`
 ([Setup](../../operations/setup.md) §6). `loadConfig` in `src/lib/config.ts` rejects a
 non-loopback `AUD_HOST`. The last security rule in the
 [plan](../../plan/ai-usage-dashboard-implementation-plan.md) (§5) sets the bar for phone access:
-"add authentication, TLS, origin policy, and a private network before opening a non-loopback
-listener".
+add authentication, TLS, an origin policy, and a private network, while the Next.js server stays
+bound to loopback behind a trusted local daemon.
 
 `tailscale serve` meets that bar without opening a non-loopback listener in the application:
 
@@ -42,8 +42,8 @@ listener".
 - The Next.js server stays on loopback, so the Setup §11 promise "bind to anything but loopback"
   still holds literally.
 
-Whether tailnet device identity counts as the plan's "authentication" is the user's decision (see
-Open Questions).
+Tailnet device identity is accepted as the plan's "authentication", and tailnet HTTPS
+certificates are used (decided [2026-10-09](../../log.md#2026-10-09)). No in-app check is added.
 
 Checked on the development machine on 2026-09-14: MagicDNS is on, the Tailscale operator is the
 login user (no `sudo` needed), no serve configuration exists, and HTTPS certificates are not yet
@@ -63,12 +63,20 @@ header-based trust, and any local process can send those headers.
 
 ## Dependencies and Gates
 
-- PR #1 is merged into `main`, including the web unit (`f80c013`). Owner: user.
-- HTTPS certificates are enabled for the tailnet in the Tailscale admin console. This publishes
-  the machine's `ts.net` name in Certificate Transparency logs. Owner: user.
-- A `Decision` in `docs/log.md` that `tailscale serve` plus tailnet device identity satisfies the
-  plan's phone-access rule, with the plan's §5 rule updated to match. Owner: user.
-- Authorization to run `tailscale serve --bg 3838` on the machine. Owner: user.
+Every gate is closed; the user decided the direction on
+[2026-10-09](../../log.md#2026-10-09):
+
+- Tailnet device identity satisfies the plan's authentication rule; no in-app check is added.
+  Plan §5 records this.
+- Tailnet HTTPS certificates are used, so the allowlisted origin is `https:`.
+- The tailnet holds only the user's own devices, so no tailnet access rule is required.
+- Refresh from the phone is in scope, and the added origin is accepted by every mutating route,
+  including Settings.
+- The code, tests, and documentation changes are inside the agent's executable scope.
+
+Human-only, not needed to implement or merge, but needed to close the live checks: enable the
+tailnet HTTPS certificate, run `tailscale serve --bg 3838`, and verify from the phone. An agent
+cannot operate the phone, so report which live checks were actually performed.
 
 ## Scope
 
@@ -76,8 +84,10 @@ header-based trust, and any local process can send those headers.
 
 - `AUD_ALLOWED_ORIGINS`: an optional, comma-separated list of extra exact origins that the
   same-origin guard accepts, validated when the configuration loads.
+- The extra origin is accepted by every route that calls `requireSameOrigin`, including the
+  Settings routes; no route stays loopback-only.
 - A Setup subsection covering `tailscale serve`, the variable, and how to turn exposure off, plus
-  the §7 row, `.env.example`, the README security posture, the plan rule, and the log decision.
+  the §7 row, `.env.example`, and the README security posture.
 - Running `tailscale serve` and the live check from the phone, both gated on the user.
 
 ### Out of scope
@@ -99,8 +109,9 @@ header-based trust, and any local process can send those headers.
      `*`, and `null`.
    - An invalid entry throws `ConfigError`, naming the entry.
 2. `src/lib/server/security.ts`: `allowedOrigins` returns the three loopback origins followed by
-   `config.extraOrigins`. The comparison stays an exact string match. Update the module comment,
-   which currently assumes a loopback-only browser origin.
+   `config.extraOrigins`. The comparison stays an exact string match. Every route that calls
+   `requireSameOrigin`, including Settings, then accepts the extra origin. Update the module
+   comment, which currently assumes a loopback-only browser origin.
 3. Tests:
    - `tests/unit/config-time.test.ts`: the default, accepted entries, and each rejected shape.
    - `tests/integration/api-security.test.ts`: the configured origin passes, and its `http://`
@@ -117,21 +128,19 @@ header-based trust, and any local process can send those headers.
      - a warning never to use `funnel`.
    - Correct the §6 sentence saying that authentication, TLS, and an origin policy "none of those
      exist yet", and add the §7 row.
-   - Add a commented line to `.env.example`, a bullet to the README security posture, and the
-     plan §5 rule and log `Decision` from the gates.
+   - Add a commented line to `.env.example` and a bullet to the README security posture. The plan
+     §5 rule and the log `Decision` are already recorded (2026-10-09).
 
 ## Files Touched
 
-| Path                                                  | Change                                                 |
-| ----------------------------------------------------- | ------------------------------------------------------ |
-| `src/lib/config.ts`                                   | `AUD_ALLOWED_ORIGINS` parsing; `extraOrigins`          |
-| `src/lib/server/security.ts`                          | `allowedOrigins` appends `extraOrigins`; comment       |
-| `tests/unit/config-time.test.ts`                      | Default, accepted, and rejected origin entries         |
-| `tests/integration/api-security.test.ts`              | Configured origin accepted; near-misses refused        |
-| `docs/operations/setup.md`                            | §6 Tailscale subsection and corrected sentence; §7 row |
-| `.env.example`, `README.md`                           | Commented variable; security posture bullet            |
-| `docs/plan/ai-usage-dashboard-implementation-plan.md` | §5 phone-access rule                                   |
-| `docs/log.md`                                         | `Decision` entry                                       |
+| Path                                     | Change                                                 |
+| ---------------------------------------- | ------------------------------------------------------ |
+| `src/lib/config.ts`                      | `AUD_ALLOWED_ORIGINS` parsing; `extraOrigins`          |
+| `src/lib/server/security.ts`             | `allowedOrigins` appends `extraOrigins`; comment       |
+| `tests/unit/config-time.test.ts`         | Default, accepted, and rejected origin entries         |
+| `tests/integration/api-security.test.ts` | Configured origin accepted; near-misses refused        |
+| `docs/operations/setup.md`               | §6 Tailscale subsection and corrected sentence; §7 row |
+| `.env.example`, `README.md`              | Commented variable; security posture bullet            |
 
 ## Acceptance Criteria
 
@@ -163,18 +172,3 @@ header-based trust, and any local process can send those headers.
 - `pnpm run verify` is the final gate.
 
 ## Open Questions
-
-- Does tailnet device identity satisfy the plan's authentication rule, or is an in-app check (for
-  example on a Tailscale identity header) also wanted? Owner: user.
-- Tailnet HTTPS certificates (recommended; the machine name appears in Certificate Transparency
-  logs) or `tailscale serve --http=80` (no certificate, but the phone treats the page as an
-  insecure origin, and the allowlist would have to accept a non-loopback `http://` origin)?
-  Owner: user.
-- Does anyone else share the tailnet or this machine? If so, a tailnet access rule should limit
-  this machine's port 443 to the user's own devices. Owner: user.
-- Is refresh from the phone needed, or is read-only enough? Read-only needs only the Setup
-  documentation and no code. Owner: user.
-- Now that [store-provider-keys-in-settings](../archive/store-provider-keys-in-settings.md)
-  has landed, the Settings routes that save and remove provider keys use the same `allowedOrigins`
-  guard. Should an added tailnet origin also be allowed to write keys, or should those routes stay
-  loopback-only? Owner: user.
