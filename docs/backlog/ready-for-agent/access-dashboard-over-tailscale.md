@@ -75,7 +75,7 @@ Every gate is closed; the user decided the direction on
 - The code, tests, and documentation changes are inside the agent's executable scope.
 
 Human-only, not needed to implement or merge, but needed to close the live checks: enable the
-tailnet HTTPS certificate, run `tailscale serve --bg 3838`, and verify from the phone. An agent
+tailnet HTTPS certificate, run `tailscale serve --bg --https=8443 3838`, and verify from the phone. An agent
 cannot operate the phone, so report which live checks were actually performed.
 
 ## Scope
@@ -121,12 +121,12 @@ cannot operate the phone, so report which live checks were actually performed.
      `Origin` equals the entry passes the guard, proving the added origin is not refresh-only.
 4. Documentation:
    - Setup §6 gets a "From a phone (Tailscale)" subsection:
-     - `tailscale serve --bg 3838` and `tailscale serve status`;
+     - `tailscale serve --bg --https=8443 3838` and `tailscale serve status`;
      - `AUD_ALLOWED_ORIGINS=https://<machine>.<tailnet>.ts.net:8443` in `collector.env`, which the web
        server reads because `getConfig` calls `loadCollectorEnvFile` and the web unit sets
        `AUD_ENV_FILE`;
      - `systemctl --user restart ai-usage-dashboard-web.service`;
-     - turning exposure off with `tailscale serve --https=443 off`;
+     - turning exposure off with `tailscale serve --https=8443 off`;
      - a warning never to use `funnel`.
    - Correct the §6 sentence saying that authentication, TLS, and an origin policy "none of those
      exist yet", and add the §7 row.

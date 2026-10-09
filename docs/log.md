@@ -5,17 +5,20 @@
 - **Update**: `AUD_ALLOWED_ORIGINS` is implemented, following the
   [Tailscale brief](backlog/ready-for-agent/access-dashboard-over-tailscale.md). `loadConfig`
   parses a comma-separated list of exact `https` origins into `AppConfig.extraOrigins`, refusing
-  any entry that is not already its own origin (a trailing slash, path, query, credentials, a
-  port, `*`, or `null`), and `allowedOrigins` in
+  any entry that is not already its own origin (a trailing slash, path, query, credentials, an
+  explicit default port such as `:443`, `*`, or `null`), and `allowedOrigins` in
   [`src/lib/server/security.ts`](../src/lib/server/security.ts) appends them after the three
   loopback origins, so every route that calls `requireSameOrigin` — including Settings —
-  accepts the configured origin. The server still binds only to loopback. Documented in
+  accepts the configured origin. The server still binds only to loopback. The served origin is
+  `https://<machine>.<tailnet>.ts.net:8443`: the host's `443` is already held by `ssh.socket`, so
+  `tailscale serve` uses `8443` and the origin carries that port. Documented in
   [Setup](operations/setup.md) §6 ("From a phone (Tailscale)") and §7, `.env.example`, and the
   [README security posture](../README.md#security-posture).
-  - **Verification:** `pnpm run verify` passes (47 files, 845 tests, 1 skipped),
-    `pnpm run test:e2e` passes (68), and the OKF bundle is valid. The live phone checks (page
-    load, Refresh, the new `collector_runs` row, and the Tailscale-disconnected refusal) were
-    not performed: an agent cannot operate the phone.
+  - **Verification:** `pnpm run verify` passes (47 files, 846 tests, 1 skipped),
+    `pnpm run test:e2e` passes (68), and the OKF bundle is valid. The page was confirmed to load
+    from the phone over `https://<machine>.<tailnet>.ts.net:8443/`; Refresh still answers
+    `403 cross_origin_denied` until the production checkout carries this change, and the remaining
+    live checks (a new `collector_runs` row, the Tailscale-disconnected refusal) were not run.
 
 ## 2026-10-09
 

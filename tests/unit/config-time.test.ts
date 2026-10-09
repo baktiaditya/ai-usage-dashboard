@@ -98,6 +98,15 @@ describe('configuration', () => {
     ]);
   });
 
+  it('accepts an explicit non-default port and rejects an explicit default one', () => {
+    // A non-default port is part of the origin, so the exact-match rule keeps it.
+    expect(loadConfig({ AUD_ALLOWED_ORIGINS: 'https://x.ts.net:8443' }).extraOrigins).toEqual([
+      'https://x.ts.net:8443',
+    ]);
+    // `URL` normalizes `:443` away, so the entry no longer equals its own origin.
+    expect(() => loadConfig({ AUD_ALLOWED_ORIGINS: 'https://x.ts.net:443' })).toThrow(ConfigError);
+  });
+
   it.each([
     ['an http scheme', 'http://x.ts.net'],
     ['a trailing slash', 'https://x.ts.net/'],

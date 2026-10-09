@@ -101,12 +101,12 @@ const numericEnv = (fallback: number, min: number, max: number) =>
 
 /**
  * `AUD_ALLOWED_ORIGINS`: a comma-separated list of exact extra origins the
- * same-origin guard also accepts, e.g. the `https://<machine>.<tailnet>.ts.net`
+ * same-origin guard also accepts, e.g. the `https://<machine>.<tailnet>.ts.net:8443`
  * origin of a `tailscale serve` front (plan §5).
  *
  * Each entry is trimmed and must already *be* an origin: it parses with
  * `new URL`, uses `https:`, and equals `url.origin`. That one rule rejects a
- * trailing slash, a path, a query, credentials, a port the proxy does not use,
+ * trailing slash, a path, a query, credentials, an explicit default port (`:443`),
  * `*`, and `null`. A blank value, or blank entries between commas, add nothing.
  */
 function parseExtraOrigins(raw: string | undefined): string[] {
