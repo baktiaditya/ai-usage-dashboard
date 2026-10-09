@@ -19,6 +19,7 @@ import { PROVIDERS, isProvider } from '../domain';
 import type { Provider, ProviderAdapter } from '../domain';
 import { createLogger } from '../logger';
 import { safeErrorMessage } from '../redact';
+import { installTypeOfServiceGuard } from '../socket-compat';
 import { collectOnce } from './index';
 
 /** The whole-run deadline, matching the systemd unit's `TimeoutStartSec=120`. */
@@ -130,6 +131,9 @@ async function runOnce(options: RunOnceOptions): Promise<number> {
  * reaches the deadline instead of exiting 0.
  */
 export async function runCollectorCli(options: CollectorCliOptions = {}): Promise<number> {
+  // The collector fetches provider APIs, so the macOS guard the web server
+  // installs at startup must also be in place before its first request.
+  installTypeOfServiceGuard();
   const argv = options.argv ?? process.argv.slice(2);
   const deadlineMs = options.deadlineMs ?? COLLECTOR_DEADLINE_MS;
   const exit = options.exit ?? ((code: number): void => void process.exit(code));
