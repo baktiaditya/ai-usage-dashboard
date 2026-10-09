@@ -686,12 +686,20 @@ anything but loopback, front it with `tailscale serve`. `tailscaled` terminates
 tailnet HTTPS, proxies to `127.0.0.1:3838`, and admits only devices your tailnet
 access policy allows, so tailnet device identity is the authentication.
 
-1. Turn on HTTPS certificates for the tailnet (once), then serve the dashboard:
+1. Enable MagicDNS and HTTPS certificates for the tailnet (once) in the admin console's
+   [DNS page](https://console.tailscale.com/admin/dns) — there is no CLI switch for it. Then
+   provision this machine's certificate and serve the dashboard:
 
    ```bash
+   tailscale cert <machine>.<tailnet>.ts.net
    tailscale serve --bg 3838
    tailscale serve status
    ```
+
+   The fully qualified name is required, and `sudo` is needed only when the Tailscale
+   operator is not your login user. `tailscale serve` provisions the certificate by itself
+   once HTTPS is enabled; running `tailscale cert` first surfaces a certificate error before
+   you change the serve configuration.
 
 2. Add the served origin to the web server's settings so manual refresh and
    every Settings route accept it. In `collector.env`
