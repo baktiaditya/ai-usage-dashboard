@@ -17,6 +17,13 @@ All notable changes to this project are documented here. The format is based on
   same-origin guard, so Refresh and Settings work from a phone through `tailscale serve` while
   the server stays bound to loopback (Setup §6).
 
+### Fixed
+
+- A macOS-only crash is prevented before it can happen: Node 24's bundled undici throws
+  `EINVAL` from its HTTP/1.1 writer when a peer has reset the connection, which terminated the
+  collector or the web server with an uncaught exception. The error is now ignored — it is a
+  best-effort QoS hint — while every other error still surfaces.
+
 ## [0.2.0] - 2026-10-04
 
 ### Added
