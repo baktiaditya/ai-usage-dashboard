@@ -29,6 +29,7 @@ const ENV_KEYS = [
   'AUD_HOST',
   'AUD_REFRESH_ENABLED',
   'AUD_LOG_LEVEL',
+  'AUD_ALLOWED_ORIGINS',
 ] as const;
 const saved = Object.fromEntries(ENV_KEYS.map((key) => [key, process.env[key]]));
 
@@ -267,6 +268,21 @@ describe('same-origin guard', () => {
 
   it('accepts a same-origin fetch that reports Sec-Fetch-Site instead of Origin', async () => {
     expect((await get({ 'sec-fetch-site': 'same-origin' })).status).toBe(200);
+  });
+
+  it('accepts a configured extra origin on every handler, proving it is not refresh-only', async () => {
+    const extra = 'https://dev-box.tail1234.ts.net';
+    process.env['AUD_ALLOWED_ORIGINS'] = extra;
+    resetConfigCache();
+    closeSharedDb();
+
+    const headers = { origin: extra };
+    expect((await put('deepseek', { secret: SECRET }, headers)).status).toBe(200);
+    expect((await get(headers)).status).toBe(200);
+    expect((await del('deepseek', headers)).status).toBe(200);
+
+    // The http:// twin of the configured origin is still refused.
+    expect((await get({ origin: 'http://dev-box.tail1234.ts.net' })).status).toBe(403);
   });
 });
 

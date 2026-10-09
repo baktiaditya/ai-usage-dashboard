@@ -610,8 +610,10 @@ pnpm run start      # http://127.0.0.1:3838
 ```
 
 The server binds explicitly to `127.0.0.1`. `AUD_HOST` accepts only loopback
-values and **fails at startup** on anything else — exposing this dashboard needs
-authentication, TLS and an origin policy first, and none of those exist yet.
+values and **fails at startup** on anything else. To reach the dashboard from a
+phone, front the loopback server with `tailscale serve` rather than moving the
+bind; that supplies the authentication, TLS, and origin policy
+[below](#from-a-phone-tailscale).
 
 Manual refresh uses `POST`, requires a same-origin request, and is rate limited
 to 6 refreshes per provider per minute.
@@ -677,6 +679,58 @@ running. `--status` includes the web unit once it is installed, and
 `--disable --with-web` stops it along with the timer.
 Follow its logs with `journalctl --user -u ai-usage-dashboard-web.service -f`.
 
+### From a phone (Tailscale)
+
+To open the dashboard from a phone on your tailnet without binding it to
+anything but loopback, front it with `tailscale serve`. `tailscaled` terminates
+tailnet HTTPS, proxies to `127.0.0.1:3838`, and admits only devices your tailnet
+access policy allows, so tailnet device identity is the authentication.
+
+1. Enable MagicDNS and HTTPS certificates for the tailnet (once) in the admin console's
+   [DNS page](https://console.tailscale.com/admin/dns) — there is no CLI switch for it. Then
+   provision this machine's certificate and serve the dashboard:
+
+   ```bash
+   tailscale cert <machine>.<tailnet>.ts.net
+   tailscale serve --bg --https=8443 3838
+   tailscale serve status
+   ```
+
+   The fully qualified name is required, and `sudo` is needed only when the Tailscale
+   operator is not your login user. `tailscale serve` provisions the certificate by itself
+   once HTTPS is enabled; running `tailscale cert` first surfaces a certificate error before
+   you change the serve configuration.
+
+2. Add the served origin to the web server's settings so manual refresh and
+   every Settings route accept it. In `collector.env`
+   (`~/.config/ai-usage-dashboard/collector.env`):
+
+   ```bash
+   AUD_ALLOWED_ORIGINS=https://<machine>.<tailnet>.ts.net:8443
+   ```
+
+   `https` only, and the value must be exactly the origin the browser sends,
+   port included — no trailing slash, path, or query. The web server reads it
+   because `getConfig` merges this file. Then restart the unit:
+
+   ```bash
+   systemctl --user restart ai-usage-dashboard-web.service
+   ```
+
+3. Open `https://<machine>.<tailnet>.ts.net:8443/` on the phone. Reading needs none of
+   this; the variable is what lets **Refresh** and **Settings** through the
+   same-origin guard.
+
+Turn exposure off with:
+
+```bash
+tailscale serve --https=8443 off
+```
+
+The served origin is the only non-loopback origin the guard accepts; `AUD_HOST`
+still stays on loopback. Never use `tailscale funnel`, which exposes the
+dashboard to the public internet.
+
 ### Production checkout
 
 Production deploys and rollbacks run from a dedicated checkout, never the development repository.
@@ -689,21 +743,22 @@ The deploy, failure, and rollback procedure lives in
 
 Every value has a safe default; all are optional.
 
-| Variable                           | Default                                      | Notes                                                                               |
-| ---------------------------------- | -------------------------------------------- | ----------------------------------------------------------------------------------- |
-| `AUD_DATA_DIR`                     | `~/.local/share/ai-usage-dashboard`          | database + spool; absolute or `~/…`                                                 |
-| `AUD_TIMEZONE`                     | system timezone, `UTC` fallback              | the zone Node resolves; only affects calendar-day boundaries in history             |
-| `AUD_HOST`                         | `127.0.0.1`                                  | loopback only; anything else is rejected                                            |
-| `AUD_PORT`                         | `3838`                                       | `pnpm run start` and the web unit bind to it                                        |
-| `AUD_DEV_PORT`                     | `3839`                                       | `pnpm run dev` only; must differ from `AUD_PORT`                                    |
-| `AUD_DEV_DATA_DIR`                 | `~/.local/share/ai-usage-dashboard-dev`      | `pnpm run dev` / `seed:dev` only; absolute or `~/…`; never the production directory |
-| `AUD_DEV_LIVE_REFRESH`             | `0`                                          | `0` or `1` only; `1` lets development refresh collect; see §6                       |
-| `AUD_THRESHOLDS`                   | —                                            | JSON advisory overrides; see Thresholds below                                       |
-| `AUD_RETENTION_DAYS`               | `90`                                         |                                                                                     |
-| `AUD_COLLECT_INTERVAL_MINUTES`     | `5`                                          | also drives the freshness budget                                                    |
-| `AUD_CLAUDE_POLL_INTERVAL_MINUTES` | `5`                                          | minimum spacing of Claude quota probes (§3); below `5` is rejected, not clamped     |
-| `AUD_LOG_LEVEL`                    | `info`                                       | `debug` \| `info` \| `warn` \| `error`                                              |
-| `AUD_ENV_FILE`                     | `~/.config/ai-usage-dashboard/collector.env` | optional `AUD_*` settings file, absolute or `~/…`; never keys (§4)                  |
+| Variable                           | Default                                      | Notes                                                                                                        |
+| ---------------------------------- | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `AUD_DATA_DIR`                     | `~/.local/share/ai-usage-dashboard`          | database + spool; absolute or `~/…`                                                                          |
+| `AUD_TIMEZONE`                     | system timezone, `UTC` fallback              | the zone Node resolves; only affects calendar-day boundaries in history                                      |
+| `AUD_HOST`                         | `127.0.0.1`                                  | loopback only; anything else is rejected                                                                     |
+| `AUD_PORT`                         | `3838`                                       | `pnpm run start` and the web unit bind to it                                                                 |
+| `AUD_DEV_PORT`                     | `3839`                                       | `pnpm run dev` only; must differ from `AUD_PORT`                                                             |
+| `AUD_DEV_DATA_DIR`                 | `~/.local/share/ai-usage-dashboard-dev`      | `pnpm run dev` / `seed:dev` only; absolute or `~/…`; never the production directory                          |
+| `AUD_DEV_LIVE_REFRESH`             | `0`                                          | `0` or `1` only; `1` lets development refresh collect; see §6                                                |
+| `AUD_THRESHOLDS`                   | —                                            | JSON advisory overrides; see Thresholds below                                                                |
+| `AUD_RETENTION_DAYS`               | `90`                                         |                                                                                                              |
+| `AUD_COLLECT_INTERVAL_MINUTES`     | `5`                                          | also drives the freshness budget                                                                             |
+| `AUD_CLAUDE_POLL_INTERVAL_MINUTES` | `5`                                          | minimum spacing of Claude quota probes (§3); below `5` is rejected, not clamped                              |
+| `AUD_LOG_LEVEL`                    | `info`                                       | `debug` \| `info` \| `warn` \| `error`                                                                       |
+| `AUD_ENV_FILE`                     | `~/.config/ai-usage-dashboard/collector.env` | optional `AUD_*` settings file, absolute or `~/…`; never keys (§4)                                           |
+| `AUD_ALLOWED_ORIGINS`              | —                                            | exact `https` origins the same-origin guard also accepts, e.g. a `tailscale serve` URL (§6); comma-separated |
 
 ### Thresholds
 

@@ -44,9 +44,11 @@ retried within an interval.
 
 ## Scope
 
-- The server binds only to loopback and rejects a non-loopback `AUD_HOST` at startup; exposing it
-  beyond the machine is explicitly unsupported until authentication, TLS, and an origin policy
-  exist.
+- The server binds only to loopback and rejects a non-loopback `AUD_HOST` at startup. Reaching it
+  beyond the machine is opt-in and needs authentication, TLS, and an origin policy: front the
+  loopback server with `tailscale serve` (tailnet device identity supplies authentication, the
+  tailnet certificate supplies TLS) and list the served origin in `AUD_ALLOWED_ORIGINS`, which the
+  same-origin guard then accepts exactly.
 - Adapters allowlist fields and discard raw provider payloads; account IDs, emails, session IDs,
   and transcript paths are never persisted.
 - A redaction pass runs before log writes, persisted diagnostics, API responses, and rendered

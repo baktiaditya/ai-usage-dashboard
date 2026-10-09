@@ -82,6 +82,47 @@ describe('configuration', () => {
     }
   });
 
+  it('adds no extra allowed origins by default', () => {
+    expect(loadConfig({}).extraOrigins).toEqual([]);
+    expect(loadConfig({ AUD_ALLOWED_ORIGINS: '' }).extraOrigins).toEqual([]);
+    expect(loadConfig({ AUD_ALLOWED_ORIGINS: '  ' }).extraOrigins).toEqual([]);
+  });
+
+  it('accepts comma-separated exact https origins, trimming each entry', () => {
+    const c = loadConfig({
+      AUD_ALLOWED_ORIGINS: ' https://dev-box.tail1234.ts.net , https://laptop.tail1234.ts.net ',
+    });
+    expect(c.extraOrigins).toEqual([
+      'https://dev-box.tail1234.ts.net',
+      'https://laptop.tail1234.ts.net',
+    ]);
+  });
+
+  it('accepts an explicit non-default port and rejects an explicit default one', () => {
+    // A non-default port is part of the origin, so the exact-match rule keeps it.
+    expect(loadConfig({ AUD_ALLOWED_ORIGINS: 'https://x.ts.net:8443' }).extraOrigins).toEqual([
+      'https://x.ts.net:8443',
+    ]);
+    // `URL` normalizes `:443` away, so the entry no longer equals its own origin.
+    expect(() => loadConfig({ AUD_ALLOWED_ORIGINS: 'https://x.ts.net:443' })).toThrow(ConfigError);
+  });
+
+  it.each([
+    ['an http scheme', 'http://x.ts.net'],
+    ['a trailing slash', 'https://x.ts.net/'],
+    ['a path', 'https://x.ts.net/path'],
+    ['credentials', 'https://user@x.ts.net'],
+    ['a query', 'https://x.ts.net/?a=1'],
+    ['a wildcard', '*'],
+    ['null', 'null'],
+  ])('rejects an AUD_ALLOWED_ORIGINS entry with %s, naming the entry', (_label, entry) => {
+    // A bad entry can sit beside a good one and still stops startup.
+    for (const value of [entry, `https://ok.tail1234.ts.net,${entry}`]) {
+      expect(() => loadConfig({ AUD_ALLOWED_ORIGINS: value })).toThrow(ConfigError);
+      expect(() => loadConfig({ AUD_ALLOWED_ORIGINS: value })).toThrow(entry);
+    }
+  });
+
   it('requires an absolute data directory, expanding a leading ~/', () => {
     // A relative path would open a different database in each working directory.
     for (const raw of ['relative-data', './data', '../data', '~other/data']) {

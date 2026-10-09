@@ -11,6 +11,11 @@
  * both are attacker-controlled request headers. `Origin` is set by the browser
  * itself and cannot be forged from page JavaScript, which is what makes it the
  * right signal.
+ *
+ * Fronted by a trusted local daemon such as `tailscale serve` (plan §5), the
+ * browser's origin is that daemon's HTTPS origin rather than a loopback one.
+ * Those exact origins are added through `AUD_ALLOWED_ORIGINS` and accepted here
+ * like the loopback ones; the server still binds only to loopback.
  */
 import type { NextRequest } from 'next/server';
 import type { AppConfig } from '../config';
@@ -24,12 +29,18 @@ export interface GuardFailure {
 
 export type GuardResult = { readonly ok: true } | GuardFailure;
 
-/** Origins the dashboard may legitimately be loaded from. */
+/**
+ * Origins the dashboard may legitimately be loaded from: the three loopback
+ * origins on the configured port, then any `AUD_ALLOWED_ORIGINS` entries. The
+ * comparison stays an exact string match, so the configured origins are extra
+ * allowlist entries, never a relaxation of the loopback rule.
+ */
 export function allowedOrigins(config: AppConfig): string[] {
   return [
     `http://127.0.0.1:${config.port}`,
     `http://localhost:${config.port}`,
     `http://[::1]:${config.port}`,
+    ...config.extraOrigins,
   ];
 }
 
