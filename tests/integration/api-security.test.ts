@@ -66,6 +66,32 @@ describe('same-origin enforcement', () => {
   });
 });
 
+describe('configured extra origins', () => {
+  const EXTRA = 'https://dev-box.tail1234.ts.net';
+  const withExtra = testConfig({ AUD_ALLOWED_ORIGINS: ` ${EXTRA} ` });
+
+  it('appends the configured origin after the three loopback origins', () => {
+    expect(allowedOrigins(withExtra)).toEqual([
+      'http://127.0.0.1:3838',
+      'http://localhost:3838',
+      'http://[::1]:3838',
+      EXTRA,
+    ]);
+  });
+
+  it('accepts a request from the configured origin', () => {
+    expect(requireSameOrigin(request({ origin: EXTRA }), withExtra).ok).toBe(true);
+  });
+
+  it('still refuses the http:// twin and a different ts.net host', () => {
+    for (const origin of ['http://dev-box.tail1234.ts.net', 'https://other.tail1234.ts.net']) {
+      const result = requireSameOrigin(request({ origin }), withExtra);
+      expect(result.ok, origin).toBe(false);
+      if (!result.ok) expect(result.status).toBe(403);
+    }
+  });
+});
+
 describe('rate limiting', () => {
   beforeEach(() => {
     refreshLimiter.reset();

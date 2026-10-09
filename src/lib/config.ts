@@ -99,6 +99,36 @@ const numericEnv = (fallback: number, min: number, max: number) =>
     .transform((v) => (v === undefined || v === '' ? fallback : Number(v)))
     .pipe(z.number().int().min(min).max(max));
 
+/**
+ * `AUD_ALLOWED_ORIGINS`: a comma-separated list of exact extra origins the
+ * same-origin guard also accepts, e.g. the `https://<machine>.<tailnet>.ts.net`
+ * origin of a `tailscale serve` front (plan §5).
+ *
+ * Each entry is trimmed and must already *be* an origin: it parses with
+ * `new URL`, uses `https:`, and equals `url.origin`. That one rule rejects a
+ * trailing slash, a path, a query, credentials, a port the proxy does not use,
+ * `*`, and `null`. A blank value, or blank entries between commas, add nothing.
+ */
+function parseExtraOrigins(raw: string | undefined): string[] {
+  if (raw === undefined || raw.trim() === '') return [];
+  const origins: string[] = [];
+  for (const part of raw.split(',')) {
+    const entry = part.trim();
+    if (entry === '') continue;
+    let url: URL;
+    try {
+      url = new URL(entry);
+    } catch {
+      throw new ConfigError(`AUD_ALLOWED_ORIGINS is not a valid URL: ${entry}`);
+    }
+    if (url.protocol !== 'https:' || url.origin !== entry) {
+      throw new ConfigError(`AUD_ALLOWED_ORIGINS entries must be an exact https origin: ${entry}`);
+    }
+    origins.push(entry);
+  }
+  return origins;
+}
+
 /** Plan §3.1: never send the Claude quota probe more often than this. */
 export const CLAUDE_POLL_MIN_INTERVAL_MINUTES = 5;
 
@@ -119,6 +149,7 @@ const envSchema = z.object({
   ),
   AUD_LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).optional(),
   AUD_THRESHOLDS: z.string().optional(),
+  AUD_ALLOWED_ORIGINS: z.string().optional(),
   // Internal: set only by the development launcher (src/lib/dev-environment.ts).
   AUD_REFRESH_ENABLED: z.enum(['0', '1']).optional(),
 });
@@ -140,6 +171,12 @@ export interface AppConfig {
   readonly timezone: string;
   readonly host: string;
   readonly port: number;
+  /**
+   * Exact extra origins (`AUD_ALLOWED_ORIGINS`) the same-origin guard also
+   * accepts, after the three loopback origins. Empty by default. Added for a
+   * trusted local front such as `tailscale serve` (plan §5).
+   */
+  readonly extraOrigins: readonly string[];
   readonly retentionDays: number;
   readonly collectIntervalMinutes: number;
   /**
@@ -300,6 +337,7 @@ export function loadConfig(env: EnvLike = process.env): AppConfig {
     timezone: resolveTimezone(e.AUD_TIMEZONE),
     host,
     port: e.AUD_PORT,
+    extraOrigins: parseExtraOrigins(e.AUD_ALLOWED_ORIGINS),
     retentionDays: e.AUD_RETENTION_DAYS,
     collectIntervalMinutes: e.AUD_COLLECT_INTERVAL_MINUTES,
     claudePollIntervalMinutes: e.AUD_CLAUDE_POLL_INTERVAL_MINUTES,

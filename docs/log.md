@@ -1,5 +1,22 @@
 # Bundle Update Log
 
+## 2026-10-10
+
+- **Update**: `AUD_ALLOWED_ORIGINS` is implemented, following the
+  [Tailscale brief](backlog/ready-for-agent/access-dashboard-over-tailscale.md). `loadConfig`
+  parses a comma-separated list of exact `https` origins into `AppConfig.extraOrigins`, refusing
+  any entry that is not already its own origin (a trailing slash, path, query, credentials, a
+  port, `*`, or `null`), and `allowedOrigins` in
+  [`src/lib/server/security.ts`](../src/lib/server/security.ts) appends them after the three
+  loopback origins, so every route that calls `requireSameOrigin` — including Settings —
+  accepts the configured origin. The server still binds only to loopback. Documented in
+  [Setup](operations/setup.md) §6 ("From a phone (Tailscale)") and §7, `.env.example`, and the
+  [README security posture](../README.md#security-posture).
+  - **Verification:** `pnpm run verify` passes (47 files, 845 tests, 1 skipped),
+    `pnpm run test:e2e` passes (68), and the OKF bundle is valid. The live phone checks (page
+    load, Refresh, the new `collector_runs` row, and the Tailscale-disconnected refusal) were
+    not performed: an agent cannot operate the phone.
+
 ## 2026-10-09
 
 - **Decision**: reach the dashboard from a phone over Tailscale, and promote

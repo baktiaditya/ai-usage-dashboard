@@ -262,6 +262,9 @@ so scheduled and manual runs cannot drift apart in behaviour.
 ## Security posture
 
 - binds only to loopback; a non-loopback `AUD_HOST` fails at startup;
+- accepts an extra browser origin only when listed exactly in
+  `AUD_ALLOWED_ORIGINS`, so a `tailscale serve` HTTPS origin can pass the
+  same-origin guard without loosening the loopback bind;
 - authentication is delegated to the source: no auth file is read, no token is
   extracted, no terminal UI is scraped. The one token the dashboard holds for a
   CLI provider is a Claude token the user mints with `claude setup-token` and
