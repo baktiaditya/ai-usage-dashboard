@@ -28,12 +28,12 @@
   the move. The tag is created on the merge commit after this change lands.
 
 - **Update**: the macOS `setTypeOfService EINVAL` crash is fixed in the product, not only in the
-  tests. `src/lib/socket-compat.ts` installs the best-effort guard undici 8.8.0 adopted — ignore
-  only `EINVAL`, rethrow everything else — from `src/instrumentation.ts` for the web server and
-  `runCollectorCli` for the collector, because Node 24 bundles undici 7.x
-  ([#5544](https://github.com/nodejs/undici/issues/5544), fixed in
-  [#5547](https://github.com/nodejs/undici/pull/5547)). The test setup installs the same shared
-  guard instead of its own copy (#51).
+  tests. `src/lib/socket-compat.ts` installs a guard that ignores only `EINVAL` and rethrows
+  everything else — narrower than undici's own fix, which ignores every error from the call —
+  from `src/instrumentation.ts` for the web server and `runCollectorCli` for the collector,
+  because Node 24 bundles undici 7.x ([#5544](https://github.com/nodejs/undici/issues/5544),
+  fixed in [#5547](https://github.com/nodejs/undici/pull/5547)). The test setup installs the same
+  shared guard instead of its own copy (#51).
 
 ## 2026-10-09
 
