@@ -13,6 +13,9 @@ All notable changes to this project are documented here. The format is based on
   macOS 15 ARM64 CI job join the Linux verification. Collection while logged out is out of
   scope, and the user-assisted sleep/wake, logout/login, Login Items, and keyring checks
   remain open.
+- The collector run is bounded by a 120-second whole-run deadline, matching the systemd unit's
+  `TimeoutStartSec`, so an adapter that never settles ends the run instead of keeping a scheduled
+  job alive.
 - Phone access over Tailscale: `AUD_ALLOWED_ORIGINS` lets an exact `https` origin pass the
   same-origin guard, so Refresh and Settings work from a phone through `tailscale serve` while
   the server stays bound to loopback (Setup §6).

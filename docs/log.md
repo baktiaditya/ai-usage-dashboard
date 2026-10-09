@@ -22,7 +22,7 @@
 
 - **Update**: release `v0.3.0` is prepared. `package.json`, the HTTP `User-Agent`, and the Codex
   `clientInfo` move to `0.3.0`, and [CHANGELOG](../CHANGELOG.md) gains the `0.3.0` entry (#44,
-  #49). The public one-line command in the [README](../README.md) and
+  #49, #51). The public one-line command in the [README](../README.md) and
   [Setup](operations/setup.md#command-interface) now pins `v0.3.0`, and plan
   [§4.1.1](plan/ai-usage-dashboard-implementation-plan.md#411-managed-linux-installation) records
   the move. The tag is created on the merge commit after this change lands.
