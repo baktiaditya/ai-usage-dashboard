@@ -88,7 +88,7 @@ cannot operate the phone, so report which live checks were actually performed.
   Settings routes; no route stays loopback-only.
 - A Setup subsection covering `tailscale serve`, the variable, and how to turn exposure off, plus
   the §7 row, `.env.example`, and the README security posture.
-- Running `tailscale serve` and the live check from the phone, both gated on the user.
+- Running `tailscale serve` and the live check from the phone, both performed by the user.
 
 ### Out of scope
 
@@ -117,6 +117,8 @@ cannot operate the phone, so report which live checks were actually performed.
    - `tests/integration/api-security.test.ts`: the configured origin passes, and its `http://`
      twin and another `ts.net` host are refused. `testConfig` already goes through `loadConfig`,
      so the helper needs no change.
+   - `tests/integration/settings-route.test.ts`: with the variable set, a Settings request whose
+     `Origin` equals the entry passes the guard, proving the added origin is not refresh-only.
 4. Documentation:
    - Setup §6 gets a "From a phone (Tailscale)" subsection:
      - `tailscale serve --bg 3838` and `tailscale serve status`;
@@ -133,33 +135,41 @@ cannot operate the phone, so report which live checks were actually performed.
 
 ## Files Touched
 
-| Path                                     | Change                                                 |
-| ---------------------------------------- | ------------------------------------------------------ |
-| `src/lib/config.ts`                      | `AUD_ALLOWED_ORIGINS` parsing; `extraOrigins`          |
-| `src/lib/server/security.ts`             | `allowedOrigins` appends `extraOrigins`; comment       |
-| `tests/unit/config-time.test.ts`         | Default, accepted, and rejected origin entries         |
-| `tests/integration/api-security.test.ts` | Configured origin accepted; near-misses refused        |
-| `docs/operations/setup.md`               | §6 Tailscale subsection and corrected sentence; §7 row |
-| `.env.example`, `README.md`              | Commented variable; security posture bullet            |
+| Path                                       | Change                                                 |
+| ------------------------------------------ | ------------------------------------------------------ |
+| `src/lib/config.ts`                        | `AUD_ALLOWED_ORIGINS` parsing; `extraOrigins`          |
+| `src/lib/server/security.ts`               | `allowedOrigins` appends `extraOrigins`; comment       |
+| `tests/unit/config-time.test.ts`           | Default, accepted, and rejected origin entries         |
+| `tests/integration/api-security.test.ts`   | Configured origin accepted; near-misses refused        |
+| `tests/integration/settings-route.test.ts` | Settings route accepts the added origin                |
+| `docs/operations/setup.md`                 | §6 Tailscale subsection and corrected sentence; §7 row |
+| `.env.example`, `README.md`                | Commented variable; security posture bullet            |
 
 ## Acceptance Criteria
+
+Agent-verifiable:
 
 - [ ] Without `AUD_ALLOWED_ORIGINS`, `allowedOrigins` returns exactly the three loopback origins.
 - [ ] Configuration loading rejects `http://x.ts.net`, `https://x.ts.net/`,
       `https://x.ts.net/path`, `https://user@x.ts.net`, `*`, and `null`, naming the entry.
 - [ ] With the variable set, a refresh whose `Origin` equals the entry passes the guard, and its
       `http://` twin and a different `ts.net` host get `403`.
-- [ ] `ss -ltn` shows the Next.js server only on `127.0.0.1:3838`, and a non-loopback `AUD_HOST`
-      still fails at startup.
+- [ ] A Settings route request whose `Origin` equals the entry passes the guard, proving the added
+      origin is not refresh-only.
+- [ ] A non-loopback `AUD_HOST` still fails at startup.
+- [ ] `pnpm run verify` and the OKF validator pass.
+
+Human-only (the user, from the phone):
+
+- [ ] `ss -ltn` shows the Next.js server only on `127.0.0.1:3838`.
 - [ ] From the phone on the tailnet, the page loads over HTTPS and Refresh updates a card, adding a
       manual row to `collector_runs`.
 - [ ] With Tailscale disconnected on the phone, the address does not connect, and
       `tailscale funnel status` shows no public exposure.
-- [ ] `pnpm run verify` and the OKF validator pass.
 
 ## Testing
 
-- Focused: `pnpm exec vitest run tests/unit/config-time.test.ts tests/integration/api-security.test.ts`.
+- Focused: `pnpm exec vitest run tests/unit/config-time.test.ts tests/integration/api-security.test.ts tests/integration/settings-route.test.ts`.
 - `pnpm run test:e2e` still passes on the loopback path.
 - Live, done by the user with the phone:
   - `tailscale serve status` and `ss -ltn`;
