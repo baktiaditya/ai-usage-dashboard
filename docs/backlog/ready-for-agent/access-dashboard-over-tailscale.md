@@ -20,7 +20,7 @@ Related issue: none yet
 
 ## Objective
 
-A phone on the user's tailnet opens the dashboard at `https://<machine>.<tailnet>.ts.net/`, and
+A phone on the user's tailnet opens the dashboard at `https://<machine>.<tailnet>.ts.net:8443/`, and
 manual refresh works there. The Next.js server still binds only to loopback, and nothing outside
 the tailnet can reach it.
 
@@ -54,7 +54,7 @@ not guarded. Refresh does not:
 
 - `requireSameOrigin` in `src/lib/server/security.ts` accepts only `allowedOrigins(config)`: the
   three `http://` loopback origins on `AUD_PORT`.
-- The phone's browser sends `Origin: https://<machine>.<tailnet>.ts.net`, so every refresh is
+- The phone's browser sends `Origin: https://<machine>.<tailnet>.ts.net:8443`, so every refresh is
   refused with `403 cross_origin_denied`.
 - The collector timer keeps collecting either way.
 
@@ -122,7 +122,7 @@ cannot operate the phone, so report which live checks were actually performed.
 4. Documentation:
    - Setup §6 gets a "From a phone (Tailscale)" subsection:
      - `tailscale serve --bg 3838` and `tailscale serve status`;
-     - `AUD_ALLOWED_ORIGINS=https://<machine>.<tailnet>.ts.net` in `collector.env`, which the web
+     - `AUD_ALLOWED_ORIGINS=https://<machine>.<tailnet>.ts.net:8443` in `collector.env`, which the web
        server reads because `getConfig` calls `loadCollectorEnvFile` and the web unit sets
        `AUD_ENV_FILE`;
      - `systemctl --user restart ai-usage-dashboard-web.service`;

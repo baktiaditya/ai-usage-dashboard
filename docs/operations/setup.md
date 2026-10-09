@@ -692,7 +692,7 @@ access policy allows, so tailnet device identity is the authentication.
 
    ```bash
    tailscale cert <machine>.<tailnet>.ts.net
-   tailscale serve --bg 3838
+   tailscale serve --bg --https=8443 3838
    tailscale serve status
    ```
 
@@ -706,25 +706,25 @@ access policy allows, so tailnet device identity is the authentication.
    (`~/.config/ai-usage-dashboard/collector.env`):
 
    ```bash
-   AUD_ALLOWED_ORIGINS=https://<machine>.<tailnet>.ts.net
+   AUD_ALLOWED_ORIGINS=https://<machine>.<tailnet>.ts.net:8443
    ```
 
-   `https` only, and the value must be exactly the origin the browser sends — no
-   trailing slash, path, query, or port. The web server reads it because
-   `getConfig` merges this file. Then restart the unit:
+   `https` only, and the value must be exactly the origin the browser sends,
+   port included — no trailing slash, path, or query. The web server reads it
+   because `getConfig` merges this file. Then restart the unit:
 
    ```bash
    systemctl --user restart ai-usage-dashboard-web.service
    ```
 
-3. Open `https://<machine>.<tailnet>.ts.net/` on the phone. Reading needs none of
+3. Open `https://<machine>.<tailnet>.ts.net:8443/` on the phone. Reading needs none of
    this; the variable is what lets **Refresh** and **Settings** through the
    same-origin guard.
 
 Turn exposure off with:
 
 ```bash
-tailscale serve --https=443 off
+tailscale serve --https=8443 off
 ```
 
 The served origin is the only non-loopback origin the guard accepts; `AUD_HOST`
