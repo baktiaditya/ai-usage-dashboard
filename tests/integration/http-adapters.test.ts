@@ -72,7 +72,7 @@ describe('request headers', () => {
   const unchanged = (key: string) => ({
     Authorization: `Bearer ${key}`,
     Accept: 'application/json',
-    'User-Agent': 'ai-usage-dashboard/0.2.0',
+    'User-Agent': 'ai-usage-dashboard/0.3.0',
   });
 
   it('sends DeepSeek exactly the headers it sent before', async () => {
@@ -105,7 +105,7 @@ describe('request headers', () => {
     expect(calls[0]?.init?.headers).toStrictEqual({
       Authorization: 'Bearer sk-ant-oat01-fake',
       Accept: 'application/json',
-      'User-Agent': 'ai-usage-dashboard/0.2.0',
+      'User-Agent': 'ai-usage-dashboard/0.3.0',
       'Content-Type': 'application/json',
       'anthropic-version': CLAUDE_PROBE_ANTHROPIC_VERSION,
       'anthropic-beta': CLAUDE_PROBE_OAUTH_BETA,
