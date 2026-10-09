@@ -92,7 +92,7 @@ The assessment found these gaps:
 4. **Maintainer-only content.** Much of the tracked tree serves the maintainer's machine and agent
    workflow rather than a user:
    - `docs/log.md`, [the implementation prompt](../../plan/ai-usage-dashboard-implementation-prompt.md),
-     and [access-dashboard-over-tailscale](../ready-for-human/access-dashboard-over-tailscale.md);
+     and [access-dashboard-over-tailscale](../ready-for-agent/access-dashboard-over-tailscale.md);
    - the production-checkout deploy and rollback runbook in Setup §6;
    - the Setup §4 "Upgrading from keys in `collector.env`" steps, which only an install that predates
      the Settings dialog needs;

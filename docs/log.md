@@ -1,5 +1,21 @@
 # Bundle Update Log
 
+## 2026-10-09
+
+- **Decision**: reach the dashboard from a phone over Tailscale, and promote
+  [access-dashboard-over-tailscale](backlog/ready-for-agent/access-dashboard-over-tailscale.md)
+  to `ready-for-agent/`. The user closed every open question and gate:
+  - `tailscale serve` plus tailnet device identity satisfies plan §5's authentication
+    rule; no in-app check is added. The rule is clarified to govern the application's own
+    listener, which a trusted local daemon such as `tailscale serve` may front while the
+    Next.js server stays bound to loopback.
+  - Tailnet HTTPS certificates are used, so the allowlisted origin is `https:`.
+  - The tailnet holds only the user's own devices, so no tailnet access rule is required.
+  - Refresh from the phone is in scope, so the `AUD_ALLOWED_ORIGINS` change stays in scope.
+  - An added tailnet origin is accepted by the same-origin guard for every mutating route,
+    including Settings, not only refresh.
+- **Update**: the phone-access proposal below is decided and promoted by the entry above.
+
 ## 2026-10-08
 
 - **Decision**: accept the
@@ -1281,13 +1297,14 @@
   unrequested scope.
 
 - **Proposed**: reach the dashboard from a phone over Tailscale, in
-  [access-dashboard-over-tailscale](backlog/ready-for-human/access-dashboard-over-tailscale.md).
+  [access-dashboard-over-tailscale](backlog/ready-for-agent/access-dashboard-over-tailscale.md).
   `tailscale serve` proxies tailnet HTTPS to the loopback server, so the
   application never binds beyond loopback. The same-origin guard refuses the
   phone's `ts.net` origin, so refresh needs an exact `AUD_ALLOWED_ORIGINS`
-  allowlist. The brief waits on the user: whether tailnet device identity
-  meets the plan's authentication rule, and enabling tailnet HTTPS
-  certificates. It is planned as a pull request separate from PR #1.
+  allowlist. The brief waited on the user for whether tailnet device identity
+  meets the plan's authentication rule and for enabling tailnet HTTPS
+  certificates; the Decision above resolves both and promotes it to
+  `ready-for-agent/`.
 
 - **Discovery**: the DeepSeek and OpenRouter gates passed live. With both keys
   in `collector.env`, `npm run test:live` passes all four provider gates with
