@@ -1,6 +1,7 @@
 import { Socket } from 'node:net';
 
-interface TypeOfServiceSetter {
+/** The `net.Socket` method Node 24 added, absent from `@types/node` 24.5. */
+export interface TypeOfServiceSetter {
   (this: Socket, tos: number): Socket;
   audTosGuard?: true;
 }
@@ -10,12 +11,13 @@ interface TypeOfServiceSetter {
  * `socket.setTypeOfService()` on every request. On macOS that call throws
  * `EINVAL` once the peer has reset the connection, and because it runs inside a
  * socket I/O callback it escapes every `fetch()` try/catch and terminates the
- * process (nodejs/undici#5544). undici 8.8.0 ignores the error
- * (nodejs/undici#5547) but Node 24 still bundles 7.x, so the same best-effort
- * guard is installed here, before a process makes its first `fetch()`.
+ * process (nodejs/undici#5544). undici fixed it in 8.8.0 by ignoring any error
+ * from the call (nodejs/undici#5547), but Node 24 still bundles 7.x, so a guard
+ * is installed here, before a process makes its first `fetch()`.
  *
- * Only `EINVAL` is swallowed — type of service is a QoS hint — and every other
- * error still throws. Calling this more than once is a no-op.
+ * This guard is deliberately narrower than upstream's: it swallows only
+ * `EINVAL` — type of service is a QoS hint — and every other error still
+ * throws. Calling this more than once is a no-op.
  */
 export function installTypeOfServiceGuard(): void {
   const prototype = Socket.prototype as Socket & { setTypeOfService?: TypeOfServiceSetter };

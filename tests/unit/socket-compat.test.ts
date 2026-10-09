@@ -1,11 +1,6 @@
 import { Socket } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
-import { installTypeOfServiceGuard } from '@/lib/socket-compat';
-
-interface TypeOfServiceSetter {
-  (this: Socket, tos: number): Socket;
-  audTosGuard?: true;
-}
+import { installTypeOfServiceGuard, type TypeOfServiceSetter } from '@/lib/socket-compat';
 
 const prototype = Socket.prototype as Socket & { setTypeOfService?: TypeOfServiceSetter };
 const original = prototype.setTypeOfService;
