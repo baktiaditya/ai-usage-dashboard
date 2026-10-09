@@ -4,6 +4,29 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-10-10
+
+### Added
+
+- macOS scheduling: per-user launchd LaunchAgents run the collector, and optionally the
+  dashboard at login, through `scripts/install-launchd.sh`; an isolated real-Mac harness and a
+  macOS 15 ARM64 CI job join the Linux verification. Collection while logged out is out of
+  scope, and the user-assisted sleep/wake, logout/login, Login Items, and keyring checks
+  remain open.
+- The collector run is bounded by a 120-second whole-run deadline, matching the systemd unit's
+  `TimeoutStartSec`, so an adapter that never settles ends the run instead of keeping a scheduled
+  job alive.
+- Phone access over Tailscale: `AUD_ALLOWED_ORIGINS` lets an exact `https` origin pass the
+  same-origin guard, so Refresh and Settings work from a phone through `tailscale serve` while
+  the server stays bound to loopback (Setup §6).
+
+### Fixed
+
+- A macOS-only crash is prevented before it can happen: Node 24's bundled undici throws
+  `EINVAL` from its HTTP/1.1 writer when a peer has reset the connection, which terminated the
+  collector or the web server with an uncaught exception. The error is now ignored — it is a
+  best-effort QoS hint — while every other error still surfaces.
+
 ## [0.2.0] - 2026-10-04
 
 ### Added
@@ -45,5 +68,6 @@ First public release.
 - MIT license, third-party notices for the Lobe Icons marks, contributing and security policies,
   GitHub issue templates, and CI that runs `pnpm run verify`.
 
+[0.3.0]: https://github.com/baktiaditya/ai-usage-dashboard/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/baktiaditya/ai-usage-dashboard/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/baktiaditya/ai-usage-dashboard/releases/tag/v0.1.0

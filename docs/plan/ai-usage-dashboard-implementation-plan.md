@@ -233,8 +233,8 @@ Decided 2026-10-03; implemented in code and specified in the archived
 The implementation and its tests were merged through PR
 [#38](https://github.com/baktiaditya/ai-usage-dashboard/pull/38); the
 [log](../log.md) records the evidence, including the disposable-systemd rehearsal that
-passes in CI. `v0.2.0` is the first release that contains the installer, and the public
-one-line command pins it. That command was run end to end from the published tag on
+passes in CI. `v0.2.0` was the first release that contains the installer; the public
+one-line command now pins `v0.3.0`. That command was run end to end from the published tag on
 2026-10-04, in a disposable account; the log records the result.
 
 - Add a one-command, per-user source installer and `ai-usage-dashboard` lifecycle

@@ -16,9 +16,24 @@
   [README security posture](../README.md#security-posture).
   - **Verification:** `pnpm run verify` passes (47 files, 846 tests, 1 skipped),
     `pnpm run test:e2e` passes (68), and the OKF bundle is valid. The page was confirmed to load
-    from the phone over `https://<machine>.<tailnet>.ts.net:8443/`; Refresh still answers
-    `403 cross_origin_denied` until the production checkout carries this change, and the remaining
-    live checks (a new `collector_runs` row, the Tailscale-disconnected refusal) were not run.
+    from the phone over `https://<machine>.<tailnet>.ts.net:8443/`. After the production checkout
+    was deployed to `129f401`, the same-origin guard accepts that origin (`200`); a phone Refresh
+    that writes a new `collector_runs` row and the Tailscale-disconnected refusal were not re-run.
+
+- **Update**: release `v0.3.0` is prepared. `package.json`, the HTTP `User-Agent`, and the Codex
+  `clientInfo` move to `0.3.0`, and [CHANGELOG](../CHANGELOG.md) gains the `0.3.0` entry (#44,
+  #49, #51). The public one-line command in the [README](../README.md) and
+  [Setup](operations/setup.md#command-interface) now pins `v0.3.0`, and plan
+  [§4.1.1](plan/ai-usage-dashboard-implementation-plan.md#411-managed-linux-installation) records
+  the move. The tag is created on the merge commit after this change lands.
+
+- **Update**: the macOS `setTypeOfService EINVAL` crash is fixed in the product, not only in the
+  tests. `src/lib/socket-compat.ts` installs a guard that ignores only `EINVAL` and rethrows
+  everything else — narrower than undici's own fix, which ignores every error from the call —
+  from `src/instrumentation.ts` for the web server and `runCollectorCli` for the collector,
+  because Node 24 bundles undici 7.x ([#5544](https://github.com/nodejs/undici/issues/5544),
+  fixed in [#5547](https://github.com/nodejs/undici/pull/5547)). The test setup installs the same
+  shared guard instead of its own copy (#51).
 
 ## 2026-10-09
 

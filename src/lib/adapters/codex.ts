@@ -149,7 +149,7 @@ export function createCodexAdapter(
 
         const init = await client.request(
           'initialize',
-          { clientInfo: { name: 'ai-usage-dashboard', version: '0.2.0' } },
+          { clientInfo: { name: 'ai-usage-dashboard', version: '0.3.0' } },
           signal,
         );
         // The handshake is not complete until `initialized` is sent; the server
