@@ -2,6 +2,16 @@
 
 ## 2026-10-10
 
+- **Update**: CI scopes its heavy jobs to code changes. A new `changes` job diffs the pull request
+  against its base (`--no-renames`) and classifies a diff as documentation-only only when every
+  path is Markdown, `LICENSE`, `.gitignore`, `.gitkeep`, or a non-code file (text, YAML, JSON,
+  image) under `docs/`, `.agents/`, `.claude/`, or `.vscode/`; anything else, including a code file
+  under a documentation directory, runs everything. Such a diff skips the macOS 15 ARM64 verify and
+  the disposable-systemd rehearsal, neither of which is a required check, and the Linux
+  `pnpm run verify` job — the only required check — reduces to the OKF bundle validator and a
+  Prettier check while staying fail-closed when `changes` fails. Push events to `main` still run
+  every job.
+
 - **Update**: the delivered
   [access-dashboard-over-tailscale](backlog/archive/access-dashboard-over-tailscale.md) brief
   moves to `backlog/archive/`; the contract lives in [Setup](operations/setup.md) §6 "From a
