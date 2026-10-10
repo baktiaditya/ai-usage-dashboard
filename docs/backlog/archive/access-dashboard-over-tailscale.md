@@ -11,9 +11,10 @@ Archived
 
 Delivered on 2026-10-10 on branch `feat/tailscale-allowed-origins`; the delivery and its
 verification record are in the [log](../../log.md). The contract lives in
-[Setup](../../operations/setup.md) §6 "From a phone (Tailscale)" and the plan §5 rule. The
-human-only phone checks stay recorded as unperformed in the log. This brief is not updated
-further.
+[Setup](../../operations/setup.md) §6 "From a phone (Tailscale)" and the plan §5 rule. Page load
+from the phone and the guard's acceptance of the served origin are confirmed; the phone Refresh
+(`collector_runs` row), the Tailscale-disconnected refusal, `ss -ltn`, and
+`tailscale funnel status` are not recorded as performed. This brief is not updated further.
 
 The status above must match the directory that contains this brief. Move the file with
 `git mv` when its readiness changes.

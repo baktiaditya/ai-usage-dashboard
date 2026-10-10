@@ -16,7 +16,9 @@
   [access-dashboard-over-tailscale](backlog/archive/access-dashboard-over-tailscale.md) brief
   moves to `backlog/archive/`; the contract lives in [Setup](operations/setup.md) §6 "From a
   phone (Tailscale)" and the plan §5 rule, and the plan's pointer now cites this log instead of
-  the brief. The human-only phone checks stay recorded as unperformed.
+  the brief. Page load from the phone and the guard's acceptance of the served origin are
+  confirmed; the phone Refresh, the Tailscale-disconnected refusal, `ss -ltn`, and
+  `tailscale funnel status` are not recorded as performed.
 
 - **Update**: `AUD_ALLOWED_ORIGINS` is implemented, following the
   [Tailscale brief](backlog/archive/access-dashboard-over-tailscale.md). `loadConfig`
