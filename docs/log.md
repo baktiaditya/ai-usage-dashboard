@@ -2,6 +2,13 @@
 
 ## 2026-10-10
 
+- **Update**: the [pull request template](../.github/PULL_REQUEST_TEMPLATE.md) is rewritten to
+  the shape the `yeet` delivery workflow drafts: a summary, grouped change tables, API and
+  dependency notes, testing evidence, a migration guide, breaking changes, a checklist, and next
+  steps. The checklist keeps the repository's gates — the `pnpm run verify` check, Conventional
+  Commits, documentation updates, and no secrets or raw payloads — and
+  [CONTRIBUTING](../CONTRIBUTING.md) describes the new prompts.
+
 - **Update**: CI scopes its heavy jobs to code changes. A new `changes` job diffs the pull request
   against its base (`--no-renames`) and classifies a diff as documentation-only only when every
   path is Markdown, `LICENSE`, `.gitignore`, `.gitkeep`, or a non-code file (text, YAML, JSON,
