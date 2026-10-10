@@ -2,6 +2,19 @@
 
 ## 2026-10-10
 
+- **Update**: `v0.4.0` is released and deployed. The annotated tag sits on the #56 merge commit
+  `55bccf0`, and the GitHub release carries the `0.4.0` changelog entry. The production checkout
+  moved from `7267f97` (`v0.3.0`) to `55bccf0` through the
+  [Production checkout](operations/production-checkout.md) deploy block with no rollback:
+  `pnpm run verify` passed there (48 files, 849 tests, 1 skipped), and the verify block found a
+  clean checkout on `origin/main`, both units on that checkout with installed files identical to
+  the rendered ones, the web unit and timer `active`, and the loopback URL answering `200`.
+  - **Verification:** `package.json` in production reads `0.4.0`; the manifest and both icons
+    answer `200` on loopback and over `https://<machine>.<tailnet>.ts.net:8443/`, and the same-origin
+    guard still passes that origin and refuses a foreign one (`403`). The first scheduled run after
+    the deploy recorded `success` for every provider. The dashboard was installed from the phone's
+    Chrome and launches full-screen; a Refresh from inside the installed window was not recorded.
+
 - **Update**: release `v0.4.0` is prepared. `package.json`, the HTTP `User-Agent`, and the Codex
   `clientInfo` move to `0.4.0`, and [CHANGELOG](../CHANGELOG.md) gains the `0.4.0` entry for the
   installable dashboard (#52). The public one-line command in the [README](../README.md) and
@@ -21,7 +34,8 @@
     `pnpm exec playwright test tests/e2e/pwa.spec.ts` passes on the desktop and Pixel 7
     projects (4 tests), proving the head link, the manifest members, and both icons decoding at
     192×192 and 512×512. The install offer and the standalone launch from the phone were not
-    run — an agent cannot operate the phone.
+    run at merge time — an agent cannot operate the phone; both were confirmed after the
+    `v0.4.0` deploy (see the entry above).
 
 - **Decision**: install the dashboard as a PWA using Next's built-in manifest route, with no new
   dependency. Chromium installability needs HTTPS plus a manifest with `name`, 192 px and
