@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 
 /**
  * Installability smoke coverage: the manifest Chrome reads and the raster icons
@@ -7,11 +7,15 @@ import { expect, test } from '@playwright/test';
  * worker is not part of the contract.
  */
 
-test.beforeEach(async ({ page }) => {
-  await page.goto('/');
-});
+type Manifest = {
+  name?: string;
+  short_name?: string;
+  start_url?: string;
+  display?: string;
+  icons?: { src?: string; sizes?: string; type?: string }[];
+};
 
-test('links a manifest that meets the installability requirements', async ({ page }) => {
+async function fetchManifest(page: Page): Promise<Manifest> {
   const link = page.locator('link[rel="manifest"]');
   await expect(link).toHaveCount(1);
 
@@ -20,13 +24,15 @@ test('links a manifest that meets the installability requirements', async ({ pag
   const response = await page.request.get(new URL(href ?? '', page.url()).toString());
   expect(response.status()).toBe(200);
 
-  const manifest = (await response.json()) as {
-    name?: string;
-    short_name?: string;
-    start_url?: string;
-    display?: string;
-    icons?: { src?: string; sizes?: string; type?: string }[];
-  };
+  return (await response.json()) as Manifest;
+}
+
+test.beforeEach(async ({ page }) => {
+  await page.goto('/');
+});
+
+test('links a manifest that meets the installability requirements', async ({ page }) => {
+  const manifest = await fetchManifest(page);
 
   expect(manifest.name).toBe('AI Usage Dashboard');
   expect(manifest.short_name).toBe('AI Usage');
@@ -40,22 +46,25 @@ test('links a manifest that meets the installability requirements', async ({ pag
   }
 });
 
-test('serves both icons as PNGs that decode at their declared size', async ({ page }) => {
-  const icons = [
-    { src: '/icon-192.png', size: 192 },
-    { src: '/icon-512.png', size: 512 },
-  ];
+test('serves each manifest icon as a PNG that decodes at its declared size', async ({ page }) => {
+  const icons = (await fetchManifest(page)).icons ?? [];
+  expect(icons.length).toBeGreaterThan(0);
 
-  for (const { src, size } of icons) {
-    const response = await page.request.get(new URL(src, page.url()).toString());
-    expect(response.status(), src).toBe(200);
-    expect(response.headers()['content-type'], src).toContain('image/png');
+  for (const { src, sizes } of icons) {
+    expect(src, 'icon src').toBeTruthy();
+    const size = Number((sizes ?? '').split('x')[0]);
+    expect(size, sizes).toBeGreaterThan(0);
 
-    const decoded = await page.evaluate(async (url) => {
-      const blob = await (await fetch(url)).blob();
+    const url = new URL(src ?? '', page.url()).toString();
+    const response = await page.request.get(url);
+    expect(response.status(), url).toBe(200);
+    expect(response.headers()['content-type'], url).toContain('image/png');
+
+    const decoded = await page.evaluate(async (href) => {
+      const blob = await (await fetch(href)).blob();
       const bitmap = await createImageBitmap(blob);
       return { width: bitmap.width, height: bitmap.height };
-    }, src);
-    expect(decoded, src).toEqual({ width: size, height: size });
+    }, url);
+    expect(decoded, url).toEqual({ width: size, height: size });
   }
 });
