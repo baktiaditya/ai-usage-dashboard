@@ -45,6 +45,7 @@ jobs:
 
   verify:
     name: pnpm run verify
+    needs: changes
     runs-on: ubuntu-latest
     steps:
       - name: Check out the repository
@@ -64,7 +65,14 @@ jobs:
       - name: Validate the OKF documentation bundle
         run: python3 .agents/skills/okf-sync/scripts/validate_okf_bundle.py
 
+      # A documentation-only diff cannot fail the runtime suites, so Prettier
+      # and the bundle validator are the checks that still apply to it.
+      - name: Prettier check (documentation-only diff)
+        if: needs.changes.outputs.code != 'true'
+        run: pnpm run format:check
+
       - name: Format, lint, typecheck, unit and integration tests
+        if: needs.changes.outputs.code == 'true'
         run: pnpm run verify
 
   verify-macos:

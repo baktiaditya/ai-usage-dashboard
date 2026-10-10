@@ -6,8 +6,8 @@
   against its base and treats a documentation-only diff (`docs/`, `.agents/`, `.claude/`,
   `.vscode/`, Markdown files) as not needing the macOS 15 ARM64 verify or the disposable-systemd
   rehearsal, neither of which is a required check; the Linux `pnpm run verify` job — the only
-  required check — now also runs the OKF bundle validator, so documentation changes keep a real
-  gate. Push events to `main` still run every job.
+  required check — reduces to the OKF bundle validator and a Prettier check for that diff, so
+  documentation changes keep a real gate. Push events to `main` still run every job.
 
 - **Update**: `AUD_ALLOWED_ORIGINS` is implemented, following the
   [Tailscale brief](backlog/ready-for-agent/access-dashboard-over-tailscale.md). `loadConfig`
