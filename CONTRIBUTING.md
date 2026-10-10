@@ -12,8 +12,8 @@ a suspected vulnerability privately as described in [SECURITY.md](SECURITY.md).
 1. Fork the repository and clone your fork.
 2. Create a branch, commit following [Commits](#commits) below, and push it to your fork.
 3. Open a pull request against `main`; the
-   [pull request template](.github/PULL_REQUEST_TEMPLATE.md) prompts for a summary, the
-   verification you ran, and a checklist.
+   [pull request template](.github/PULL_REQUEST_TEMPLATE.md) prompts for a summary, grouped
+   change tables, testing evidence, breaking changes, and a checklist.
 4. Push follow-up commits to the same branch — they join the open pull request automatically.
    Merging into `main` requires an approving review and a green `pnpm run verify` check.
 
