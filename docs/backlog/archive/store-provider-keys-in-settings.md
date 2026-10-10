@@ -69,7 +69,7 @@ Other constraints that stay in force:
 - The development server uses its own database (plan §3.4). A key saved on `npm run dev` lands only
   in the development database, and development refresh stays disabled unless
   `AUD_DEV_LIVE_REFRESH=1`.
-- The [access-dashboard-over-tailscale](../ready-for-agent/access-dashboard-over-tailscale.md)
+- The [access-dashboard-over-tailscale](../archive/access-dashboard-over-tailscale.md)
   brief would widen `allowedOrigins`. These new routes use the same guard, and that brief now
   records the question.
 
