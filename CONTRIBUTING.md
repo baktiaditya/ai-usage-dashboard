@@ -68,9 +68,12 @@ pnpm run format
 `pnpm run test:e2e` runs the Playwright browser smoke tests against a seeded production build in
 `.playwright/data`, never your real collection history. It is a local check; CI runs `pnpm run verify`
 on Linux and macOS 15 ARM64, plus the disposable-systemd `installation-systemd` rehearsal
-(`pnpm run test:installation:systemd`). `pnpm run test:live` is an opt-in live probe that skips any provider whose
-key is not saved and talks to real endpoints, so use it deliberately. Never point either command at
-the production checkout or the production database.
+(`pnpm run test:installation:systemd`). The Linux job also runs the OKF bundle validator and is the
+only required check. A pull request whose diff is documentation-only — `docs/`, `.agents/`,
+`.claude/`, `.vscode/`, or Markdown files — skips the macOS and rehearsal jobs, which cannot fail
+for it. `pnpm run test:live` is an opt-in live probe that skips any provider whose key is not saved
+and talks to real endpoints, so use it deliberately. Never point either command at the production
+checkout or the production database.
 
 ## Commits
 

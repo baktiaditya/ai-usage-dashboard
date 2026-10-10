@@ -13,6 +13,36 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: Detect code changes
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Decide whether the code suites are needed
+        id: filter
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "push" ]; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git fetch --no-tags origin "${{ github.base_ref }}"
+          changed=$(git diff --name-only "origin/${{ github.base_ref }}...HEAD")
+          printf 'Changed files:\n%s\n' "$changed"
+          # A documentation-only diff cannot fail the macOS or installer suites.
+          docs_only='^(docs/|\.agents/|\.claude/|\.vscode/|.*\.md$|LICENSE$|\.gitignore$)'
+          if [ -n "$changed" ] && printf '%s\n' "$changed" | grep -qvE "$docs_only"; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "code=false" >> "$GITHUB_OUTPUT"
+          fi
+
   verify:
     name: pnpm run verify
     runs-on: ubuntu-latest
@@ -31,11 +61,16 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Validate the OKF documentation bundle
+        run: python3 .agents/skills/okf-sync/scripts/validate_okf_bundle.py
+
       - name: Format, lint, typecheck, unit and integration tests
         run: pnpm run verify
 
   verify-macos:
     name: pnpm run verify (macOS 15 ARM64)
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: macos-15
     steps:
       - name: Check out the repository
@@ -60,6 +95,8 @@ jobs:
 
   installation-systemd:
     name: disposable-systemd installation rehearsal
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
