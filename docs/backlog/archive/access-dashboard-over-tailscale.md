@@ -7,7 +7,13 @@ title: Reach the dashboard from a phone over Tailscale
 
 ## Status
 
-Ready for agent
+Archived
+
+Delivered on 2026-10-10 on branch `feat/tailscale-allowed-origins`; the delivery and its
+verification record are in the [log](../../log.md). The contract lives in
+[Setup](../../operations/setup.md) §6 "From a phone (Tailscale)" and the plan §5 rule. The
+human-only phone checks stay recorded as unperformed in the log. This brief is not updated
+further.
 
 The status above must match the directory that contains this brief. Move the file with
 `git mv` when its readiness changes.

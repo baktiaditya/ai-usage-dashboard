@@ -2,8 +2,14 @@
 
 ## 2026-10-10
 
+- **Update**: the delivered
+  [access-dashboard-over-tailscale](backlog/archive/access-dashboard-over-tailscale.md) brief
+  moves to `backlog/archive/`; the contract lives in [Setup](operations/setup.md) §6 "From a
+  phone (Tailscale)" and the plan §5 rule, and the plan's pointer now cites this log instead of
+  the brief. The human-only phone checks stay recorded as unperformed.
+
 - **Update**: `AUD_ALLOWED_ORIGINS` is implemented, following the
-  [Tailscale brief](backlog/ready-for-agent/access-dashboard-over-tailscale.md). `loadConfig`
+  [Tailscale brief](backlog/archive/access-dashboard-over-tailscale.md). `loadConfig`
   parses a comma-separated list of exact `https` origins into `AppConfig.extraOrigins`, refusing
   any entry that is not already its own origin (a trailing slash, path, query, credentials, an
   explicit default port such as `:443`, `*`, or `null`), and `allowedOrigins` in
@@ -38,7 +44,7 @@
 ## 2026-10-09
 
 - **Decision**: reach the dashboard from a phone over Tailscale, and promote
-  [access-dashboard-over-tailscale](backlog/ready-for-agent/access-dashboard-over-tailscale.md)
+  [access-dashboard-over-tailscale](backlog/archive/access-dashboard-over-tailscale.md)
   to `ready-for-agent/`. The user closed every open question and gate:
   - `tailscale serve` plus tailnet device identity satisfies plan §5's authentication
     rule; no in-app check is added. The rule is clarified to govern the application's own
@@ -1332,7 +1338,7 @@
   unrequested scope.
 
 - **Proposed**: reach the dashboard from a phone over Tailscale, in
-  [access-dashboard-over-tailscale](backlog/ready-for-agent/access-dashboard-over-tailscale.md).
+  [access-dashboard-over-tailscale](backlog/archive/access-dashboard-over-tailscale.md).
   `tailscale serve` proxies tailnet HTTPS to the loopback server, so the
   application never binds beyond loopback. The same-origin guard refuses the
   phone's `ts.net` origin, so refresh needs an exact `AUD_ALLOWED_ORIGINS`

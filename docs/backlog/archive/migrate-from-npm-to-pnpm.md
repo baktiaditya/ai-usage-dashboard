@@ -104,7 +104,7 @@ The trial also found differences that the migration must handle:
    `src/app/page.tsx`, `src/app/api/providers/[provider]/refresh/route.ts`,
    `src/lib/db/backup.ts`, and `src/lib/ingestors/claude-statusline.ts`, code comments, and the
    Acceptance Criteria and Testing of the
-   [Tailscale brief](../ready-for-agent/access-dashboard-over-tailscale.md). In the documents, it
+   [Tailscale brief](../archive/access-dashboard-over-tailscale.md). In the documents, it
    appears 18 times in `README.md`, 4 in `AGENTS.md`, and 58 in Setup (§1, §2, §3, §4, §6, §7, §9,
    §10).
 7. **The plan pins npm.** [Plan](../../plan/ai-usage-dashboard-implementation-plan.md) §4.1 names
