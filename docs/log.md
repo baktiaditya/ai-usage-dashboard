@@ -2,6 +2,32 @@
 
 ## 2026-10-10
 
+- **Update**: the dashboard is installable as a PWA, following the
+  [PWA brief](backlog/ready-for-agent/install-dashboard-as-pwa.md). `src/app/manifest.ts` serves
+  the manifest Next links from every page: `short_name: 'AI Usage'`, `start_url: '/'`,
+  `display: standalone`, the light `--background` as the splash color and `--accent` as the
+  theme color, and 192 px and 512 px PNG icons in the new `public/` directory, rasterized from
+  the existing `src/app/icon.svg`. `viewport.themeColor` in `src/app/layout.tsx` tints the
+  browser UI per color scheme. No service worker and no dependency are added — Chromium does
+  not require one for installability, and a precached shell would present stale quota as
+  current.
+  - **Verification:** `pnpm run verify` passes (48 files, 849 tests, 1 skipped), and
+    `pnpm exec playwright test tests/e2e/pwa.spec.ts` passes on the desktop and Pixel 7
+    projects (4 tests), proving the head link, the manifest members, and both icons decoding at
+    192×192 and 512×512. The install offer and the standalone launch from the phone were not
+    run — an agent cannot operate the phone.
+
+- **Decision**: install the dashboard as a PWA using Next's built-in manifest route, with no new
+  dependency, and file
+  [install-dashboard-as-pwa](backlog/ready-for-agent/install-dashboard-as-pwa.md) as
+  `ready-for-agent`. Chromium installability needs HTTPS plus a manifest with `name`, 192 px and
+  512 px icons, `start_url`, and `display: standalone`; a service worker is not required
+  ([MDN](https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps/Guides/Making_PWAs_installable)).
+  Serwist — the maintained Next.js PWA library, and what the Next 16 docs point at for offline
+  support — is deliberately not added: the dashboard shows live data, so a precached shell would
+  present stale quota as current, and it hooks the build for a feature the install flow does not
+  need. If offline behaviour is ever wanted, it gets its own brief.
+
 - **Update**: `AUD_ALLOWED_ORIGINS` is implemented, following the
   [Tailscale brief](backlog/ready-for-agent/access-dashboard-over-tailscale.md). `loadConfig`
   parses a comma-separated list of exact `https` origins into `AppConfig.extraOrigins`, refusing
