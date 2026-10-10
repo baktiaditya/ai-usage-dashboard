@@ -33,19 +33,34 @@ jobs:
             exit 0
           fi
           git fetch --no-tags origin "${{ github.base_ref }}"
-          changed=$(git diff --name-only "origin/${{ github.base_ref }}...HEAD")
+          changed=$(git diff --no-renames --name-only "origin/${{ github.base_ref }}...HEAD")
           printf 'Changed files:\n%s\n' "$changed"
-          # A documentation-only diff cannot fail the macOS or installer suites.
-          docs_only='^(docs/|\.agents/|\.claude/|\.vscode/|.*\.md$|LICENSE$|\.gitignore$)'
-          if [ -n "$changed" ] && printf '%s\n' "$changed" | grep -qvE "$docs_only"; then
-            echo "code=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "code=false" >> "$GITHUB_OUTPUT"
-          fi
+          # Fail closed: only a recognisably documentation-only diff skips the code
+          # suites. `--no-renames` keeps a move out of a code path visible as a
+          # delete plus an add, and the extension check keeps a code file under a
+          # documentation directory from passing as documentation.
+          code=false
+          while IFS= read -r file; do
+            [ -z "$file" ] && continue
+            case "$file" in
+              *.md|LICENSE|.gitignore|*.gitkeep) continue ;;
+            esac
+            case "$file" in
+              docs/*|.agents/*|.claude/*|.vscode/*)
+                case "$file" in
+                  *.mdx|*.txt|*.yaml|*.yml|*.json|*.svg|*.png|*.jpg|*.jpeg|*.gif|*.webp|*.ico|*.avif) continue ;;
+                esac
+                ;;
+            esac
+            code=true
+          done <<< "$changed"
+          echo "code=$code" >> "$GITHUB_OUTPUT"
 
   verify:
     name: pnpm run verify
     needs: changes
+    # Run even when `changes` fails, so the required check still reports.
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
       - name: Check out the repository
@@ -66,19 +81,21 @@ jobs:
         run: python3 .agents/skills/okf-sync/scripts/validate_okf_bundle.py
 
       # A documentation-only diff cannot fail the runtime suites, so Prettier
-      # and the bundle validator are the checks that still apply to it.
+      # and the bundle validator are the checks that still apply to it. Both
+      # steps fail closed: an unrecognised or missing `code` value runs the
+      # full suite.
       - name: Prettier check (documentation-only diff)
-        if: needs.changes.outputs.code != 'true'
+        if: needs.changes.outputs.code == 'false'
         run: pnpm run format:check
 
       - name: Format, lint, typecheck, unit and integration tests
-        if: needs.changes.outputs.code == 'true'
+        if: needs.changes.outputs.code != 'false'
         run: pnpm run verify
 
   verify-macos:
     name: pnpm run verify (macOS 15 ARM64)
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.code != 'false'
     runs-on: macos-15
     steps:
       - name: Check out the repository
@@ -104,7 +121,7 @@ jobs:
   installation-systemd:
     name: disposable-systemd installation rehearsal
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.code != 'false'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
