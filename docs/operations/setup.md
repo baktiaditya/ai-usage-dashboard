@@ -721,6 +721,13 @@ access policy allows, so tailnet device identity is the authentication.
    this; the variable is what lets **Refresh** and **Settings** through the
    same-origin guard.
 
+Chrome on the phone can also install the dashboard as an app: open the tailnet URL and use the
+browser's **Install app** (older builds call it **Add to Home screen**), then launch it from the
+home-screen icon. The installed window runs full-screen (`display: standalone` from
+`src/app/manifest.ts`, icons in `public/`) and still needs Tailscale connected, because the
+address is the tailnet one. The loopback URL installs as well — `127.0.0.1` counts as a secure
+origin.
+
 Turn exposure off with:
 
 ```bash
