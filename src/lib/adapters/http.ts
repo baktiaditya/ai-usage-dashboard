@@ -30,7 +30,7 @@ export interface HttpGetOptions {
   readonly headers?: Readonly<Record<string, string>>;
 }
 
-const DEFAULT_USER_AGENT = 'ai-usage-dashboard/0.3.0';
+const DEFAULT_USER_AGENT = 'ai-usage-dashboard/0.4.0';
 
 /**
  * The request headers for one request. Names are matched case-insensitively, so an
