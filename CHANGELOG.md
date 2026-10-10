@@ -4,6 +4,15 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-10-10
+
+### Added
+
+- Installable as an app: the dashboard serves a web app manifest with 192 px and 512 px PNG
+  icons and per-scheme theme colors, so Chrome on a phone can install it from the tailnet URL
+  and launch it full-screen (Setup §6). No service worker is registered — the dashboard shows
+  live data, and a cached shell would present stale quota as current.
+
 ## [0.3.0] - 2026-10-10
 
 ### Added
@@ -68,6 +77,7 @@ First public release.
 - MIT license, third-party notices for the Lobe Icons marks, contributing and security policies,
   GitHub issue templates, and CI that runs `pnpm run verify`.
 
+[0.4.0]: https://github.com/baktiaditya/ai-usage-dashboard/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/baktiaditya/ai-usage-dashboard/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/baktiaditya/ai-usage-dashboard/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/baktiaditya/ai-usage-dashboard/releases/tag/v0.1.0

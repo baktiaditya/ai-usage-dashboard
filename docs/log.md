@@ -2,6 +2,13 @@
 
 ## 2026-10-10
 
+- **Update**: release `v0.4.0` is prepared. `package.json`, the HTTP `User-Agent`, and the Codex
+  `clientInfo` move to `0.4.0`, and [CHANGELOG](../CHANGELOG.md) gains the `0.4.0` entry for the
+  installable dashboard (#52). The public one-line command in the [README](../README.md) and
+  [Setup](operations/setup.md#command-interface) now pins `v0.4.0`, and plan
+  [§4.1.1](plan/ai-usage-dashboard-implementation-plan.md#411-managed-linux-installation) records
+  the move. The tag is created on the merge commit after this change lands.
+
 - **Update**: the dashboard is installable as a PWA. `src/app/manifest.ts` serves
   the manifest Next links from every page: `short_name: 'AI Usage'`, `start_url: '/'`,
   `display: standalone`, the light `--background` as the splash color and `--accent` as the

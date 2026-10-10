@@ -47,8 +47,8 @@ The one-line command pins the release tag that also provides the script, because
 bootstrap and the lifecycle manager it hands off to come from the same commit:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/baktiaditya/ai-usage-dashboard/v0.3.0/scripts/install.sh \
-  | bash -s -- --version v0.3.0
+curl -fsSL https://raw.githubusercontent.com/baktiaditya/ai-usage-dashboard/v0.4.0/scripts/install.sh \
+  | bash -s -- --version v0.4.0
 ```
 
 To read the script before running it, run the same script from a checkout instead:
