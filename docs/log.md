@@ -2,8 +2,7 @@
 
 ## 2026-10-10
 
-- **Update**: the dashboard is installable as a PWA, following the
-  [PWA brief](backlog/ready-for-agent/install-dashboard-as-pwa.md). `src/app/manifest.ts` serves
+- **Update**: the dashboard is installable as a PWA. `src/app/manifest.ts` serves
   the manifest Next links from every page: `short_name: 'AI Usage'`, `start_url: '/'`,
   `display: standalone`, the light `--background` as the splash color and `--accent` as the
   theme color, and 192 px and 512 px PNG icons in the new `public/` directory, rasterized from
@@ -18,9 +17,7 @@
     run — an agent cannot operate the phone.
 
 - **Decision**: install the dashboard as a PWA using Next's built-in manifest route, with no new
-  dependency, and file
-  [install-dashboard-as-pwa](backlog/ready-for-agent/install-dashboard-as-pwa.md) as
-  `ready-for-agent`. Chromium installability needs HTTPS plus a manifest with `name`, 192 px and
+  dependency. Chromium installability needs HTTPS plus a manifest with `name`, 192 px and
   512 px icons, `start_url`, and `display: standalone`; a service worker is not required
   ([MDN](https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps/Guides/Making_PWAs_installable)).
   Serwist — the maintained Next.js PWA library, and what the Next 16 docs point at for offline
