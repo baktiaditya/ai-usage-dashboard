@@ -25,8 +25,33 @@
   present stale quota as current, and it hooks the build for a feature the install flow does not
   need. If offline behaviour is ever wanted, it gets its own brief.
 
+- **Update**: the [pull request template](../.github/PULL_REQUEST_TEMPLATE.md) is rewritten to
+  the shape the `yeet` delivery workflow drafts: a summary, grouped change tables, API and
+  dependency notes, testing evidence, a migration guide, breaking changes, a checklist, and next
+  steps. The checklist keeps the repository's gates — the `pnpm run verify` check, Conventional
+  Commits, documentation updates, and no secrets or raw payloads — and
+  [CONTRIBUTING](../CONTRIBUTING.md) describes the new prompts.
+
+- **Update**: CI scopes its heavy jobs to code changes. A new `changes` job diffs the pull request
+  against its base (`--no-renames`) and classifies a diff as documentation-only only when every
+  path is Markdown, `LICENSE`, `.gitignore`, `.gitkeep`, or a non-code file (text, YAML, JSON,
+  image) under `docs/`, `.agents/`, `.claude/`, or `.vscode/`; anything else, including a code file
+  under a documentation directory, runs everything. Such a diff skips the macOS 15 ARM64 verify and
+  the disposable-systemd rehearsal, neither of which is a required check, and the Linux
+  `pnpm run verify` job — the only required check — reduces to the OKF bundle validator and a
+  Prettier check while staying fail-closed when `changes` fails. Push events to `main` still run
+  every job.
+
+- **Update**: the delivered
+  [access-dashboard-over-tailscale](backlog/archive/access-dashboard-over-tailscale.md) brief
+  moves to `backlog/archive/`; the contract lives in [Setup](operations/setup.md) §6 "From a
+  phone (Tailscale)" and the plan §5 rule, and the plan's pointer now cites this log instead of
+  the brief. Page load from the phone and the guard's acceptance of the served origin are
+  confirmed; the phone Refresh, the Tailscale-disconnected refusal, `ss -ltn`, and
+  `tailscale funnel status` are not recorded as performed.
+
 - **Update**: `AUD_ALLOWED_ORIGINS` is implemented, following the
-  [Tailscale brief](backlog/ready-for-agent/access-dashboard-over-tailscale.md). `loadConfig`
+  [Tailscale brief](backlog/archive/access-dashboard-over-tailscale.md). `loadConfig`
   parses a comma-separated list of exact `https` origins into `AppConfig.extraOrigins`, refusing
   any entry that is not already its own origin (a trailing slash, path, query, credentials, an
   explicit default port such as `:443`, `*`, or `null`), and `allowedOrigins` in
@@ -61,7 +86,7 @@
 ## 2026-10-09
 
 - **Decision**: reach the dashboard from a phone over Tailscale, and promote
-  [access-dashboard-over-tailscale](backlog/ready-for-agent/access-dashboard-over-tailscale.md)
+  [access-dashboard-over-tailscale](backlog/archive/access-dashboard-over-tailscale.md)
   to `ready-for-agent/`. The user closed every open question and gate:
   - `tailscale serve` plus tailnet device identity satisfies plan §5's authentication
     rule; no in-app check is added. The rule is clarified to govern the application's own
@@ -1355,7 +1380,7 @@
   unrequested scope.
 
 - **Proposed**: reach the dashboard from a phone over Tailscale, in
-  [access-dashboard-over-tailscale](backlog/ready-for-agent/access-dashboard-over-tailscale.md).
+  [access-dashboard-over-tailscale](backlog/archive/access-dashboard-over-tailscale.md).
   `tailscale serve` proxies tailnet HTTPS to the loopback server, so the
   application never binds beyond loopback. The same-origin guard refuses the
   phone's `ts.net` origin, so refresh needs an exact `AUD_ALLOWED_ORIGINS`

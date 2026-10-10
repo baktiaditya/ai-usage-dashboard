@@ -12,8 +12,8 @@ a suspected vulnerability privately as described in [SECURITY.md](SECURITY.md).
 1. Fork the repository and clone your fork.
 2. Create a branch, commit following [Commits](#commits) below, and push it to your fork.
 3. Open a pull request against `main`; the
-   [pull request template](.github/PULL_REQUEST_TEMPLATE.md) prompts for a summary, the
-   verification you ran, and a checklist.
+   [pull request template](.github/PULL_REQUEST_TEMPLATE.md) prompts for a summary, grouped
+   change tables, testing evidence, breaking changes, and a checklist.
 4. Push follow-up commits to the same branch — they join the open pull request automatically.
    Merging into `main` requires an approving review and a green `pnpm run verify` check.
 
@@ -68,9 +68,14 @@ pnpm run format
 `pnpm run test:e2e` runs the Playwright browser smoke tests against a seeded production build in
 `.playwright/data`, never your real collection history. It is a local check; CI runs `pnpm run verify`
 on Linux and macOS 15 ARM64, plus the disposable-systemd `installation-systemd` rehearsal
-(`pnpm run test:installation:systemd`). `pnpm run test:live` is an opt-in live probe that skips any provider whose
-key is not saved and talks to real endpoints, so use it deliberately. Never point either command at
-the production checkout or the production database.
+(`pnpm run test:installation:systemd`). The Linux job is the only required check, and it always runs
+the OKF bundle validator. A pull request whose diff is documentation-only — Markdown, `LICENSE`,
+`.gitignore`, `.gitkeep`, or a non-code file (text, YAML, JSON, or an image) under `docs/`,
+`.agents/`, `.claude/`, or `.vscode/` — skips the macOS and rehearsal jobs and reduces the Linux job
+to the validator and a Prettier check. Every other path runs the full suite, including a code file
+under a documentation directory, so the classification fails closed. `pnpm run test:live` is an
+opt-in live probe that skips any provider whose key is not saved and talks to real endpoints, so use
+it deliberately. Never point either command at the production checkout or the production database.
 
 ## Commits
 
