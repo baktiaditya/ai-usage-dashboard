@@ -1,5 +1,16 @@
 # Bundle Update Log
 
+## 2026-10-28
+
+- **Update**: the collector timer's first run is anchored with `OnActiveSec=2min`, and the template no
+  longer sets `Persistent=true`. On 2026-10-28 the production timer was `active (elapsed)` with
+  `NextElapseUSecMonotonic=infinity` and four of five providers went stale. `OnBootSec=2min` was
+  still in the future when the timer started 30 s after boot, but a user-manager `daemon-reload` at
+  122.6 s re-evaluated it with `last_trigger` set from the `Persistent=true` stamp; systemd 255 then
+  disables a past one-shot, and `OnUnitActiveSec=` had no service activation to measure from.
+  Starting the service once re-armed the timer. [Setup](operations/setup.md) documents the mechanism,
+  and the plan's systemd rule carries the same correction.
+
 ## 2026-10-10
 
 - **Update**: `v0.4.0` is released and deployed. The annotated tag sits on the #56 merge commit

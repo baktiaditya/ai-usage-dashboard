@@ -4,9 +4,10 @@ Description=Run the AI Usage Dashboard collector every __INTERVAL__ minutes
 Documentation=file://__WORKDIR__/docs/operations/setup.md
 
 [Timer]
-# The catch-up after a reboot: an OnBootSec= already in the past when the timer
-# is activated elapses at once, so the first run never waits a full interval.
-OnBootSec=2min
+# Anchor the first run to the timer's activation so every start, including a
+# login without linger, schedules one. A daemon-reload re-arms it too; Setup
+# explains both and why there is no Persistent= below.
+OnActiveSec=2min
 # Monotonic, so it pauses during suspend and resumes its countdown afterwards;
 # there is no catch-up run after a resume.
 OnUnitActiveSec=__INTERVAL__min
@@ -14,9 +15,8 @@ OnUnitActiveSec=__INTERVAL__min
 # in the same instant.
 AccuracySec=30s
 RandomizedDelaySec=30s
-# No effect: systemd.timer(5) limits Persistent= to OnCalendar= timers, and this
-# one has none. Left in place: removing it would change nothing.
-Persistent=true
+# Deliberately no Persistent=: its stamp sets last_trigger, which systemd 255
+# uses to disable a past one-shot. It buys nothing for a monotonic timer.
 Unit=ai-usage-dashboard-collector.service
 
 [Install]
