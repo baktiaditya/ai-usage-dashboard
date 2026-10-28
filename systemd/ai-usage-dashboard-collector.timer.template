@@ -4,9 +4,12 @@ Description=Run the AI Usage Dashboard collector every __INTERVAL__ minutes
 Documentation=file://__WORKDIR__/docs/operations/setup.md
 
 [Timer]
-# The catch-up after a reboot: an OnBootSec= already in the past when the timer
-# is activated elapses at once, so the first run never waits a full interval.
-OnBootSec=2min
+# Anchor the first run to the timer's own activation. OnBootSec= alone is not
+# enough: when a user manager starts after a reboot its boot deadline can be in
+# the past without elapsing, and OnUnitActiveSec= then has no activation to
+# measure from, leaving the timer active with no next trigger. OnActiveSec=
+# always schedules that first run whenever the timer is (re)started.
+OnActiveSec=2min
 # Monotonic, so it pauses during suspend and resumes its countdown afterwards;
 # there is no catch-up run after a resume.
 OnUnitActiveSec=__INTERVAL__min

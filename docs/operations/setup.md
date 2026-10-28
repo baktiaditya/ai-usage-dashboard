@@ -489,14 +489,16 @@ covering the `node` and `codex` directories found at install time. `codex
 app-server` exits early when `~/.codex` is read-only, hence the second writable
 path. Re-run the installer after switching Node versions with nvm.
 
-After a reboot, `OnBootSec=2min` starts a collection two minutes after boot. If the timer is
-activated later than that, as when the user manager starts after a login without linger, the
-collection starts at once. The dashboard is therefore not left stale for a full interval.
-`OnUnitActiveSec=` is a monotonic timer, and `systemd.timer(5)` says the monotonic clock generally
-pauses during suspend. After a resume, the interval countdown continues where it stopped, and no
-catch-up run is made. Use **Refresh** on a card for an immediate reading after a resume. The
-template also sets `Persistent=true`, which has no effect here: `systemd.timer(5)` limits it to
-`OnCalendar=` timers.
+The first collection is anchored to the timer's own activation with `OnActiveSec=2min`: it starts
+two minutes after the user manager starts the timer, whether that is at boot with linger or at
+login without it. `OnBootSec=` alone was not enough. systemd 255 can leave a boot deadline that is
+already past at activation unelapsed, and `OnUnitActiveSec=` then has no activation to measure
+from, so the timer sits `active (elapsed)` with no next trigger and nothing is collected
+(2026-10-28). `OnUnitActiveSec=` is a monotonic timer, and `systemd.timer(5)` says the monotonic
+clock generally pauses during suspend. After a resume, the interval countdown continues where it
+stopped, and no catch-up run is made. Use **Refresh** on a card for an immediate reading after a
+resume. The template also sets `Persistent=true`, which has no effect here: `systemd.timer(5)`
+limits it to `OnCalendar=` timers.
 
 The installer resolves the environment file, `AUD_DATA_DIR`,
 `AUD_COLLECT_INTERVAL_MINUTES`, `AUD_HOST` and `AUD_PORT` the way the collector

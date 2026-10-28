@@ -1,5 +1,17 @@
 # Bundle Update Log
 
+## 2026-10-28
+
+- **Update**: the collector timer's first run is anchored with `OnActiveSec=2min` instead of relying
+  on `OnBootSec=2min`. In production the 10:36 reboot left
+  `ai-usage-dashboard-collector.timer` `active (elapsed)` with
+  `NextElapseUSecMonotonic=infinity`: `OnBootSec=` was already past when the fresh user manager
+  started the timer and never elapsed, and `OnUnitActiveSec=` had no activation to measure from, so
+  no collection ran and four of five providers went stale. Starting the service once re-armed the
+  timer, which is why the failure surfaced as a stuck auto-refresh in the UI. The
+  [Setup](operations/setup.md) timer section documents the activation anchor and the observed
+  failure, and the plan's systemd rule carries the same correction.
+
 ## 2026-10-10
 
 - **Update**: `v0.4.0` is released and deployed. The annotated tag sits on the #56 merge commit
