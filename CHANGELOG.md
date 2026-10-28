@@ -4,6 +4,14 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1] - 2026-10-28
+
+### Fixed
+
+- The scheduled collector no longer stops after a user-manager `daemon-reload`. The timer anchors
+  its first run with `OnActiveSec=2min` and drops `Persistent=true`, whose stamp could disable a
+  past one-shot and leave the timer `active (elapsed)` with no next trigger (Setup §5).
+
 ## [0.4.0] - 2026-10-10
 
 ### Added
@@ -77,6 +85,7 @@ First public release.
 - MIT license, third-party notices for the Lobe Icons marks, contributing and security policies,
   GitHub issue templates, and CI that runs `pnpm run verify`.
 
+[0.4.1]: https://github.com/baktiaditya/ai-usage-dashboard/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/baktiaditya/ai-usage-dashboard/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/baktiaditya/ai-usage-dashboard/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/baktiaditya/ai-usage-dashboard/compare/v0.1.0...v0.2.0
