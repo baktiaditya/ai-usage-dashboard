@@ -2,6 +2,18 @@
 
 ## 2026-10-28
 
+- **Update**: `v0.4.1` is released and deployed. The annotated tag sits on the #59 merge commit
+  `acb4745`, and the GitHub release carries the `0.4.1` changelog entry. The production checkout
+  moved from `55bccf0` (`v0.4.0`) to `acb4745` through the
+  [Production checkout](operations/production-checkout.md) deploy block with no rollback:
+  `pnpm run verify` passed there (48 files, 849 tests, 1 skipped), and the verify block found a
+  clean checkout on `origin/main`, both units on that checkout with installed files identical to
+  the rendered ones, the web unit and timer `active`, and the loopback URL answering `200`.
+  - **Verification:** `package.json` in production reads `0.4.1`; the timer was re-rendered with
+    `OnActiveSec=2min` and no `Persistent=`, then reported `waiting` with a five-minute cadence.
+    The first scheduled run after the deploy (`10126`) recorded `success` for every provider, and
+    the overview reported all five `healthy`.
+
 - **Update**: release `v0.4.1` is prepared. `package.json`, the HTTP `User-Agent`, and the Codex
   `clientInfo` move to `0.4.1`, and [CHANGELOG](../CHANGELOG.md) gains the `0.4.1` entry for the
   collector-timer fix (#58). The public one-line command in [README](../README.md) and
