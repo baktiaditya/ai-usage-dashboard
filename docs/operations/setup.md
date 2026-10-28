@@ -498,7 +498,9 @@ and loads `last_trigger` from it. In systemd 255 `timer_enter_waiting()` disable
 2026-10-28 a user-manager `daemon-reload` at 122.6 s, just after the 120 s `OnBootSec=2min` deadline,
 re-evaluated the timer that way; `OnUnitActiveSec=` had no service activation to measure from, so
 the timer sat `active (elapsed)` with `NextElapseUSecMonotonic=infinity` and four of five providers
-went stale. `OnUnitActiveSec=` is a monotonic timer, and `systemd.timer(5)` says the monotonic clock
+went stale. `OnActiveSec=` is re-based on every user-manager `daemon-reload` while the service is
+inactive, so a reload can also add one extra collection about two minutes later, before the interval
+cadence resumes. `OnUnitActiveSec=` is a monotonic timer, and `systemd.timer(5)` says the monotonic clock
 generally pauses during suspend. After a resume, the interval countdown continues where it stopped,
 and no catch-up run is made. Use **Refresh** on a card for an immediate reading after a resume.
 

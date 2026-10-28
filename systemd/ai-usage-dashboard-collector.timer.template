@@ -4,8 +4,9 @@ Description=Run the AI Usage Dashboard collector every __INTERVAL__ minutes
 Documentation=file://__WORKDIR__/docs/operations/setup.md
 
 [Timer]
-# Anchor the first run to the timer's own activation; a bare OnBootSec= one-shot
-# can be disabled by a re-evaluation after its deadline. Setup explains why.
+# Anchor the first run to the timer's activation so every start, including a
+# login without linger, schedules one. A daemon-reload re-arms it too; Setup
+# explains both and why there is no Persistent= below.
 OnActiveSec=2min
 # Monotonic, so it pauses during suspend and resumes its countdown afterwards;
 # there is no catch-up run after a resume.
