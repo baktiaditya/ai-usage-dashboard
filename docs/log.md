@@ -2,15 +2,14 @@
 
 ## 2026-10-28
 
-- **Update**: the collector timer's first run is anchored with `OnActiveSec=2min` instead of relying
-  on `OnBootSec=2min`. In production the 10:36 reboot left
-  `ai-usage-dashboard-collector.timer` `active (elapsed)` with
-  `NextElapseUSecMonotonic=infinity`: `OnBootSec=` was already past when the fresh user manager
-  started the timer and never elapsed, and `OnUnitActiveSec=` had no activation to measure from, so
-  no collection ran and four of five providers went stale. Starting the service once re-armed the
-  timer, which is why the failure surfaced as a stuck auto-refresh in the UI. The
-  [Setup](operations/setup.md) timer section documents the activation anchor and the observed
-  failure, and the plan's systemd rule carries the same correction.
+- **Update**: the collector timer's first run is anchored with `OnActiveSec=2min`, and the template no
+  longer sets `Persistent=true`. On 2026-10-28 the production timer was `active (elapsed)` with
+  `NextElapseUSecMonotonic=infinity` and four of five providers went stale. `OnBootSec=2min` was
+  still in the future when the timer started 30 s after boot, but a user-manager `daemon-reload` at
+  122.6 s re-evaluated it with `last_trigger` set from the `Persistent=true` stamp; systemd 255 then
+  disables a past one-shot, and `OnUnitActiveSec=` had no service activation to measure from.
+  Starting the service once re-armed the timer. [Setup](operations/setup.md) documents the mechanism,
+  and the plan's systemd rule carries the same correction.
 
 ## 2026-10-10
 

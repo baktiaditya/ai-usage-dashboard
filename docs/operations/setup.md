@@ -491,14 +491,16 @@ path. Re-run the installer after switching Node versions with nvm.
 
 The first collection is anchored to the timer's own activation with `OnActiveSec=2min`: it starts
 two minutes after the user manager starts the timer, whether that is at boot with linger or at
-login without it. `OnBootSec=` alone was not enough. systemd 255 can leave a boot deadline that is
-already past at activation unelapsed, and `OnUnitActiveSec=` then has no activation to measure
-from, so the timer sits `active (elapsed)` with no next trigger and nothing is collected
-(2026-10-28). `OnUnitActiveSec=` is a monotonic timer, and `systemd.timer(5)` says the monotonic
-clock generally pauses during suspend. After a resume, the interval countdown continues where it
-stopped, and no catch-up run is made. Use **Refresh** on a card for an immediate reading after a
-resume. The template also sets `Persistent=true`, which has no effect here: `systemd.timer(5)`
-limits it to `OnCalendar=` timers.
+login without it. The template deliberately sets no `Persistent=`. That option only provides
+catch-up for `OnCalendar=` timers, but systemd still creates a stamp for a `Persistent=true` timer
+and loads `last_trigger` from it. In systemd 255 `timer_enter_waiting()` disables a one-shot
+`OnBootSec=`/`OnActiveSec=`/`OnStartupSec=` value that is past when `last_trigger` is set. On
+2026-10-28 a user-manager `daemon-reload` at 122.6 s, just after the 120 s `OnBootSec=2min` deadline,
+re-evaluated the timer that way; `OnUnitActiveSec=` had no service activation to measure from, so
+the timer sat `active (elapsed)` with `NextElapseUSecMonotonic=infinity` and four of five providers
+went stale. `OnUnitActiveSec=` is a monotonic timer, and `systemd.timer(5)` says the monotonic clock
+generally pauses during suspend. After a resume, the interval countdown continues where it stopped,
+and no catch-up run is made. Use **Refresh** on a card for an immediate reading after a resume.
 
 The installer resolves the environment file, `AUD_DATA_DIR`,
 `AUD_COLLECT_INTERVAL_MINUTES`, `AUD_HOST` and `AUD_PORT` the way the collector

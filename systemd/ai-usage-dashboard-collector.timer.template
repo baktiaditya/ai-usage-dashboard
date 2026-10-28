@@ -4,11 +4,8 @@ Description=Run the AI Usage Dashboard collector every __INTERVAL__ minutes
 Documentation=file://__WORKDIR__/docs/operations/setup.md
 
 [Timer]
-# Anchor the first run to the timer's own activation. OnBootSec= alone is not
-# enough: when a user manager starts after a reboot its boot deadline can be in
-# the past without elapsing, and OnUnitActiveSec= then has no activation to
-# measure from, leaving the timer active with no next trigger. OnActiveSec=
-# always schedules that first run whenever the timer is (re)started.
+# Anchor the first run to the timer's own activation; a bare OnBootSec= one-shot
+# can be disabled by a re-evaluation after its deadline. Setup explains why.
 OnActiveSec=2min
 # Monotonic, so it pauses during suspend and resumes its countdown afterwards;
 # there is no catch-up run after a resume.
@@ -17,9 +14,8 @@ OnUnitActiveSec=__INTERVAL__min
 # in the same instant.
 AccuracySec=30s
 RandomizedDelaySec=30s
-# No effect: systemd.timer(5) limits Persistent= to OnCalendar= timers, and this
-# one has none. Left in place: removing it would change nothing.
-Persistent=true
+# Deliberately no Persistent=: its stamp sets last_trigger, which systemd 255
+# uses to disable a past one-shot. It buys nothing for a monotonic timer.
 Unit=ai-usage-dashboard-collector.service
 
 [Install]
