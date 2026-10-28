@@ -2,6 +2,13 @@
 
 ## 2026-10-28
 
+- **Update**: release `v0.4.1` is prepared. `package.json`, the HTTP `User-Agent`, and the Codex
+  `clientInfo` move to `0.4.1`, and [CHANGELOG](../CHANGELOG.md) gains the `0.4.1` entry for the
+  collector-timer fix (#58). The public one-line command in [README](../README.md) and
+  [Setup](operations/setup.md#command-interface) now pins `v0.4.1`, and the plan
+  [§4.1.1](plan/ai-usage-dashboard-implementation-plan.md#411-managed-linux-installation) records
+  the move. The tag is created on the merge commit after this change lands.
+
 - **Update**: the collector timer's first run is anchored with `OnActiveSec=2min`, and the template no
   longer sets `Persistent=true`. On 2026-10-28 the production timer was `active (elapsed)` with
   `NextElapseUSecMonotonic=infinity` and four of five providers went stale. `OnBootSec=2min` was
