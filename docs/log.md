@@ -6,7 +6,7 @@
   that each percentage is quota consumed. `scripts/claude-statusline-bridge.mjs` reads
   `effort.level` from the status-line input for display only — it stays out of the spool
   allowlist, the collector and the database — and renders
-  `[Opus 5.5 · high] | 5h 9% used | 7d 57% used`. A model without the effort parameter, a
+  `[Opus 5.5 · high] | 5h 24% used | 7d 41% used`. A model without the effort parameter, a
   malformed `effort`, or a window Claude Code has dropped omits that part
   ([Setup](operations/setup.md#3-claude-code)).
 
