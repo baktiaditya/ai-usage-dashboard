@@ -174,6 +174,11 @@ The bridge receives the full status-line payload — which includes `session_id`
 timestamp. Everything else is discarded in the process that saw it, so it never
 reaches the collector, the database, or the browser.
 
+The line it prints names the model, the session's effort level when the model supports the
+effort parameter, and each window's **consumed** share — for example
+`[Opus 5.5 · high] | 5h 9% used | 7d 57% used`. A window Claude Code has dropped after its
+reset disappears from the line, so a pane may show only `7d`.
+
 ### Install
 
 ```bash

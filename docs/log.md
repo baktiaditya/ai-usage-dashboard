@@ -1,5 +1,15 @@
 # Bundle Update Log
 
+## 2026-11-18
+
+- **Update**: the Claude Code status line now names the session's effort level and spells out
+  that each percentage is quota consumed. `scripts/claude-statusline-bridge.mjs` reads
+  `effort.level` from the status-line input for display only — it stays out of the spool
+  allowlist, the collector and the database — and renders
+  `[Opus 5.5 · high] | 5h 9% used | 7d 57% used`. A model without the effort parameter, a
+  malformed `effort`, or a window Claude Code has dropped omits that part
+  ([Setup](operations/setup.md#3-claude-code)).
+
 ## 2026-10-28
 
 - **Update**: `v0.4.1` is released and deployed. The annotated tag sits on the #59 merge commit

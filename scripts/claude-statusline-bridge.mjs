@@ -14,7 +14,9 @@
  * `cost`, and the workspace/repo identity. None of that is needed to answer
  * "how much quota is left", so none of it is written. Selecting the allowlist
  * here — in the process that sees the raw input — means the rest never reaches
- * the collector, the database, or the browser.
+ * the collector, the database, or the browser. `model.display_name` and
+ * `effort.level` are read only to label this bridge's own printed line, and
+ * are never written to the spool either.
  *
  * Deliberately dependency-free ESM: Claude invokes it from an arbitrary working
  * directory, so it must not rely on node_modules or a TypeScript loader.
@@ -32,6 +34,21 @@ const SPOOL_SCHEMA_VERSION = 1;
 
 /** Windows this bridge is allowed to forward, in display order. */
 const ALLOWED_WINDOWS = ['five_hour', 'seven_day', 'spend_limit'];
+
+/** Effort levels the status-line payload can carry. */
+const EFFORT_LEVELS = new Set(['low', 'medium', 'high', 'xhigh', 'max']);
+
+/**
+ * Read the session's effort level for display only.
+ *
+ * `effort` is absent when the current model does not support the effort
+ * parameter, and anything that is not one of the documented levels is ignored
+ * rather than printed. It never reaches the spool.
+ */
+function selectEffort(input) {
+  const level = input && typeof input === 'object' ? input.effort?.level : null;
+  return typeof level === 'string' && EFFORT_LEVELS.has(level) ? level : null;
+}
 
 /** Extract only the allowlisted rate-limit fields. */
 function selectRateLimits(input) {
@@ -107,11 +124,16 @@ function renderWrapped(rawInput) {
   }
 }
 
-function renderOwn(rateLimits, model) {
+function renderOwn(rateLimits, model, effort) {
   const parts = [];
-  if (model) parts.push(`[${model}]`);
-  if (rateLimits?.five_hour) parts.push(`5h ${Math.round(rateLimits.five_hour.usedPercentage)}%`);
-  if (rateLimits?.seven_day) parts.push(`7d ${Math.round(rateLimits.seven_day.usedPercentage)}%`);
+  if (model) parts.push(effort ? `[${model} · ${effort}]` : `[${model}]`);
+  // `used` is spelled out because a bare percentage here reads as quota left.
+  if (rateLimits?.five_hour) {
+    parts.push(`5h ${Math.round(rateLimits.five_hour.usedPercentage)}% used`);
+  }
+  if (rateLimits?.seven_day) {
+    parts.push(`7d ${Math.round(rateLimits.seven_day.usedPercentage)}% used`);
+  }
   return parts.join(' | ');
 }
 
@@ -158,7 +180,8 @@ function main() {
   }
 
   const model = input?.model && typeof input.model === 'object' ? input.model.display_name : null;
-  process.stdout.write(`${renderOwn(rateLimits, model) || 'ai-usage-dashboard'}\n`);
+  const effort = selectEffort(input);
+  process.stdout.write(`${renderOwn(rateLimits, model, effort) || 'ai-usage-dashboard'}\n`);
 }
 
 main();
