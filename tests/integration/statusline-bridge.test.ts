@@ -115,6 +115,68 @@ describe('status-line bridge field selection', () => {
   });
 });
 
+describe('own status-line rendering', () => {
+  const HIGH_EFFORT_INPUT = {
+    ...STATUS_LINE_INPUT,
+    model: { id: 'claude-opus-5-5', display_name: 'Opus 5.5' },
+    effort: { level: 'high' },
+  };
+
+  it('shows the session effort level next to the model', () => {
+    expect(runBridge(HIGH_EFFORT_INPUT).trim()).toBe(
+      '[Opus 5.5 · high] | 5h 24% used | 7d 41% used',
+    );
+  });
+
+  it('shows the model alone when the session has no effort level', () => {
+    const out = runBridge(STATUS_LINE_INPUT);
+    expect(out.trim()).toBe('[Opus] | 5h 24% used | 7d 41% used');
+    expect(out).not.toContain('·');
+  });
+
+  it.each([
+    ['not an object', 'high'],
+    ['an object without a level', { high: true }],
+    ['an unknown level', { level: 'ultra' }],
+    ['a non-string level', { level: 3 }],
+    ['null', null],
+  ])('falls back to the model alone when effort is %s', (_label, effort) => {
+    const out = runBridge({ ...STATUS_LINE_INPUT, effort });
+    expect(out.trim()).toBe('[Opus] | 5h 24% used | 7d 41% used');
+  });
+
+  it('labels a single remaining window as used', () => {
+    const out = runBridge({
+      ...STATUS_LINE_INPUT,
+      rate_limits: { seven_day: { used_percentage: 57.4, resets_at: 1773986400 } },
+    });
+    expect(out.trim()).toBe('[Opus] | 7d 57% used');
+    expect(out).not.toContain('5h');
+  });
+
+  it('shows no windows when the payload has no rate limits', () => {
+    const { rate_limits: _omitted, ...withoutQuota } = STATUS_LINE_INPUT;
+    expect(runBridge(withoutQuota).trim()).toBe('[Opus]');
+  });
+
+  it('keeps effort out of the spool', () => {
+    runBridge({ ...STATUS_LINE_INPUT, effort: { level: 'high' } });
+    const withEffort = readFileSync(spool, 'utf8');
+    runBridge(STATUS_LINE_INPUT);
+    const withoutEffort = readFileSync(spool, 'utf8');
+
+    expect(withEffort).not.toContain('effort');
+    expect(withEffort).not.toContain('high');
+    // Byte-for-byte the file the same input without effort produces; only the
+    // observation timestamp and the event id derived from it differ per run.
+    const scrub = (raw: string) =>
+      raw
+        .replace(/"observedAt":"[^"]+"/, '"observedAt":"<ts>"')
+        .replace(/"eventId":"[^"]+"/, '"eventId":"<id>"');
+    expect(scrub(withEffort)).toBe(scrub(withoutEffort));
+  });
+});
+
 describe('spool file safety', () => {
   it('writes with mode 0600', () => {
     runBridge(STATUS_LINE_INPUT);
