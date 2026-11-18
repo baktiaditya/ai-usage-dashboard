@@ -2,6 +2,18 @@
 
 ## 2026-11-18
 
+- **Update**: `v0.5.0` is released and deployed. The annotated tag sits on the #62 merge commit
+  `b85dead`, and the GitHub release carries the `0.5.0` changelog entry. The production checkout
+  moved from `acb4745` (`v0.4.1`) to `b85dead` through the
+  [Production checkout](operations/production-checkout.md) deploy block with no rollback:
+  `pnpm run verify` passed there (48 files, 859 tests, 1 skipped), and the verify block found a
+  clean checkout on `origin/main`, both units on that checkout with installed files identical to
+  the rendered ones, the web unit and timer `active`, and the loopback URL answering `200`.
+  - **Verification:** `package.json` in production reads `0.5.0`, and the first scheduled run
+    after the deploy (`16029`) recorded `success` for every provider. The installed status line
+    already runs the bridge from this checkout, so it prints the new effort and `used` line
+    without a reinstall.
+
 - **Update**: release `v0.5.0` is prepared. `package.json`, the HTTP `User-Agent`, and the Codex
   `clientInfo` move to `0.5.0`, and [CHANGELOG](../CHANGELOG.md) gains the `0.5.0` entry for the
   status-line effort level and `used` labels (#61). The public one-line command in
