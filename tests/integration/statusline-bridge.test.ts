@@ -135,7 +135,8 @@ describe('own status-line rendering', () => {
   });
 
   it.each([
-    ['not an object', { high: true }],
+    ['not an object', 'high'],
+    ['an object without a level', { high: true }],
     ['an unknown level', { level: 'ultra' }],
     ['a non-string level', { level: 3 }],
     ['null', null],
