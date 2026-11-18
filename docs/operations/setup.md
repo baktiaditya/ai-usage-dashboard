@@ -966,12 +966,12 @@ never adopts or repoints a manual checkout, including the
 ### Command interface
 
 The published one-line command pins the release tag that also provides the script, because
-the bootstrap and the lifecycle manager it hands off to come from the same commit. `v0.4.1` is
+the bootstrap and the lifecycle manager it hands off to come from the same commit. `v0.5.0` is
 the current release (the installer first shipped in `v0.2.0`):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/baktiaditya/ai-usage-dashboard/v0.4.1/scripts/install.sh \
-  | bash -s -- --version v0.4.1
+curl -fsSL https://raw.githubusercontent.com/baktiaditya/ai-usage-dashboard/v0.5.0/scripts/install.sh \
+  | bash -s -- --version v0.5.0
 ```
 
 The same script also runs from a checkout. Both routes accept the same arguments, so the

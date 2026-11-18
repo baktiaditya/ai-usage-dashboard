@@ -2,6 +2,13 @@
 
 ## 2026-11-18
 
+- **Update**: release `v0.5.0` is prepared. `package.json`, the HTTP `User-Agent`, and the Codex
+  `clientInfo` move to `0.5.0`, and [CHANGELOG](../CHANGELOG.md) gains the `0.5.0` entry for the
+  status-line effort level and `used` labels (#61). The public one-line command in
+  [README](../README.md) and [Setup](operations/setup.md#command-interface) now pins `v0.5.0`, and
+  the plan [§4.1.1](plan/ai-usage-dashboard-implementation-plan.md#411-managed-linux-installation)
+  records the move. The tag is created on the merge commit after this change lands.
+
 - **Update**: the Claude Code status line now names the session's effort level and spells out
   that each percentage is quota consumed. `scripts/claude-statusline-bridge.mjs` reads
   `effort.level` from the status-line input for display only — it stays out of the spool

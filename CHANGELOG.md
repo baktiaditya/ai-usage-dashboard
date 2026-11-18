@@ -4,6 +4,15 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project uses
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-11-18
+
+### Added
+
+- The Claude Code status line shows the session's effort level next to the model and labels every
+  rate-limit window as the share **used** — `[Opus 5.5 · high] | 5h 24% used | 7d 41% used` — so a
+  percentage can no longer be read as quota left. Effort is display-only: the spool, collector and
+  database are unchanged, and a wrapped status line still prints its own output (Setup §3).
+
 ## [0.4.1] - 2026-10-28
 
 ### Fixed
@@ -85,6 +94,7 @@ First public release.
 - MIT license, third-party notices for the Lobe Icons marks, contributing and security policies,
   GitHub issue templates, and CI that runs `pnpm run verify`.
 
+[0.5.0]: https://github.com/baktiaditya/ai-usage-dashboard/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/baktiaditya/ai-usage-dashboard/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/baktiaditya/ai-usage-dashboard/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/baktiaditya/ai-usage-dashboard/compare/v0.2.0...v0.3.0
